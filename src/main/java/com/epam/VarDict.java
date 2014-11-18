@@ -1408,6 +1408,7 @@ public class VarDict {
 
     private static void realigndel(Map<Integer, Map<String, Variation>> hash,
             Map<Integer, Map<String, Integer>> dels5,
+            Map<Integer, Sclip> sclip3,
             Map<Integer, Character> ref,
             String chr,
             Map<String, Integer> chrs,
@@ -1476,6 +1477,8 @@ public class VarDict {
                 sanend = chrs.get(chr);
             }
             String sanpseq = extrains + compm + extra + joinRef(ref, p + dellen + extra.length() + compm.length(), sanend); // 3' flanking seq
+            findMM3(ref, p, sanpseq, dellen, sclip3); // mismatches, mismatch positions, 5 or 3 ends
+
 //TODO ?????????
 
 
@@ -1483,6 +1486,48 @@ public class VarDict {
 
     }
 
+    // Given a variant sequence, find the mismatches and potential softclipping positions
+    private static void findMM3(Map<Integer, Character> ref, int p, String seq, int len, Map<Integer, Sclip> sclip3) {
+        seq = seq.replaceAll("#|\\^", ""); // ~ s/#|\^//g;
+        final int longmm = 3;
+        int n = 0;
+        int mcnt = 0;
+        List<Integer> sc3p = new ArrayList<>();
+        StringBuilder str = new StringBuilder();
+        while(ref.containsKey(p + n) && ref.get(p + n).equals(seq.charAt(n))) {
+            n++;
+        }
+        sc3p.add(p + n);
+        int Tbp = p + n;
+        while(ref.containsKey(p + n) && !ref.get(p + n).equals(seq.charAt(n)) && mcnt <= longmm && n < seq.length()) {
+            str.append(seq.charAt(n));
+
+//          push(@mm, [$str, $Tbp, 3]);
+          n++;
+          mcnt++;
+
+        }
+
+
+//        my @mm = (); # mismatches, mismatch positions, 5 or 3 ends
+//        my $mn = 0;
+//        my $str = "";
+
+//        my $Tbp = $p + $n;
+//        while( $REF->{ $p+$n } ne substr($seq, $n, 1) && $mcnt <= $LONGMM && $n < length($seq)) {
+//        $str .= substr($seq, $n, 1);
+//        push(@mm, [$str, $Tbp, 3]);
+//        $n++; $mcnt++;
+//        }
+//        # Adject clipping position if only one mismatch
+//        if ( length($str) == 1 ) {
+//        $n++ && $mn++ while( $REF->{ $p+$n } && $REF->{ $p+$n } eq substr($seq, $n, 1) );
+//        push(@sc3p, $p + $n) if ( $mn > 1 );
+//        $sclip3->{ $p+$n }->{ used } = 1 if ( $sclip3->{ $p+$n } && $mn > 1); #( && $len >= 4);
+//        }
+//        #print STDERR "MM3: $seq $len $p '@sc3p'\n";
+//        return (\@mm, \@sc3p, $mn);
+    }
 
     private static String joinRef(Map<Integer, Character> ref, int from, int to) {
         StringBuilder sb = new StringBuilder();
