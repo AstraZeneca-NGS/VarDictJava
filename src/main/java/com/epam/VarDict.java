@@ -5,6 +5,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -125,6 +126,7 @@ public class VarDict {
         final int buffer = 200;
         int vext = 3; // -X, default 3
         int trimBasesAfter = 0; // -T, Trim bases after [INT] bases in the reads
+        boolean performLocalRealignment; // -k, default false
 
         public boolean isColumnForChromosomeSet() {
             return columnForChromosome >= 0;
@@ -1382,8 +1384,32 @@ public class VarDict {
         }
         adjMNP(hash, mnp, cov);
 
+        if (conf.performLocalRealignment) {
 
+        }
         return null;
+    }
+
+
+    private static void realigndel(Map<Integer, Map<String, Variation>> hash,
+            Map<Integer, Map<String, Integer>> dels5) {
+
+        int longmm = 3; //Longest continued mismatches typical aligned at the end
+        List<Object[]> tmp = new ArrayList<>();
+        for (Entry<Integer, Map<String, Integer>> entDel : dels5.entrySet()) {
+            Integer p = entDel.getKey();
+            Map<String, Integer> dv = entDel.getValue();
+            for (Entry<String, Integer> entDv : dv.entrySet()) {
+                String vn = entDv.getKey();
+                Integer dcnt = entDv.getValue();
+                int ecnt = 0;
+
+
+            }
+
+
+        }
+
     }
 
     private static void adjMNP(Map<Integer, Map<String, Variation>> hash,
