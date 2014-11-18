@@ -1,0 +1,18 @@
+apply plugin: 'java'
+
+version = '0.1'
+
+
+repositories { 
+    mavenCentral() 
+}
+
+targetCompatibility = "1.7"
+sourceCompatibility = "1.7"
+
+dependencies {
+    compile 'commons-cli:commons-cli:1.2' 
+    testCompile 'junit:junit:4.8.2' 
+}
+
+
