@@ -548,6 +548,16 @@ public class VarDict {
         public void decDir(boolean dir) {
             this.dir.get(dir)[0]--;
         }
+        public int getDir(boolean dir) {
+            return this.dir.get(dir)[0];
+        }
+        public void addDir(boolean dir, int add) {
+            this.dir.get(dir)[0] += add;
+        }
+        public void subDir(boolean dir, int sub) {
+            this.dir.get(dir)[0] -= sub;
+        }
+
     }
 
     public static class Flag {
@@ -1370,12 +1380,16 @@ public class VarDict {
             } //TODO abcall
 
         }
+        adjMNP(hash, mnp, cov);
 
 
         return null;
     }
 
-    private static void adjMNP(Map<Integer, Map<String, Variation>> hash, Map<Integer, Map<String, Integer>> mnp) {
+    private static void adjMNP(Map<Integer, Map<String, Variation>> hash,
+            Map<Integer, Map<String, Integer>> mnp,
+            Map<Integer, Integer> cov) {
+
         for (Map.Entry<Integer, Map<String, Integer>> entry: mnp.entrySet()) {
             Integer p = entry.getKey();
             Map<String, Integer> v = entry.getValue();
@@ -1386,13 +1400,21 @@ public class VarDict {
                 for (int i = 0; i < mnt.length() - 1; i++) {
                     String left = substr(mnt, 0, i + 1);
                     String right = substr(mnt, -(mnt.length() - i - 1));
+                    Variation vref = getVariation(hash, p, vn);
                     if (hash.containsKey(p) && hash.get(p).containsKey(left)) {
                         Variation tref = getVariation(hash, p, left);
-                        Variation vref = getVariation(hash, p, vn);
+                        if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= i + 1) {
+                            adjCnt(vref, tref);
+                            hash.get(p).remove(left);
+                        }
+                    }
+                    if (hash.containsKey(p + i + 1) && hash.get(p + i + 1).containsKey(right)) {
+                        Variation tref = getVariation(hash, p + i + 1, right);
                         if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= mnt.length() - i - 1) {
                             adjCnt(vref, tref);
+                            incCnt(cov, p, tref.cnt);
+                            hash.get(p + i + 1).remove(right);
                         }
-
                     }
 
                 }
@@ -1409,31 +1431,43 @@ public class VarDict {
     private static void adjCnt(Variation vref, Variation tv, Variation ref) {
         vref.cnt += tv.cnt;
         vref.extracnt += tv.cnt;
-//        $vref->{ cnt } += $tv->{ cnt };
-//        $vref->{ extracnt } += $tv->{ cnt };
-//        $vref->{ hicnt } += $tv->{ hicnt } ? $tv->{ hicnt } : 0;
-//        $vref->{ locnt } += $tv->{ locnt } ? $tv->{ locnt } : 0;
-//        $vref->{ pmean } += $tv->{ pmean };
-//        $vref->{ qmean } += $tv->{ qmean };
-//        $vref->{ Qmean } += $tv->{ Qmean };
-//        $vref->{ nm } += $tv->{ nm };
-//        $vref->{ pstd } = 1;
-//        $vref->{ qstd } = 1;
-//        $vref->{ "+" } += $tv->{ "+" } ? $tv->{ "+" } : 0;
-//        $vref->{ "-" } += $tv->{ "-" } ? $tv->{ "-" } : 0;
-//        return unless($ref);
-//        $ref->{ cnt } -= $tv->{ cnt };
-//        $ref->{ hicnt } -= $tv->{ hicnt } ? $tv->{ hicnt } : 0;
-//        $ref->{ locnt } -= $tv->{ locnt } ? $tv->{ locnt } : 0;
-//        $ref->{ pmean } -= $tv->{ pmean };
-//        $ref->{ qmean } -= $tv->{ qmean };
-//        $ref->{ Qmean } -= $tv->{ Qmean };
-//        $ref->{ nm } -= $tv->{ nm };
-//        $ref->{ "+" } -= $tv->{ "+" } ? $tv->{ "+" } : 0;
-//        $ref->{ "-" } -= $tv->{ "-" } ? $tv->{ "-" } : 0;
-//        foreach my $k (qw(cnt hicnt locnt pmean qmean Qmean + -)) {
-//        $ref->{ $k } = 0 if ( $ref->{ $k } && $ref->{ $k } < 0 );
-//        }
+        vref.hicnt += tv.hicnt;
+        vref.locnt += tv.locnt;
+        vref.pmean += tv.pmean;
+        vref.qmean += tv.qmean;
+        vref.Qmean += tv.Qmean;
+        vref.nm += tv.nm;
+        vref.pstd = true;
+        vref.qstd = true;
+        vref.addDir(true, tv.getDir(true));
+        vref.addDir(false, tv.getDir(false));
+
+        if (ref == null)
+            return;
+
+        ref.cnt -= tv.cnt;
+        ref.hicnt -= tv.hicnt;
+        ref.locnt -= tv.locnt;
+        ref.pmean -= tv.pmean;
+        ref.qmean -= tv.qmean;
+        ref.Qmean -= tv.Qmean;
+        ref.nm -= tv.nm;
+        ref.subDir(true, tv.getDir(true));
+        ref.subDir(false, tv.getDir(false));
+        if (ref.cnt < 0)
+            ref.cnt = 0;
+        if (ref.hicnt < 0)
+            ref.hicnt = 0;
+        if (ref.locnt < 0)
+            ref.locnt = 0;
+        if (ref.pmean < 0)
+            ref.pmean = 0;
+        if (ref.qmean < 0)
+            ref.qmean = 0;
+        if (ref.getDir(true) < 0)
+            ref.addDir(true, -ref.getDir(true));
+        if (ref.getDir(false) < 0)
+            ref.addDir(false, -ref.getDir(false));
     }
 
     private void increment(Map<Integer, Map<String, Integer>> counters, int idx, String s) {
