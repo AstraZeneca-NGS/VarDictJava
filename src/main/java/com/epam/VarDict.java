@@ -1416,7 +1416,8 @@ public class VarDict {
             Map<Integer, Character> ref,
             String chr,
             Map<String, Integer> chrs,
-            Configuration conf) {
+            String[] bams,
+            Configuration conf) throws IOException {
 
         int longmm = 3; //Longest continued mismatches typical aligned at the end
         List<Object[]> tmp = new ArrayList<>();
@@ -1575,36 +1576,74 @@ public class VarDict {
                         adjCnt(vref, tv.variation, lref);
                         sclip3.get(sc3pp).used = true;
                     }
-//                    if (bams. && $sc3pp - $p >= 5 && $sc3pp - $p < 75 && $hash->{$p}->{ $REF->{$p} } && noPassingReads($chr, $p, $sc3pp, $bams) && $vref->{ cnt } > 2 * $hash->{$p}->{ $REF->{$p} }->{ cnt }) {
-//
-//                    }
+                    if (bams != null
+                            && sc3pp - p >= 5
+                            && sc3pp - p < 75
+                            && hash.containsKey(p) && hash.get(p).containsKey(ref.get(p).toString())
+                            && noPassingReads(chr, p, sc3pp, bams, conf)
+                            && vref.cnt > 2 * hash.get(p).get(ref.get(p).toString()).cnt) {
+                        Variation hv = getVariation(hash, p, ref.get(p).toString());
+                        adjCnt(vref, hv, hv);
+                    }
 
                 }
-//                if ( $sclip3->{ $sc3pp } && (! $sclip3->{ $sc3pp }->{ used }) ) {
-//                my $tv = $sclip3->{ $sc3pp };
-//                my $seq = findconseq( $tv );
-//                #if ( $seq && findbp($seq, $sc3pp + $dellen, $REF, 1, 1, $chr) )
-//                #print STDERR "$seq $sanpseq $sc3pp $p\n";
-//                print STDERR "Realigndel 3: $sample $sc3pp $seq $sanpseq $tv->{ cnt } $dcnt $vn $p\n" if ( $opt_y && $seq );
-//                if ( $seq && ismatch($seq, substr($sanpseq, $sc3pp-$p), 1) ) {
-//                    print STDERR "Realigndel 3: $sample $sc3pp $seq $sanpseq $tv->{ cnt } $dcnt $vn $p used\n" if ( $opt_y && $seq );
-//                    $cov->{ $p } += $tv->{ cnt } if ( $sc3pp <= $p );
-//                    my $ref = $sc3pp <= $p ? "" : $hash->{$p}->{ $REF->{$p} };
-//                    adjCnt($vref, $tv, $ref);
-//                    $sclip3->{ $sc3pp }->{ used } = 1;
-//                }
-//                }
-//                adjCnt($vref, $hash->{$p}->{ $REF->{$p} }, $hash->{$p}->{ $REF->{$p} }) if ($bams && $sc3pp - $p >= 5 && $sc3pp - $p < 75 && $hash->{$p}->{ $REF->{$p} } && noPassingReads($chr, $p, $sc3pp, $bams) && $vref->{ cnt } > 2 * $hash->{$p}->{ $REF->{$p} }->{ cnt });
             }
-
-
-
-
-
-
         }
-
+        for(int i = tmp.size() - 1; i >= 0; i--) {
+            Object[] os = tmp.get(i);
+            int p = (Integer)os[0];
+            String vn = (String)os[1];
+            int icnt = (Integer)os[2];
+            if (!hash.containsKey(p)) {
+                continue;
+            }
+            Variation vref = hash.get(p).get(vn);
+            if (vref == null) {
+                continue;
+            }
+            Matcher matcher = MINUS_D_AMP_ATGC_E.matcher(vn);
+            if (matcher.find()) {
+                String tn = matcher.group(1);
+                Variation tref = hash.get(p).get(vn);
+                if (tref != null) {
+                    if (vref.cnt < tref.cnt) {
+                        adjCnt(tref, vref);
+                        hash.get(p).remove(vn);
+                    }
+                }
+            }
+        }
     }
+
+    private static final Pattern MINUS_D_AMP_ATGC_E = Pattern.compile("(-\\d+)&[ATGC]+$");
+
+    // check whether there're reads supporting wild type in deletions
+    // Only for deletions that have micro-homology
+    private static boolean noPassingReads(String chr, int s, int e, String[] bams, Configuration conf) throws IOException {
+        int cnt = 0;
+        for (String bam : bams) {
+            try(SamtoolsReader reader = new SamtoolsReader("view", bam, chr + ":" + s + "-" + e)) {
+                String line;
+                while ((line = reader.read()) != null) {
+                    String[] a = line.split("\t");
+                    int rs = toInt(a[3]);
+                    if (a[5].matches("^(\\d+)M$")) {
+                        int re = rs + toInt(substr(a[5], 0, -1));
+                        if (re > e + 3 && rs < s -3) {
+                            cnt++;
+                        }
+                    }
+
+                }
+
+            }
+        }
+        if (conf.y) {
+            System.err.printf("Passing Read CNT: %s\n", cnt);
+        }
+        return cnt <= 0;
+    }
+
 
     private static boolean ismatch(String seq1, String seq2, int dir) {
         seq2 = seq2.replaceAll("#|\\^", "");
