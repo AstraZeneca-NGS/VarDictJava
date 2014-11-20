@@ -519,6 +519,8 @@ public class VarDict {
         Variation variation = new Variation();
         Map<Integer, Map<Character, Integer>> nt = new HashMap<>();
         Map<Integer, Map<Character, Variation>> seq = new HashMap<>();
+        String sequence;
+        boolean used;
     }
 
 
@@ -1408,6 +1410,8 @@ public class VarDict {
 
     private static void realigndel(Map<Integer, Map<String, Variation>> hash,
             Map<Integer, Map<String, Integer>> dels5,
+            Map<Integer, Integer> cov,
+            Map<Integer, Sclip> sclip5,
             Map<Integer, Sclip> sclip3,
             Map<Integer, Character> ref,
             String chr,
@@ -1477,20 +1481,231 @@ public class VarDict {
                 sanend = chrs.get(chr);
             }
             String sanpseq = extrains + compm + extra + joinRef(ref, p + dellen + extra.length() + compm.length(), sanend); // 3' flanking seq
-            findMM3(ref, p, sanpseq, dellen, sclip3); // mismatches, mismatch positions, 5 or 3 ends
+            Tuple3<List<Tuple3<String, Integer, Integer>>, List<Integer>, Integer> tp3 = findMM3(ref, p, sanpseq, dellen, sclip3); // mismatches, mismatch positions, 5 or 3 ends
+            Tuple3<List<Tuple3<String, Integer, Integer>>, List<Integer>, Integer> tp5 = findMM5(ref, p + dellen + (compm + extra).length() - 1, wupseq, dellen, sclip5);
 
-//TODO ?????????
+            List<Tuple3<String, Integer, Integer>> mm3 = tp3._1();
+            List<Integer> sc3p = tp3._2();
+            int nm3 = tp3._3();
+
+            List<Tuple3<String, Integer, Integer>> mm5 = tp5._1();
+            List<Integer> sc5p = tp5._2();
+            int nm5 = tp5._3();
+
+            List<Tuple3<String, Integer, Integer>> mmm = new ArrayList<>(mm3);
+            mmm.addAll(mm5);
+            for (Tuple3<String, Integer, Integer> tuple : mmm) {
+                String mm = tuple._1();
+                Integer mp = tuple._2();
+                Integer me = tuple._3();
+                if (mm.length() > 1) {
+                    mm = mm.charAt(0) + "&" + mm.substring(1);
+                }
+                if (hash.get(mp) == null) {
+                    continue;
+                }
+                Variation tv = hash.get(mp).get(mm);
+                if (tv == null) {
+                    continue;
+                }
+                if (tv.cnt == 0) {
+                    continue;
+                }
+                if (tv.qmean / tv.cnt < conf.goodq) {
+                    continue;
+                }
+
+                if (tv.pmean/tv.cnt > (me == 3 ? nm3 + 4 : nm5 + 4)) {
+                    continue;
+                }
+                if (tv.cnt >= dcnt + dellen) {
+                    continue;
+                }
+                if (conf.y) {
+                    System.err.printf("Realigndel Adj: %s %s %s %s %s %s %s %s\n", mm, mp, me, nm3, nm5, p, tv.cnt, tv.qmean);
+                }
+                // Adjust ref cnt so that AF won't > 1
+                if (mp > p && me == 5) {
+                    incCnt(cov, p, tv.cnt);
+                }
+                Variation lref = (mp > p && me == 3) ? (hash.containsKey(p) && hash.get(p).containsKey(ref.get(p).toString()) ? hash.get(p).get(ref.get(p).toString()) : null) : null;
+                adjCnt(vref, tv, lref);
+                hash.get(mp).remove(mm);
+                if (hash.get(mp).isEmpty() ) {
+                    hash.remove(mp);
+                }
+            }
+
+            for (Integer sc5pp : sc5p) {
+                if (sclip5.containsKey(sc5pp) && !sclip5.get(sc5pp).used) {
+                    Sclip tv = sclip5.get(sc5pp);
+                    String seq = findconseq(tv);
+                    if (conf.y) {
+                        System.err.printf("Realigndel 5: %s %s %s %s %s %s %s\n",  sc5pp, seq, wupseq, tv.variation.cnt, dcnt, vn, p);
+                    }
+                    if (!seq.isEmpty() && ismatch(seq, wupseq, -1)) {
+                        if (conf.y) {
+                            System.err.printf("Realigndel 5: %s %s %s %s %s %s %s used\n",  sc5pp, seq, wupseq, tv.variation.cnt, dcnt, vn, p);
+                        }
+                        if (sc5pp > p) {
+                            incCnt(cov, p, tv.variation.cnt);
+                        }
+                        adjCnt(vref, tv.variation);
+                        sclip5.get(sc5pp).used = true;
+
+                    }
+                }
+            }
+
+            for (Integer sc3pp : sc3p) {
+                if (sclip3.containsKey(sc3pp) && !sclip3.get(sc3pp).used) {
+                    Sclip tv = sclip3.get(sc3pp);
+                    String seq = findconseq(tv);
+                    if(conf.y) {
+                        System.err.printf("Realigndel 3: %s %s %s %s %s %s %s\n", sc3pp, seq, sanpseq, tv.variation.cnt, dcnt, vn, p);
+                    }
+                    if (!seq.isEmpty() && ismatch(seq, substr(sanpseq, sc3pp - p), 1)) {
+                        if (conf.y) {
+                            System.err.printf("Realigndel 3: %s %s %s %s %s %s %s used\n", sc3pp, seq, sanpseq, tv.variation.cnt, dcnt, vn, p);
+                        }
+                        if (sc3pp <=p ) {
+                            incCnt(cov, p, tv.variation.cnt);
+                        }
+                        Variation lref = sc3pp <= p ? null : hash.get(p).get(ref.get(p).toString());
+                        adjCnt(vref, tv.variation, lref);
+                        sclip3.get(sc3pp).used = true;
+                    }
+//                    if (bams. && $sc3pp - $p >= 5 && $sc3pp - $p < 75 && $hash->{$p}->{ $REF->{$p} } && noPassingReads($chr, $p, $sc3pp, $bams) && $vref->{ cnt } > 2 * $hash->{$p}->{ $REF->{$p} }->{ cnt }) {
+//
+//                    }
+
+                }
+//                if ( $sclip3->{ $sc3pp } && (! $sclip3->{ $sc3pp }->{ used }) ) {
+//                my $tv = $sclip3->{ $sc3pp };
+//                my $seq = findconseq( $tv );
+//                #if ( $seq && findbp($seq, $sc3pp + $dellen, $REF, 1, 1, $chr) )
+//                #print STDERR "$seq $sanpseq $sc3pp $p\n";
+//                print STDERR "Realigndel 3: $sample $sc3pp $seq $sanpseq $tv->{ cnt } $dcnt $vn $p\n" if ( $opt_y && $seq );
+//                if ( $seq && ismatch($seq, substr($sanpseq, $sc3pp-$p), 1) ) {
+//                    print STDERR "Realigndel 3: $sample $sc3pp $seq $sanpseq $tv->{ cnt } $dcnt $vn $p used\n" if ( $opt_y && $seq );
+//                    $cov->{ $p } += $tv->{ cnt } if ( $sc3pp <= $p );
+//                    my $ref = $sc3pp <= $p ? "" : $hash->{$p}->{ $REF->{$p} };
+//                    adjCnt($vref, $tv, $ref);
+//                    $sclip3->{ $sc3pp }->{ used } = 1;
+//                }
+//                }
+//                adjCnt($vref, $hash->{$p}->{ $REF->{$p} }, $hash->{$p}->{ $REF->{$p} }) if ($bams && $sc3pp - $p >= 5 && $sc3pp - $p < 75 && $hash->{$p}->{ $REF->{$p} } && noPassingReads($chr, $p, $sc3pp, $bams) && $vref->{ cnt } > 2 * $hash->{$p}->{ $REF->{$p} }->{ cnt });
+            }
+
+
+
+
 
 
         }
 
     }
 
-    // Given a variant sequence, find the mismatches and potential softclipping positions
-    private static void findMM3(Map<Integer, Character> ref, int p, String seq, int len, Map<Integer, Sclip> sclip3) {
-        seq = seq.replaceAll("#|\\^", ""); // ~ s/#|\^//g;
-        final int longmm = 3;
+    private static boolean ismatch(String seq1, String seq2, int dir) {
+        seq2 = seq2.replaceAll("#|\\^", "");
+        int mm = 0;
+        Map<Character, Boolean> nts = new HashMap<>();
+        for(int n = 0; n < seq1.length() && n < seq2.length(); n++) {
+            nts.put( seq1.charAt(n), true);
+            if (seq1.charAt(n) != substr(seq2, dir * n - (dir == -1 ? 1 : 0), 1).charAt(0)) {
+                mm++;
+            }
+        }
+
+        return (mm <= 2 && mm/(double)seq1.length() < 0.15);
+    }
+
+
+    // Find the consensus sequence in soft-clipped reads.  Consensus is called if
+    // the matched nucleotides are >90% of all softly clipped nucleotides.
+    private static String findconseq(Sclip scv) {
+        if (scv.sequence != null) {
+            return scv.sequence;
+        }
+
+        int total = 0;
+        int match = 0;
+        StringBuilder seq = new StringBuilder();
+        for (Map<Character, Integer> nv : scv.nt.values()) {
+            int max = 0;
+            Character mnt = null;
+            int tt = 0;
+            for (Entry<Character, Integer> ent : nv.entrySet()) {
+                Character nt = ent.getKey();
+                int ncnt = ent.getValue();
+                tt += ncnt;
+                if (ncnt > max) {
+                    max = ncnt;
+                    mnt = nt;
+                }
+            }
+            if (tt - max > 1 && max / (double)tt < 0.8) {
+                break;
+            }
+            total += tt;
+            match += max;
+            seq.append(mnt);
+        }
+
+        scv.sequence = seq.toString();
+
+        if (total > 0
+                && match / (double) total > 0.9
+                && seq.length()/1.5d > scv.nt.size() - seq.length()
+                && (seq.length() /(double) scv.nt.size() > 0.8 || scv.nt.size() - seq.length() < 10 || seq.length() > 25)) {
+            return scv.sequence;
+
+        }
+
+        return "";
+
+    }
+
+    private static Tuple3<List<Tuple3<String, Integer, Integer>>, List<Integer>, Integer> findMM5(Map<Integer, Character> ref, int p, String wupseq, int len, Map<Integer, Sclip> sclip5) {
+        String seq = wupseq.replaceAll("#|\\^", "");
+        int longmm = 3;
+        List<Tuple3<String, Integer, Integer>> mm = new ArrayList<>(); // mismatches, mismatch positions, 5 or 3 ends
         int n = 0;
+        int mn = 0;
+        int mcnt = 0;
+        StringBuilder str = new StringBuilder();
+        List<Integer> sc5p = new ArrayList<>();
+        while (ref.containsKey(p - n) && !ref.get(p - n).toString().equals(substr(seq, -1 - n, 1)) && mcnt < longmm) {
+            str.insert(0, substr(seq, -1 - n, 1));
+            mm.add(Tuple3.newTuple(str.toString(), p - n, 5 ));
+            n++;
+            mcnt++;
+        }
+        sc5p.add(p + 1);
+        // Adject clipping position if only one mismatch
+        if ( str.length() == 1 ) {
+            while( ref.containsKey(p-n) && ref.get(p-n).toString().equals(substr(seq, -1-n, 1) )) {
+                n++;
+                mn++;
+            }
+            if (mn > 1) {
+                sc5p.add(p -n);
+            }
+            if (sclip5.containsKey(p-n) && mn > 1 ) {
+                sclip5.get(p-n).used = true;
+            }
+        }
+        return Tuple3.newTuple(mm, sc5p, mn);
+
+    }
+
+    // Given a variant sequence, find the mismatches and potential softclipping positions
+    private static Tuple3<List<Tuple3<String, Integer, Integer>>, List<Integer>, Integer> findMM3(Map<Integer, Character> ref, int p, String sanpseq, int len, Map<Integer, Sclip> sclip3) {
+        String seq = sanpseq.replaceAll("#|\\^", ""); // ~ s/#|\^//g;
+        final int longmm = 3;
+        List<Tuple3<String, Integer, Integer>> mm = new ArrayList<>(); //mismatches, mismatch positions, 5 or 3 ends
+        int n = 0;
+        int mn = 0;
         int mcnt = 0;
         List<Integer> sc3p = new ArrayList<>();
         StringBuilder str = new StringBuilder();
@@ -1499,34 +1714,29 @@ public class VarDict {
         }
         sc3p.add(p + n);
         int Tbp = p + n;
-        while(ref.containsKey(p + n) && !ref.get(p + n).equals(seq.charAt(n)) && mcnt <= longmm && n < seq.length()) {
+        while (ref.containsKey(p + n) && !ref.get(p + n).equals(seq.charAt(n)) && mcnt <= longmm && n < seq.length()) {
             str.append(seq.charAt(n));
-
-//          push(@mm, [$str, $Tbp, 3]);
-          n++;
-          mcnt++;
+            mm.add(Tuple3.newTuple(str.toString(), Tbp, 3 ));
+            n++;
+            mcnt++;
 
         }
+        //  Adject clipping position if only one mismatch
+        if (str.length() == 1) {
+            while(ref.containsKey(p + n) && ref.get(p + n).equals(seq.charAt(n))) {
+                n++;
+                mn++;
+            }
+            if (mn > 1) {
+                sc3p.add(p + n);
+            }
+            if (sclip3.containsKey(p + n) && mn > 1) {
+                sclip3.get(p + n).used = true;
+            }
+        }
+        //print STDERR "MM3: $seq $len $p '@sc3p'\n";
 
-
-//        my @mm = (); # mismatches, mismatch positions, 5 or 3 ends
-//        my $mn = 0;
-//        my $str = "";
-
-//        my $Tbp = $p + $n;
-//        while( $REF->{ $p+$n } ne substr($seq, $n, 1) && $mcnt <= $LONGMM && $n < length($seq)) {
-//        $str .= substr($seq, $n, 1);
-//        push(@mm, [$str, $Tbp, 3]);
-//        $n++; $mcnt++;
-//        }
-//        # Adject clipping position if only one mismatch
-//        if ( length($str) == 1 ) {
-//        $n++ && $mn++ while( $REF->{ $p+$n } && $REF->{ $p+$n } eq substr($seq, $n, 1) );
-//        push(@sc3p, $p + $n) if ( $mn > 1 );
-//        $sclip3->{ $p+$n }->{ used } = 1 if ( $sclip3->{ $p+$n } && $mn > 1); #( && $len >= 4);
-//        }
-//        #print STDERR "MM3: $seq $len $p '@sc3p'\n";
-//        return (\@mm, \@sc3p, $mn);
+        return Tuple3.newTuple(mm, sc3p, mn);
     }
 
     private static String joinRef(Map<Integer, Character> ref, int from, int to) {
@@ -1678,6 +1888,54 @@ public class VarDict {
         Map<Integer, Map<String, Integer>> inc = new HashMap<>();
     }
 
+    public static class Tuple2 <T1, T2> {
+
+        private final T1 _f;
+        private final T2 _s;
+
+        public Tuple2(T1 f, T2 s) {
+            _f = f;
+            _s = s;
+        }
+
+        public T1 _1() {
+            return _f;
+        }
+
+        public T2 _2() {
+            return _s;
+        }
+    }
+
+    public static class Tuple3 <T1, T2, T3> {
+
+        private final T1 _f;
+        private final T2 _s;
+        private final T3 _t;
+
+        public Tuple3(T1 f, T2 s, T3 t) {
+            _f = f;
+            _s = s;
+            _t = t;
+        }
+
+        public T1 _1() {
+            return _f;
+        }
+
+        public T2 _2() {
+            return _s;
+        }
+
+        public T3 _3() {
+            return _t;
+        }
+
+        public static <T1, T2, T3> Tuple3<T1, T2, T3> newTuple(T1 f, T2 s, T3 t) {
+            return new Tuple3<T1, T2, T3>(f, s, t);
+        }
+    }
+
     public static int sum(List<?> list) {
         int result = 0;
         for (Object object : list) {
@@ -1699,6 +1957,9 @@ public class VarDict {
     }
 
     public static String substr(String string, int begin, int len) {
+        if (begin < 0) {
+            begin = string.length() + begin;
+        }
         if (len > 0) {
             return string.substring(begin, Math.min(begin + len, string.length()));
         } else if (len == 0) {
