@@ -1405,7 +1405,49 @@ public class VarDict {
             String[] bams,
             Configuration conf) {
 
+        List<Tuple2<Integer, Sclip>> tmp = new ArrayList<>();
+        for (Entry<Integer, Sclip> ent5 : sclip5.entrySet()) {
+            tmp.add(Tuple2.newTuple(ent5.getKey(), ent5.getValue()));
+        }
+        Collections.sort(tmp, COMP2);
 
+        for (Tuple2<Integer, Sclip> t : tmp) {
+            int p = t._1();
+            Sclip sc5v = t._2();
+            if(sc5v.used) {
+                continue;
+            }
+            String seq = findconseq(sc5v);
+            if (seq.isEmpty()) {
+                continue;
+            }
+            if (seq.matches("^.AAAAAAAA") || seq.matches("^.TTTTTTTT")) {
+                continue;
+            }
+            if (seq.length() < 12) {
+                continue;
+            }
+            if (islowcomplexseq(seq)) {
+                continue;
+            }
+            Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, -1, chr);
+
+
+
+        }
+
+
+
+    }
+
+    private static Tuple3<Integer, String, Integer> findbi(String seq, int p, Map<Integer, Character> ref, int dir, String chr) {
+        final int maxmm = 3; // maximum mismatches allowed
+        int score = 0;
+
+
+
+        // TODO Auto-generated method stub
+        return null;
     }
 
     static final Comparator<Tuple2<Integer, Sclip>> COMP2 = new Comparator<Tuple2<Integer, Sclip>>() {
