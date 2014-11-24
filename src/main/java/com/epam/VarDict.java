@@ -124,6 +124,7 @@ public class VarDict {
         int vext = 3; // -X, default 3
         int trimBasesAfter = 0; // -T, Trim bases after [INT] bases in the reads
         boolean performLocalRealignment; // -k, default false
+        int indelsize = 120; // -I, default 120
 
         public boolean isColumnForChromosomeSet() {
             return columnForChromosome >= 0;
@@ -630,7 +631,7 @@ public class VarDict {
     }
 
 
-    private Object toVars(Region region, String bam, Map<String, Integer> chrs, Map<String, Integer> SPLICE, Configuration conf, String ampliconBasedCalling) throws IOException {
+    private static Object toVars(Region region, String bam, Map<String, Integer> chrs, Map<String, Integer> SPLICE, Configuration conf, String ampliconBasedCalling) throws IOException {
         String[] bams = bam.split(":");
         Map<Integer, Character> ref = new HashMap<>();
         Map<Integer, Map<String, Variation>> hash = new HashMap<>();
@@ -638,7 +639,7 @@ public class VarDict {
         Map<Integer, Integer> cov = new HashMap<>();
         Map<Integer, Sclip> sclip3 = new HashMap<>();
         Map<Integer, Sclip> sclip5 = new HashMap<>();
-        Map<Integer, Map<String, Integer>> inc = new HashMap<>();
+        Map<Integer, Map<String, Integer>> ins = new HashMap<>();
         Map<Integer, Map<String, Integer>> mnp = new HashMap<>(); // Keep track of MNPs
         Map<Integer, Map<String, Integer>> dels5 = new HashMap<>(); // Keep track of MNPs
         for (String bami : bams) {
@@ -1103,7 +1104,7 @@ public class VarDict {
                                 }
 
                                 if (start - 1 >= s_start && start - 1 <= s_end && !s.toString().contains("N")) {
-                                    incCnt(getOrElse(inc, start - 1, new HashMap<String, Integer>()), "+" + s, 1);
+                                    incCnt(getOrElse(ins, start - 1, new HashMap<String, Integer>()), "+" + s, 1);
                                     Variation hv = getVariation(iHash, start - 1, "+" + s);
                                     hv.incDir(dir);
                                     hv.cnt++;
@@ -1384,11 +1385,329 @@ public class VarDict {
         adjMNP(hash, mnp, cov);
 
         if (conf.performLocalRealignment) {
-
+            realigndel(hash, dels5, cov, sclip5, sclip3, ref, region.chr, chrs, bams, conf);
+            realignins(hash, iHash, ins, cov, sclip5, sclip3, ref, region.chr, chrs, conf);
+            realignlgdel(hash, cov, sclip5, sclip3, ref, region.chr, chrs, bams, conf);
+            realignlgins(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, bams, conf);
+            //TODO !!!!!!!!!!!!
         }
         return null;
     }
 
+    private static void realignlgins(Map<Integer, Map<String, Variation>> hash,
+            Map<Integer, Map<String, Variation>> iHash,
+            Map<Integer, Integer> cov,
+            Map<Integer, Sclip> sclip5,
+            Map<Integer, Sclip> sclip3,
+            Map<Integer, Character> ref,
+            String chr,
+            Map<String, Integer> chrs,
+            String[] bams,
+            Configuration conf) {
+
+
+    }
+
+    static final Comparator<Tuple2<Integer, Sclip>> COMP2 = new Comparator<Tuple2<Integer, Sclip>>() {
+        @Override
+        public int compare(Tuple2<Integer, Sclip> o1, Tuple2<Integer, Sclip> o2) {
+            return Integer.compare(o1._2().variation.cnt, o2._2().variation.cnt);
+        }
+    };
+
+    private static void realignlgdel(Map<Integer, Map<String, Variation>> hash,
+            Map<Integer, Integer> cov,
+            Map<Integer, Sclip> sclip5,
+            Map<Integer, Sclip> sclip3,
+            Map<Integer, Character> ref,
+            String chr,
+            Map<String, Integer> chrs,
+            String[] bams,
+            Configuration conf) throws IOException {
+
+        final int longmm = 3;
+
+        List<Tuple2<Integer, Sclip>> tmp = new ArrayList<>();
+        for (Entry<Integer, Sclip> ent5 : sclip5.entrySet()) {
+            tmp.add(Tuple2.newTuple(ent5.getKey(), ent5.getValue()));
+        }
+        Collections.sort(tmp, COMP2);
+        for (Tuple2<Integer, Sclip> t : tmp) {
+            int p = t._1();
+            Sclip sc5v = t._2();
+            if(sc5v.used) {
+                continue;
+            }
+            String seq = findconseq(sc5v);
+            if (seq.isEmpty()) {
+                continue;
+            }
+            if (seq.matches("^.AAAAAAA") || seq.matches("^.TTTTTTT")) {
+                continue;
+            }
+            if (seq.length() < 7) {
+                continue;
+            }
+            if (islowcomplexseq(seq)) {
+                continue;
+            }
+            final int bp = findbp(seq, p - 5, ref, conf.indelsize, -1, chr, chrs);
+            final int dellen = p - bp;
+            if (bp == 0) {
+                continue;
+            }
+            if (conf.y) {
+                System.err.printf("Realignlgdel: $bp -$dellen \n", bp, dellen);
+            }
+            StringBuilder extra = new StringBuilder();
+            int en = 0;
+            while(!Character.valueOf(seq.charAt(en)).equals(ref.get(bp - en - 1)) && en < seq.length()) {
+                extra.append(seq.charAt(en));
+                en++;
+            }
+            final String gt = extra.length() == 0 ? "-" + dellen : "-" + dellen  + "&" + extra;
+
+            final Variation tv = getVariation(hash, bp, gt);
+            tv.qstd = true; // more accurate implementation lat
+            tv.pstd = true; // more accurate implementation lat
+            for (int tp = bp; tp < bp + dellen; tp++) {
+                incCnt(cov, tp, sc5v.variation.cnt);
+            }
+            adjCnt(tv, sc5v.variation);
+            sc5v.used = true;
+
+            // Work on the softclipped read at 3'
+            int n = 0;
+            while (ref.containsKey(bp + n) && ref.containsKey(bp + dellen + n) && ref.get(bp + n) == ref.get(bp + dellen + n)) {
+                n++;
+            }
+            int sc3p = bp + n;
+            StringBuilder str = new StringBuilder();
+            int mcnt = 0;
+            while (ref.containsKey(bp + n) && ref.containsKey(bp + dellen + n) && ref.get(bp + n) != ref.get(bp + dellen + n)
+                    && mcnt <= longmm) {
+                str.append(ref.get(bp + dellen + n));
+                n++;
+                mcnt++;
+            }
+            if (str.length() == 1) {
+                while (ref.containsKey(bp + n) && ref.containsKey(bp + dellen + n) && ref.get(bp + n) == ref.get(bp + dellen + n)) {
+                    n++;
+                }
+                sc3p = bp + n;
+            }
+            if (sclip3.containsKey(sc3p) && !sclip3.get(sc3p).used) {
+                Sclip sclip = sclip3.get(sc3p);
+                if (sc3p > bp) {
+                    adjCnt(getVariation(hash, bp, gt), sclip.variation, getVariation(hash, bp, ref.get(bp).toString()));
+                } else {
+                    adjCnt(getVariation(hash, bp, gt), sclip.variation);
+                }
+                for (int tp = bp; tp < bp + dellen; tp++) {
+                    incCnt(cov, tp, sclip.variation.cnt);
+                }
+                for (int ip = bp + 1; ip < sc3p; ip++) {
+                    Variation vv = getVariation(hash, ip, ref.get(dellen + ip).toString());
+                    rmCnt(vv, sclip.variation);
+                    if (vv.cnt == 0) {
+                        hash.get(ip).remove(ref.get(dellen + ip).toString());
+                    }
+                    if (hash.get(ip).size() == 0) {
+                        hash.remove(ip);
+                    }
+                }
+                sclip.used = true;
+            }
+            Map<Integer, Map<String, Integer>> dels5 = new HashMap() {{
+                    put(bp, new HashMap() {{
+                            put(gt, tv.cnt);
+                        }});
+                }};
+
+            realigndel(hash, dels5, cov, sclip5, sclip3, ref, chr, chrs, bams, conf);
+        }
+
+        tmp = new ArrayList<>();
+        for (Entry<Integer, Sclip> ent3 : sclip3.entrySet()) {
+            tmp.add(Tuple2.newTuple(ent3.getKey(), ent3.getValue()));
+        }
+        Collections.sort(tmp, COMP2);
+        for (Tuple2<Integer, Sclip> t : tmp) {
+            int p = t._1();
+            Sclip sc3v = t._2();
+            if (sc3v.used) {
+                continue;
+            }
+            String seq = findconseq(sc3v);
+            if (seq.isEmpty()) {
+                continue;
+            }
+            if (seq.matches("^.AAAAAAA") || seq.matches("^.TTTTTTT")) {
+                continue;
+            }
+            if (seq.length() < 7) {
+                continue;
+            }
+            if (islowcomplexseq(seq)) {
+                continue;
+            }
+            int bp = findbp(seq, p + 5, ref, conf.indelsize, 1, chr, chrs);
+            final int dellen = bp - p;
+            if (bp == 0) {
+                continue;
+            }
+            StringBuilder extra = new StringBuilder();
+            int en = 0;
+            while(!Character.valueOf(seq.charAt(en)).equals(ref.get(bp + en)) && en < seq.length()) {
+                extra.append(seq.charAt(en));
+                en++;
+            }
+            final String gt;
+            if (extra.length() == 0) {
+                gt = "-" + dellen;
+            } else {
+                gt = "-" + dellen  + "&" + extra;
+                while (isEquals(ref.get(bp -1), ref.get(bp + dellen - 1))) {
+                    bp--;
+                }
+            }
+
+            Variation tv = getVariation(hash, bp, gt);
+            tv.qstd = true; // more accurate implementation later
+            tv.pstd = true; // more accurate implementation later
+            for(int tp = bp; tp < bp + dellen; tp++) {
+                incCnt(cov, tp, sc3v.variation.cnt);
+            }
+            sc3v.variation.pmean += dellen * sc3v.variation.cnt;
+            adjCnt(tv, sc3v.variation);
+            sc3v.used = true;
+
+            Map<Integer, Map<String, Integer>> dels5 = new HashMap<>();
+            HashMap<String, Integer> map = new HashMap<>();
+            map.put(gt, tv.cnt);
+            dels5.put(bp, map);
+            realigndel(hash, dels5, cov, sclip5, sclip3, ref, chr, chrs, bams, conf);
+        }
+    }
+
+
+    private static boolean isEquals(Character ch1, Character ch2) {
+        if (ch1 == null && ch2 == null)
+            return true;
+        if (ch1 == null || ch2 == null)
+            return false;
+        return ch1.equals(ch2);
+    }
+
+    private static void rmCnt(Variation vref, Variation tv) {
+        vref.cnt -= tv.cnt;
+        vref.hicnt -= tv.hicnt;
+        vref.locnt -= tv.locnt;
+        vref.pmean -= tv.pmean;
+        vref.qmean -= tv.qmean;
+        vref.Qmean -= tv.Qmean;
+        vref.subDir(true, tv.getDir(true));
+        vref.subDir(false, tv.getDir(false));
+        if (vref.cnt < 0)
+            vref.cnt = 0;
+        if (vref.hicnt < 0)
+            vref.hicnt = 0;
+        if (vref.locnt < 0)
+            vref.locnt = 0;
+        if (vref.pmean < 0)
+            vref.pmean = 0;
+        if (vref.qmean < 0)
+            vref.qmean = 0;
+        if (vref.Qmean < 0)
+            vref.Qmean = 0;
+        if (vref.getDir(true) < 0)
+            vref.addDir(true, -vref.getDir(true));
+        if (vref.getDir(false) < 0)
+            vref.addDir(false, -vref.getDir(false));
+    }
+
+
+    private static int findbp(String seq, int sp, Map<Integer, Character> ref, int dis, int dir, String chr, Map<String, Integer> chrs) {
+        final int maxmm = 3; // maximum mismatches allowed
+        int bp = 0;
+        int idx = chrs.containsKey(chr) ? chrs.get(chr) : 0;
+        for (int n = 0; n < dis; n++) {
+            int mm = 0;
+            int i = 0;
+            Set<Character> m = new HashSet<>();
+            for (i = 0; i < seq.length(); i++) {
+                if (sp + dir * n + dir * i < 1) {
+                    break;
+                }
+                if (sp + dir * n + dir * i > idx) {
+                    break;
+                }
+                if (!Character.valueOf(seq.charAt(i)).equals(ref.get(sp + dir * n + dir * i))) {
+                    mm++;
+                }
+                m.add(seq.charAt(i));
+                if (mm > maxmm - n / 100) {
+                    break;
+                }
+            }
+            if (m.size() >= 3) {
+                continue;
+            }
+            if (mm <= maxmm - n / 100 && i >= seq.length() - 2 && i >= 6 && mm / (double)i < 0.12) {
+                int lbp = sp + dir * n - (dir < 0 ? dir : 0);
+                if (mm == 0 && i == seq.length()) {
+                    return bp;
+                } else {
+                    bp = lbp;
+                }
+            }
+        }
+        return bp;
+    }
+
+    private static int count(String str, char chr) {
+        int cnt = 0;
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == chr) {
+                cnt++;
+            }
+        }
+        return cnt;
+
+    }
+
+    private static boolean islowcomplexseq(String seq) {
+        int len = seq.length();
+        if (len == 0)
+            return true;
+        if (count(seq, 'A') / (double)len > 0.75)
+            return true;
+        if (count(seq, 'T') / (double)len > 0.75)
+            return true;
+        if (count(seq, 'G') / (double)len > 0.75)
+            return true;
+        return count(seq, 'C') / (double)len > 0.75;
+    }
+
+    private static List<Object[]> fillTmp(Map<Integer, Map<String, Integer>> changes) {
+        List<Object[]> tmp = new ArrayList<>();
+        for (Entry<Integer, Map<String, Integer>> ent : changes.entrySet()) {
+            int p = ent.getKey();
+            Map<String, Integer> v = ent.getValue();
+            for (Entry<String, Integer> entV : v.entrySet()) {
+                String vn = entV.getKey();
+                int cnt = entV.getValue();
+                int ecnt = 0;
+                Matcher mtch = ATGC_E.matcher(vn);
+                if (mtch.find()) {
+                    ecnt = mtch.group(1).length();
+                }
+                tmp.add(new Object[] { p, vn, cnt, ecnt });
+            }
+        }
+        Collections.sort(tmp, COMP1);
+        return tmp;
+    }
 
     private static final Pattern ATGC_E = Pattern.compile("([ATGC&]+)$");
     private static final Pattern B_AMP_ATGC = Pattern.compile("^\\+([ATGC]+)");
@@ -1398,6 +1717,7 @@ public class VarDict {
 
     private static final Pattern B_MIN_DIG = Pattern.compile("^-(\\d+)");
     private static final Pattern UP_DIG_E = Pattern.compile("\\^(\\d+)$");
+    private static final Pattern ATGS_ATGS = Pattern.compile("(\\+[ATGC]+)&[ATGC]+$");
 
     private static final Comparator<Object[]> COMP1 = new Comparator<Object[]>() {
         @Override
@@ -1407,6 +1727,189 @@ public class VarDict {
             return Integer.compare(x1, x2);
         }
     };
+
+    private static void realignins(Map<Integer, Map<String, Variation>> hash,
+            Map<Integer, Map<String, Variation>> iHash,
+            Map<Integer, Map<String, Integer>> ins,
+            Map<Integer, Integer> cov,
+            Map<Integer, Sclip> sclip5,
+            Map<Integer, Sclip> sclip3,
+            Map<Integer, Character> ref,
+            String chr,
+            Map<String, Integer> chrs,
+            Configuration conf) {
+
+        List<Object[]> tmp = fillTmp(ins);
+        for (Object[] objects : tmp) {
+            Integer p = (Integer)objects[0];
+            String vn = (String)objects[1];
+            Integer icnt = (Integer)objects[2];
+            if (conf.y) {
+                System.err.println(format("Realign Ins for: %s %s %s", p, vn, icnt));
+            }
+            Variation vref = getVariation(iHash, p, vn);
+            String insert;
+            Matcher mtch = B_AMP_ATGC.matcher(vn);
+            if (mtch.find()) {
+                insert = mtch.group(1);
+            } else {
+                continue;
+            }
+            String extra = "";
+            mtch = AMP_ATGC.matcher(vn);
+            if(mtch.find()) {
+                extra = mtch.group(1);
+            }
+            String compm = ""; // the match part for a complex variant
+            mtch = HASH_ATGC.matcher(vn);
+            if(mtch.find()) {
+                compm = mtch.group(1);
+            }
+            int wustart = p - 100 - vn.length() + 1;
+            if (wustart <= 1) {
+                wustart = 1;
+            }
+            String wupseq = joinRef(ref, wustart, p) + vn; // 5prime flanking seq
+            wupseq = wupseq.replaceFirst("\\+", "").replaceFirst("&", "").replaceFirst("#", "");
+            Integer tend = chrs.get(chr);
+            int sanend = p + vn.length() + 100;
+            if (tend != null && tend < sanend) {
+                sanend = tend;
+            }
+            String sanpseq = vn + joinRef(ref, p + extra.length() + 1 + compm.length(), sanend); // 3prime flanking seq
+            sanpseq = sanpseq.replaceFirst("\\+", "").replaceFirst("&", "").replaceFirst("#", "");
+            Tuple3<List<Tuple3<String, Integer, Integer>>, List<Integer>, Integer> findMM3 = findMM3(ref, p + 1, sanpseq, insert.length() + compm.length(), sclip3); // mismatches, mismatch positions, 5 or 3 ends
+            Tuple3<List<Tuple3<String, Integer, Integer>>, List<Integer>, Integer> findMM5 = findMM5(ref, p+extra.length()+compm.length(), wupseq, insert.length() + compm.length(), sclip5);
+
+            List<Tuple3<String, Integer, Integer>> mm3 = findMM3._1();
+            List<Integer> sc3p = findMM3._2();
+            Integer nm3 = findMM3._3();
+
+            List<Tuple3<String, Integer, Integer>> mm5 = findMM5._1();
+            List<Integer> sc5p = findMM5._2();
+            Integer nm5 = findMM5._3();
+
+            List<Tuple3<String, Integer, Integer>> mmm = new ArrayList<>(mm3);
+            mmm.addAll(mm5);
+
+            for (Tuple3<String, Integer, Integer> tuple3 : mmm) {
+                String mm = tuple3._1();
+                Integer mp = tuple3._2();
+                Integer me = tuple3._3();
+
+                if (mm.length() > 1) {
+                    mm = mm.charAt(0) + "&" + mm.substring(1);
+                }
+                if (!hash.containsKey(mp)) {
+                    continue;
+                }
+
+                Variation tv = hash.get(mp).get(mm);
+                if (tv == null) {
+                    continue;
+                }
+                if (tv.cnt == 0) {
+                    continue;
+                }
+                if( tv.qmean/tv.cnt < conf.goodq ) {
+                    continue;
+                }
+                if (tv.pmean / tv.cnt > (me == 3 ? nm3 + 4 : nm5 + 4)) { // opt_k;
+                    continue;
+                }
+                if (tv.cnt >= icnt + insert.length()) {
+                    continue;
+                }
+                if (conf.y) {
+                    System.err.printf("insMM: %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", mm, mp, me, nm3, nm5, vn, icnt, tv.cnt, tv.qmean, tv.pmean, cov.get(p));
+                }
+                // Adjust ref cnt so that AF won't > 1
+                if (mp > p && me == 5) {
+                    incCnt(cov, p, tv.cnt);
+                }
+
+                Variation lref = null;
+                if (mp > p && me == 3 &&
+                        hash.containsKey(p) &&
+                        ref.containsKey(p) &&
+                        hash.get(p).containsKey(ref.get(p).toString())) {
+
+                    lref = hash.get(p).get(ref.get(p).toString());
+                }
+
+                adjCnt(vref, tv, lref);
+                hash.get(mp).remove(mm);
+                if (hash.get(mp).isEmpty()) {
+                    hash.remove(mp);
+                }
+            }
+            for (Integer sc5pp : sc5p) {
+                Sclip tv = sclip5.get(sc5pp);
+                if (tv != null && !tv.used) {
+                    String seq = findconseq(tv);
+                    if (!seq.isEmpty() && ismatch(seq, wupseq, -1)) {
+                        if (conf.y) {
+                            System.err.printf("ins5: %s %s $s %s %s %s\n", p, sc5pp, seq, wupseq, icnt, tv.variation.cnt);
+                        }
+                        if (sc5pp > p) {
+                            incCnt(cov, p, tv.variation.cnt);
+                        }
+                        adjCnt(vref, tv.variation);
+                        tv.used = true;
+                    }
+                }
+            }
+            for (Integer sc3pp : sc3p) {
+                Sclip tv = sclip3.get(sc3pp);
+                if (tv != null && !tv.used) {
+                    String seq = findconseq(tv);
+                    if (conf.y) {
+                        System.err.printf("ins3: %s %s %s %s %s %s %s\n", p, sc3pp, seq, sanpseq, vn, icnt, tv.variation.cnt);
+                    }
+                    if (!seq.isEmpty() && ismatch(seq, substr(sanpseq, sc3pp - p - 1), 1)) {
+                        if (conf.y) {
+                            System.err.printf("ins3: %s %s %s %s %s %s Match\n", p, sc3pp, seq, vn, icnt, tv.variation.cnt);
+                        }
+                        if (sc3pp <= p) {
+                            incCnt(cov, p, tv.variation.cnt);
+                        }
+                        Variation lref = null;
+                        if (sc3pp <= p &&
+                                hash.containsKey(p) &&
+                                ref.containsKey(p) &&
+                                hash.get(p).containsKey(ref.get(p).toString())) {
+
+                            lref = hash.get(p).get(ref.get(p).toString());
+                        }
+                        adjCnt(vref, tv.variation, lref);
+                        tv.used = true;
+                    }
+
+                }
+            }
+        }
+
+        for (Object[] objects : tmp) {
+            Integer p = (Integer)objects[0];
+            String vn = (String)objects[1];
+            if (!iHash.containsKey(p)) {
+                continue;
+            }
+            Variation vref = iHash.get(p).get(vn);
+            Matcher mtch = ATGS_ATGS.matcher(vn);
+            if (mtch.find()) {
+                String tn = mtch.group(1);
+                Variation tref = iHash.get(p).get(tn);
+                if (tref != null) {
+                    if (vref.cnt < tref.cnt) {
+                        adjCnt(tref, vref, hash.get(p).get(ref.get(p).toString()));
+                        iHash.get(p).remove(vn);
+                    }
+                }
+            }
+        }
+
+    }
 
     private static void realigndel(Map<Integer, Map<String, Variation>> hash,
             Map<Integer, Map<String, Integer>> dels5,
@@ -1419,24 +1922,8 @@ public class VarDict {
             String[] bams,
             Configuration conf) throws IOException {
 
-        int longmm = 3; //Longest continued mismatches typical aligned at the end
-        List<Object[]> tmp = new ArrayList<>();
-        for (Entry<Integer, Map<String, Integer>> entDel : dels5.entrySet()) {
-            Integer p = entDel.getKey();
-            Map<String, Integer> dv = entDel.getValue();
-            for (Entry<String, Integer> entDv : dv.entrySet()) {
-                String vn = entDv.getKey();
-                Integer dcnt = entDv.getValue();
-                int ecnt = 0;
-                Matcher mtch = ATGC_E.matcher(vn);
-                if (mtch.find()) {
-                    ecnt = mtch.group(1).length();
-                }
-                tmp.add(new Object[] { p, vn, dcnt, ecnt });
-            }
-        }
-
-        Collections.sort(tmp, COMP1);
+//        int longmm = 3; //Longest continued mismatches typical aligned at the end
+        List<Object[]> tmp = fillTmp(dels5);
 
         for (Object[] objects : tmp) {
             Integer p = (Integer)objects[0];
@@ -1781,7 +2268,10 @@ public class VarDict {
     private static String joinRef(Map<Integer, Character> ref, int from, int to) {
         StringBuilder sb = new StringBuilder();
         for (int i = from; i <= to; i++) {
-            sb.append(ref.get(i));
+            Character ch = ref.get(i);
+            if (ch != null) {
+                sb.append(ch);
+            }
         }
         return sb.toString();
     }
@@ -1871,7 +2361,7 @@ public class VarDict {
             ref.addDir(false, -ref.getDir(false));
     }
 
-    private void increment(Map<Integer, Map<String, Integer>> counters, int idx, String s) {
+    private static void increment(Map<Integer, Map<String, Integer>> counters, int idx, String s) {
         Map<String, Integer> map = counters.get(idx);
         if (map == null) {
             map = new HashMap<>();
@@ -1943,6 +2433,10 @@ public class VarDict {
 
         public T2 _2() {
             return _s;
+        }
+
+        public static <T1, T2> Tuple2<T1, T2> newTuple(T1 f, T2 s) {
+            return new Tuple2<T1, T2>(f, s);
         }
     }
 
