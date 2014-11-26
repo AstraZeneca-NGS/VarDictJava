@@ -127,6 +127,9 @@ public class VarDict {
         int indelsize = 120; // -I, default 120
         double bias = 0.05d; // The cutoff to decide whether a positin has read strand bias
         int minb = 2; // -B, default 2. The minimum reads for bias calculation
+        boolean debug = false; // -D
+        double freq = 0.5; // -f and -p
+        boolean  moveIndelsTo3 = false;
 
 
         public boolean isColumnForChromosomeSet() {
@@ -1408,22 +1411,27 @@ public class VarDict {
         }
 
 
-
+        Vars vars = new Vars();
         for (Entry<Integer, Map<String, Variation>> entH : hash.entrySet()) {
             int p = entH.getKey();
             Map<String, Variation> v = entH.getValue();
+
             if (p >= region.start && p <= region.end) {
                 continue;
             }
+
             if (!cov.containsKey(p) || cov.get(p) == 0) {
                 continue;
             }
-            int tcov = cov.get(p);
+
             int hicov = 0;
             for (Variation vr : v.values()) {
                 hicov += vr.hicnt;
             }
 
+            List<Var> var = new ArrayList<>();
+            List<String> tmp = new ArrayList<>();
+            int tcov = cov.get(p);
             for (Entry<String, Variation> entV : v.entrySet()) {
                 String n = entV.getKey();
                 Variation cnt = entV.getValue();
@@ -1433,42 +1441,289 @@ public class VarDict {
                 int fwd = cnt.getDir(false);
                 int rev = cnt.getDir(true);
                 int bias = strandBias(fwd, rev, conf);
-                String vqual = format("%.1f", cnt.qmean / (double)cnt.cnt); // base quality
-                String mq = format("%.1f", cnt.Qmean/(double)cnt.cnt); // mapping quality
+                double vqual = round(cnt.qmean / (double)cnt.cnt, 1); // base quality
+                double mq = round(cnt.Qmean/(double)cnt.cnt, 1); // mapping quality
                 int hicnt  = cnt.hicnt;
                 int locnt  = cnt.locnt;
+                Var tvref = new Var();
+                tvref.n = n;
+                tvref.cov = cnt.cnt;
+                tvref.fwd = fwd;
+                tvref.rev = rev;
+                tvref.bias = bias;
+                tvref.freq = (fwd + rev) / (double)tcov;
+                tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
+                tvref.pstd = cnt.pstd;
+                tvref.qual = vqual;
+                tvref.qstd = cnt.qstd;
+                tvref.mapq = mq;
+                tvref.qratio = round(hicnt / (locnt != 0 ? locnt : 0.5d), 3);
+                tvref.hifreq = hicov > 0 ? hicnt / (double)hicov : 0;
+                tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)tcov : 0;
+                tvref.shift3 = 0;
+                tvref.msi = 0;
+                tvref.nm = round(cnt.nm / (double)cnt.cnt, 1);
+                tvref.hicnt = hicnt;
+                tvref.hicov = hicov;
+                var.add(tvref);
+                if (conf.debug ) {
+                    tmp.add(n
+                            + ":" + (fwd + rev)
+                            + ":F-" + fwd
+                            + ":R-" + rev
+                            + ":" + format("%.3f", tvref.freq)
+                            + ":" + tvref.bias
+                            + ":" + tvref.pmean
+                            + ":" + tvref.pstd
+                            + ":" + vqual
+                            + ":" + tvref.qstd
+                            + ":" + format("%.3f", tvref.hifreq)
+                            + ":" + tvref.mapq
+                            + ":" + tvref.qratio);
+                }
 
-                //TODO !!!!!!!!!!!!
+            }
+            Map<String, Variation> iv = iHash.get(p);
+            if (iv != null) {
+                for (Entry<String, Variation> entV : iv.entrySet()) {
+                    String n = entV.getKey();
+                    Variation cnt = entV.getValue();
+                    int fwd = cnt.getDir(false);
+                    int rev = cnt.getDir(true);
+                    int bias = strandBias(fwd, rev, conf);
+                    double vqual = round(cnt.qmean / (double)cnt.cnt, 1); // base quality
+                    double mq = round(cnt.Qmean/(double)cnt.cnt, 1); // mapping quality
+                    int hicnt  = cnt.hicnt;
+                    int locnt  = cnt.locnt;
+                    hicov += hicnt;
+
+                    Var tvref = new Var();
+                    tvref.n = n;
+                    tvref.cov = cnt.cnt;
+                    tvref.fwd = fwd;
+                    tvref.rev = rev;
+                    tvref.bias = bias;
+                    tvref.freq = (fwd + rev) / (double)tcov;
+                    tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
+                    tvref.pstd = cnt.pstd;
+                    tvref.qual = vqual;
+                    tvref.qstd = cnt.qstd;
+                    tvref.mapq = mq;
+                    tvref.qratio = round(hicnt / (locnt != 0 ? locnt : 0.5d), 3);
+                    tvref.hifreq = hicov > 0 ? hicnt / (double)hicov : 0;
+                    tvref.extrafreq = 0;
+                    tvref.shift3 = 0;
+                    tvref.msi = 0;
+                    tvref.nm = round(cnt.nm / (double)cnt.cnt, 1);
+                    tvref.hicnt = hicnt;
+                    tvref.hicov = hicov;
+
+                    var.add(tvref);
+                    if (conf.debug ) {
+                        tmp.add("I" + n
+                                + ":" + (fwd + rev)
+                                + ":F-" + fwd
+                                + ":R-" + rev
+                                + ":" + format("%.3f", tvref.freq)
+                                + ":" + tvref.bias
+                                + ":" + tvref.pmean
+                                + ":" + tvref.pstd
+                                + ":" + vqual
+                                + ":" + tvref.qstd
+                                + ":" + format("%.3f", tvref.hifreq)
+                                + ":" + tvref.mapq
+                                + ":" + tvref.qratio);
+                    }
+
+
+                }
 
             }
 
+            Collections.sort(var, new Comparator<Var>() {
+                @Override
+                public int compare(Var o1, Var o2) {
+                    return Double.compare(o1.qual * o1.cov, o2.qual * o2.cov);
+                }
+            });
+            for (Var tvar : var) {
+                if (tvar.n.equals(String.valueOf(ref.get(p)))) {
+                    vars.ref.put(p, tvar);
+                } else {
+                    List<Var> list = vars.var.get(p);
+                    if (list == null) {
+                        list = new ArrayList<>();
+                        vars.var.put(p, list);
+                    }
+                    list.add(tvar);
+                    Map<String, Var> map = vars.varn.get(p);
+                    if (map == null) {
+                        map = new HashMap<>();
+                        vars.varn.put(p, map);
+                    }
+                    map.put(tvar.n, tvar);
+                }
+            }
+            // Make sure the first bias is always for the reference nucleotide
+            int rfc = 0;
+            int rrc = 0;
+            String genotype1 = "";
+            if (vars.ref.containsKey(p)) {
+                if (vars.ref.get(p).freq >= conf.freq) {
+                    genotype1 = vars.ref.get(p).n;
+                } else if (vars.var.containsKey(p)) {
+                    genotype1 =  vars.var.get(p).get(0).n;
+                }
+            } else if (vars.var.containsKey(p)) {
+                genotype1 =  vars.var.get(p).get(0).n;
+            }
+            String genotype2 = "";
+            if (vars.ref.containsKey(p)) {
+                rfc = vars.ref.get(p).fwd;
+                rrc = vars.ref.get(p).rev;
+            }
 
+            // only reference reads are observed.
+            if (vars.var.containsKey(p)) {
+                for (Var vref : vars.var.get(p)) {
+                    genotype2 = vref.n;
+                    String vn = vref.n;
+                    int dellen = 0;
+                    if (vn.matches("^-\\d+")) {
+                        dellen = toInt(vn.substring(1));
+                    }
+                    int ep = p;
+                    if (vn.startsWith("-")) {
+                        ep = p + dellen -1;
+                    }
+                    String refallele = "";
+                    String varallele = "";
+                    // how many bp can a deletion be shifted to 3 prime
+                    int shift3 = 0;
+                    double msi = 0;
+                    String msint = "";
+
+                    int sp = p;
+
+                    if (vn.startsWith("+")) {
+                        if (!vn.contains("&") && !vn.contains("#")) {
+                            String tseq1 = vn.substring(1);
+                            String leftseq = joinRef(ref, p-50 > 1 ? p-50 : 1, p); // left 10 nt
+                            int x = getOrElse(chrs, region.chr, 0);
+                            String tseq2 = joinRef(ref, p + 1, (p + 70 > x ? x : p + 70));
+
+                            Tuple3<Double, Integer, String> tpl = findMSI(tseq1, tseq2, leftseq);
+                            msi = tpl._1();
+                            shift3 = tpl._2();
+                            msint = tpl._3();
+
+                            tpl = findMSI(leftseq, tseq2, null);
+                            double tmsi = tpl._1();
+                            int tshift3 = tpl._2();
+                            String tmsint = tpl._3();
+                            if (msi < tmsi) {
+                                msi = tmsi;
+                                shift3 = tshift3;
+                                msint = tmsint;
+                            }
+                            if (shift3/(double)tseq1.length() < msi) {
+                                msi = shift3/(double)tseq1.length();
+                            }
+                        }
+
+                        if (conf.moveIndelsTo3) {
+                            sp += shift3;
+                            ep += shift3;
+                        }
+                        refallele = ref.containsKey(p) ? ref.get(p).toString(): "";
+                        varallele = refallele + vn.substring(1);
+
+
+                    } else if (vn.startsWith("-")) {
+                        //TODO ???
+                    }
+
+                }
+            }
 
         }
 
         return null;
     }
 
-    public static class Var {
+    private static Tuple3<Double, Integer, String> findMSI(String tseq1, String tseq2, String left) {
+
+        int nmsi = 1;
+        int shift3 = 0;
+        String maxmsi = "";
+        double msicnt = 0;
+        while (nmsi <= tseq1.length() && nmsi <= 8) {
+            String msint = substr(tseq1, -nmsi);
+            Pattern pattern = Pattern.compile("((" + msint + ")+)$");
+            Matcher mtch = pattern.matcher(tseq1);
+            String msimatch = "";
+            if (mtch.find()) {
+                msimatch = mtch.group(1);
+            }
+            if (left != null && !left.isEmpty()) {
+                mtch = pattern.matcher(left + tseq1);
+                if (mtch.find()) {
+                    msimatch = mtch.group(1);
+                }
+            }
+            double curmsi = msimatch.length() / (double)nmsi;
+            mtch = Pattern.compile("^((" + msint + ")+)").matcher(tseq2);
+            if (mtch.find()) {
+                curmsi = mtch.group(1).length() / (double)nmsi;
+            }
+            if (curmsi > msicnt) {
+                maxmsi = msint;
+                msicnt = curmsi;
+            }
+            nmsi++;
+        }
+
+        String tseq = tseq1 + tseq2;
+        while (shift3 < tseq2.length() && tseq.charAt(shift3) == tseq2.charAt(shift3)) {
+            shift3++;
+        }
+
+        return Tuple3.newTuple(msicnt, shift3, maxmsi);
+    }
+
+    private static class Vars {
+        private Map<Integer, Var> ref = new HashMap<>();
+        private Map<Integer, List<Var>> var = new HashMap<>();
+        private Map<Integer, Map<String, Var>> varn = new HashMap<>();
+    }
+
+    private static class Var {
         String n;
         int cov;
         int fwd;
         int rev;
         int bias;
         double freq;
-        String pmean;
+        double pmean;
         boolean pstd;
-        String qual;
+        double qual;
         boolean qstd;
-        String mapq;
-        String qratio;
+        double mapq;
+        double qratio;
         double hifreq;
         double extrafreq;
         int shift3;
-        int msi;
-        String nm;
+        double msi;
+        double nm;
         int hicnt;
         int hicov;
+    }
+
+    private static double round(double value, int dp) {
+        double mf = Math.pow(10, dp);
+        double d = value * mf;
+        return Math.round(d) / mf;
+
     }
 
     private static int strandBias(int fwd, int rev, Configuration conf) {
