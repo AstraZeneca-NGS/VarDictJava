@@ -115,7 +115,6 @@ public class VarDict {
         Double downsampling;
         boolean chromosomeNameIsNumber;
         Integer mappingQuality;//-Q
-        boolean  nonPrimaryAlignment; //-F
         boolean removeDuplicatedReads; //-t
         int mismatch; //-m, default = 8
         boolean y; //-y TODO ???
@@ -130,6 +129,7 @@ public class VarDict {
         boolean debug = false; // -D
         double freq = 0.5; // -f and -p
         boolean  moveIndelsTo3 = false;
+        String samfilter; //-F
 
 
         public boolean isColumnForChromosomeSet() {
@@ -609,13 +609,17 @@ public class VarDict {
     private static final Pattern D_ID_D_S = Pattern.compile("(\\d+)([ID])(\\d+)S$");
     private static final Pattern D_S_D_M_ID = Pattern.compile("^(\\d+)S(\\d+)M(\\d+)([ID])");
     private static final Pattern D_ID_D_M_S = Pattern.compile("(\\d+)([ID])(\\d+)M(\\d+)S$");
-    private static final Pattern D_M_D_ID = Pattern.compile("^(\\d+)M(\\d+)([ID])");
-    private static final Pattern D_ID_D_M = Pattern.compile("(\\d+)([ID])(\\d+)M$");
+    private static final Pattern D_M_D_ID_D_M = Pattern.compile("^(\\d)M(\\d+)([ID])(\\d+)M");
+    private static final Pattern D_ID_DD_M = Pattern.compile("(\\d+)([ID])(\\d)M$");
     private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD = Pattern.compile("^(.*?)(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
     private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD_prim = Pattern.compile("(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
     private static final Pattern D_MIS = Pattern.compile("(\\d+)[MIS]");
     private static final Pattern D_MD = Pattern.compile("(\\d+)[MD]");
     private static final Pattern D_DD_D_M_D_DD_DI = Pattern.compile("(\\d+)D(\\d)M(\\d+)D(\\d+I)?");
+    private static final Pattern D_I_DD_M_D_d_DI = Pattern.compile("(\\d+)I(\\d)M(\\d+)D(\\d+I)?");
+
+    private static final Pattern BEGIN_DIGITS = Pattern.compile("^(\\d+)");
+    private static final Pattern HASH_GROUP_CARET_GROUP = Pattern.compile("#(.+)\\^(.+)");
 
 
     public static class SamtoolsReader implements AutoCloseable {
@@ -674,10 +678,11 @@ public class VarDict {
             }
 
             String chr = region.getChr();
-            if (conf.chromosomeNameIsNumber && chr .startsWith("chr")) {
+            if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) {
                 chr = region.getChr().substring("chr".length());
             }
-            try (SamtoolsReader reader = new SamtoolsReader("faidx", "view", bami, chr + ":" + s_start + "-" + s_end)) {
+            String samfilter = conf.samfilter != null ? "-F " + conf.samfilter : "";
+            try (SamtoolsReader reader = new SamtoolsReader("faidx", "view", samfilter, bami, chr + ":" + s_start + "-" + s_end)) {
                 Map<String, Boolean> dup = new HashMap<>();
                 int dupp = -1;
                 String line;
@@ -686,41 +691,46 @@ public class VarDict {
                         continue;
                     }
                     String[] a = line.split("\t");
-                    Flag alignmentFlag = new Flag(toInt(a[1]));
 
                     assert a.length > 4;
                     final int Qmean = toInt(a[4]);
-                    final String querySEQ = ampliconBasedCalling.length() > 9 ? a[9] : null;
 
                     if (conf.hasMappingQuality() && Qmean < conf.mappingQuality) { // ignore low mapping quality reads
                         continue;
                     }
-                    if (conf.nonPrimaryAlignment && alignmentFlag.isNotPrimaryAlignment()) { // ignore "non-primary alignment"
+
+                    final String querySEQ =  a.length > 9 ? a[9] : null;
+                    if ("*".equals(querySEQ)) {
                         continue;
                     }
-                    if (alignmentFlag.isNotPrimaryAlignment() && "*".equals(querySEQ)) {
-                        continue;
-                    }
+                    Flag alignmentFlag = new Flag(toInt(a[1]));
 
                     assert a.length > 6;
                     final String mrnm = a[6];
                     int position = toInt(a[3]);
+                    String cigarStr = a[5];
+                    // filter duplicated reads if option -t is set
                     if (conf.removeDuplicatedReads) {
                         if (position != dupp) {
                             dup.clear();
                         }
-                        if (mrnm.equals("=") && a.length > 7) {
-                            if (dup.containsKey(position + "-" + a[7])) {
+                        if (a.length > 7 && a[7].matches("\\d")) {
+                            if (dup.containsKey(position + "-" + mrnm + "-" +a[7])) {
                                 continue;
                             }
-                            dup.put(position + "-" + a[7], Boolean.TRUE);
+                            dup.put(position + "-" + mrnm + "-" +a[7], Boolean.TRUE);
+                            dupp = position;
+                        } else if (alignmentFlag.isUnmappedMate()) {
+                            if (dup.containsKey(position + "-" + cigarStr)) {
+                                continue;
+                            }
+                            dup.put(position + "-" + cigarStr, Boolean.TRUE);
                             dupp = position;
                         }
                     }
 
                     int nm = 0;
                     int idlen = 0;
-                    String cigarStr = a[5];
                     for (String s : globalFind(INDEL, cigarStr)) {
                         idlen += toInt(s);
                     }
@@ -739,10 +749,10 @@ public class VarDict {
                     int n = 0; // keep track the read position, including softclipped
                     int p = 0; // keep track the position in the alignment, excluding softclipped
                     boolean dir = alignmentFlag.isReverseStrand();
-                    List<String> segs = globalFind(MATCH_INSERTION, cigarStr); // Only match and insertion counts toward read length
-                    List<String> segs2 = globalFind(SOFT_CLIPPED, cigarStr); // For total length, including soft-clipped bases
-                    int rlen = sum(segs); //The read length for matched bases
-                    int rlen2 = sum(segs2); //The total length, including soft-clipped bases
+//                    List<String> segs = globalFind(MATCH_INSERTION, cigarStr); // Only match and insertion counts toward read length
+//                    List<String> segs2 = globalFind(SOFT_CLIPPED, cigarStr); // For total length, including soft-clipped bases
+//                    int rlen = sum(segs); //The read length for matched bases
+//                    int rlen2 = sum(segs2); //The total length, including soft-clipped bases
                     if ( ampliconBasedCalling != null ) {
                         String[] split = ampliconBasedCalling.split(":");
                         int dis;
@@ -840,17 +850,30 @@ public class VarDict {
                                 flag = true;
                             }
                         }
-                        cm = D_M_D_ID.matcher(cigarStr);
+
+
+
+                        // The following two clauses to make indels at the end of reads as softly
+                        // clipped reads and let VarDict's algorithm identify indels
+                        cm = D_M_D_ID_D_M.matcher(cigarStr);
                         if (cm.find()) {
                             int tmid = toInt(cm.group(1));
+                            int mlen = toInt(cm.group(4));
                             if (tmid <= 8 ) {
-                                String tslen = tmid + (cm.group(3).equals("I") ? toInt(cm.group(2)) : 0) + "S";
+                                int tslen = tmid + (cm.group(3).equals("I") ? toInt(cm.group(2)) : 0);
                                 position = tmid + (cm.group(3).equals("D") ? toInt(cm.group(2)) : 0);
-                                cigarStr = cm.replaceFirst(tslen);
+                                int n0 = 0;
+                                while (n0 < mlen && Character.valueOf(querySEQ.charAt(tslen + n0)).equals(ref.get(position + n0))) {
+                                    n0++;
+                                }
+                                tslen += n0;
+                                mlen -= n0;
+                                position += n0;
+                                cigarStr.replaceFirst("^\\dM\\d+[ID]\\d+M", tslen + "S" + mlen);
                                 flag = true;
                             }
                         }
-                        cm = D_ID_D_M.matcher(cigarStr);
+                        cm = D_ID_DD_M.matcher(cigarStr);
                         if (cm.find()) {
                             int tmid = toInt(cm.group(3));
                             if (tmid <= 8 ) {
@@ -893,6 +916,7 @@ public class VarDict {
                                 flag = true;
                             }
                         }
+                        // Combine two close deletions (<10bp) into one
                         cm = D_DD_D_M_D_DD_DI.matcher(cigarStr);
                         if (cm.find()) {
                             int ilen = toInt(cm.group(2));
@@ -902,7 +926,22 @@ public class VarDict {
                                 ilen += toInt(istr.substring(0, istr.length() - 1));
                             }
                             cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
+                            flag = true;
                         }
+
+                        // Combine two close indels (<10bp) into one
+                        cm = D_I_DD_M_D_d_DI.matcher(cigarStr);
+                        if (cm.find()) {
+                            int dlen = toInt(cm.group(2)) + toInt(cm.group(3));
+                            int ilen = toInt(cm.group(1)) + toInt(cm.group(2));
+                            String istr = cm.group(4);
+                            if (istr != null) {
+                                ilen += toInt(istr.substring(0, istr.length() - 1));
+                            }
+                            cigarStr = cm.replaceFirst(dlen + "D" + ilen);
+                            flag = true;
+                        }
+
                     }
 
                     List<String> cigar = new ArrayList<>();
@@ -915,6 +954,15 @@ public class VarDict {
                     int start = position;
                     assert a.length > 10;
                     final String quality = a[10];
+
+                    List<String> segs = globalFind(MATCH_INSERTION, cigarStr); // Only match and insertion counts toward read length
+                    List<String> segs2 = globalFind(SOFT_CLIPPED, cigarStr); // For total length, including soft-clipped bases
+                    int rlen = sum(segs); //The read length for matched bases
+                    int rlen2 = sum(segs2); //The total length, including soft-clipped bases
+//                            if (rlen2 > RLEN) { // Determine the read length
+//                                RLEN = $rlen2
+//
+//                            }
 
                     for(int ci = 0; ci < cigar.size(); ci += 2) {
                         int m = toInt(cigar.get(ci));
@@ -1400,7 +1448,6 @@ public class VarDict {
             } //TODO abcall
 
         }
-        adjMNP(hash, mnp, cov);
 
         if (conf.performLocalRealignment) {
             realigndel(hash, dels5, cov, sclip5, sclip3, ref, region.chr, chrs, bams, conf);
@@ -1410,6 +1457,7 @@ public class VarDict {
             realignlgins30(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, bams, conf);
         }
 
+        adjMNP(hash, mnp, cov);
 
         Vars vars = new Vars();
         for (Entry<Integer, Map<String, Variation>> entH : hash.entrySet()) {
@@ -1445,13 +1493,16 @@ public class VarDict {
                 double mq = round(cnt.Qmean/(double)cnt.cnt, 1); // mapping quality
                 int hicnt  = cnt.hicnt;
                 int locnt  = cnt.locnt;
+                if (cnt.cnt > tcov && cnt.cnt - tcov < cnt.extracnt) {
+                    tcov = cnt.cnt;
+                }
                 Var tvref = new Var();
                 tvref.n = n;
                 tvref.cov = cnt.cnt;
                 tvref.fwd = fwd;
                 tvref.rev = rev;
-                tvref.bias = bias;
-                tvref.freq = (fwd + rev) / (double)tcov;
+                tvref.bias = String.valueOf(bias);
+                tvref.freq = cnt.cnt / (double)tcov;
                 tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
                 tvref.pstd = cnt.pstd;
                 tvref.qual = vqual;
@@ -1497,13 +1548,17 @@ public class VarDict {
                     int locnt  = cnt.locnt;
                     hicov += hicnt;
 
+                    if (cnt.cnt > tcov && cnt.cnt - tcov < cnt.extracnt) {
+                        tcov = cnt.cnt;
+                    }
+
                     Var tvref = new Var();
                     tvref.n = n;
                     tvref.cov = cnt.cnt;
                     tvref.fwd = fwd;
                     tvref.rev = rev;
-                    tvref.bias = bias;
-                    tvref.freq = (fwd + rev) / (double)tcov;
+                    tvref.bias = String.valueOf(bias);
+                    tvref.freq = cnt.cnt / (double)tcov;
                     tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
                     tvref.pstd = cnt.pstd;
                     tvref.qual = vqual;
@@ -1511,7 +1566,7 @@ public class VarDict {
                     tvref.mapq = mq;
                     tvref.qratio = round(hicnt / (locnt != 0 ? locnt : 0.5d), 3);
                     tvref.hifreq = hicov > 0 ? hicnt / (double)hicov : 0;
-                    tvref.extrafreq = 0;
+                    tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)tcov : 0;
                     tvref.shift3 = 0;
                     tvref.msi = 0;
                     tvref.nm = round(cnt.nm / (double)cnt.cnt, 1);
@@ -1543,7 +1598,7 @@ public class VarDict {
             Collections.sort(var, new Comparator<Var>() {
                 @Override
                 public int compare(Var o1, Var o2) {
-                    return Double.compare(o1.qual * o1.cov, o2.qual * o2.cov);
+                    return Double.compare(o2.qual * o2.cov, o1.qual * o1.cov);
                 }
             });
             for (Var tvar : var) {
@@ -1640,15 +1695,160 @@ public class VarDict {
 
 
                     } else if (vn.startsWith("-")) {
-                        //TODO ???
+                        varallele = vn.replaceFirst("^-\\d+", "");
+                        String leftseq = joinRef(ref, (p - 70 > 1 ? p - 70 : 1), p - 1); // left 10 nt
+                        int chr0 = getOrElse(chrs, region.chr, 0);
+                        String tseq = joinRef(ref, p, p + dellen + 70 > chr0 ? chr0 : p + dellen + 70);
+
+                        Tuple3<Double, Integer, String> tpl = findMSI(substr(tseq, 0, dellen), substr(tseq, dellen), leftseq);
+                        msi = tpl._1();
+                        shift3 = tpl._2();
+                        msint = tpl._3();
+
+                        tpl = findMSI(leftseq, substr(tseq, dellen), leftseq);
+                        double tmsi = tpl._1();
+                        int tshift3 = tpl._2();
+                        String tmsint = tpl._3();
+                        if (msi < tmsi) {
+                            msi = tmsi;
+                            shift3 = tshift3;
+                            msint = tmsint;
+                        }
+                        if (shift3 / (double)dellen < msi) {
+                            msi = shift3 / (double)dellen;
+                        }
+                        if (!vn.contains("&") && !vn.contains("#") && !vn.contains("\\^")) {
+                            if ( conf.moveIndelsTo3 ) {
+                                sp += shift3;
+                            }
+                            varallele = ref.containsKey(p - 1) ? ref.get(p - 1).toString() : "";
+                            refallele = varallele;
+                            sp--;
+                        }
+                        refallele += joinRef(ref, p, dellen - 1);
+                    } else {
+                        String tseq1 = joinRef(ref, p - 70 > 1 ? p - 70 : 1, p - 1);
+                        int chr0 = getOrElse(chrs, region.chr, 0);
+                        String tseq2 = joinRef(ref, p + 2, p + 70 > chr0 ? chr0 : p + 70);
+
+                        Tuple3<Double, Integer, String> tpl = findMSI(tseq1, tseq2, null);
+                        msi = tpl._1();
+                        shift3 = tpl._2();
+                        msint = tpl._3();
+                        refallele = ref.containsKey(p) ? ref.get(p).toString() : "";
+                        varallele = vn;
                     }
 
+                    Matcher mtch = AMP_ATGC.matcher(vn);
+                    if (mtch.find()) {
+                        String extra = mtch.group(1);
+                        varallele = varallele.replaceFirst("&", "");
+                        String tch = joinRef(ref, ep + 1, ep + extra.length());
+                        refallele += tch;
+                        genotype1 += tch;
+                        ep += extra.length();
+                        if (vn.startsWith("+")) {
+                            refallele = refallele.substring(0);
+                            varallele = varallele.substring(0);
+                            sp++;
+                        }
+                    }
+
+                    mtch = HASH_GROUP_CARET_GROUP.matcher(vn);
+                    if (mtch.find()) {
+                        String mseq = mtch.group(1);
+                        String tail = mtch.group(2);
+                        ep +=  mseq.length();
+                        refallele += joinRef(ref, ep - mseq.length() + 1, ep);
+                        mtch = BEGIN_DIGITS.matcher(tail);
+                        if (mtch.find()) {
+                            int d = toInt(mtch.group(1));
+                            refallele += joinRef(ref, ep + 1, ep + d);
+                            ep += d;
+                        }
+                        varallele = varallele.replaceFirst("#", "").replaceFirst("\\^(\\d+)?", "");
+                        genotype1 = genotype1.replaceFirst("#", "m").replaceFirst("\\^", "i");
+                        genotype2 = genotype2.replaceFirst("#", "m").replaceFirst("\\^", "i");
+                    }
+                    mtch = CARET_ATGC_E.matcher(vn); // for deletion followed directly by insertion in novolign
+                    if (mtch.find()) {
+                        varallele = varallele.replaceFirst("\\^", "");
+                        genotype1 = genotype1.replaceFirst("\\^", "i");
+                        genotype2 = genotype2.replaceFirst("\\^", "i");
+                    }
+                    vref.leftseq = joinRef(ref, sp - 20 < 1 ? 0 : sp - 20, sp - 1); // left 20 nt
+                    int chr0 = getOrElse(chrs, region.chr, 0);
+                    vref.rightseq = joinRef(ref, ep + 1, ep + 20 > chr0 ? chr0 : ep + 20); // right 20 nt
+                    String genotype = genotype1 + "/" + genotype2;
+                    genotype = genotype.replace("&", "").replace("#", "").replace("^", "i");
+                    vref.extrafreq = round(vref.extrafreq, 3);
+                    vref.freq = round(vref.freq, 3);
+                    vref.hifreq = round(vref.hifreq, 3);
+                    vref.msi = round(vref.msi, 3);
+                    vref.msint = msint.length();
+                    vref.shift3 = shift3;
+                    vref.sp = sp;
+                    vref.ep = ep;
+                    vref.refallele = refallele;
+                    vref.varallele = varallele;
+                    vref.genotype = genotype;
+                    vref.tcov = tcov;
+                    vref.rfc = rfc;
+                    vref.rrc = rrc;
+                    if (vars.ref.containsKey(p)) {
+                        vref.bias = vars.ref.get(p).bias + ";" + vref.bias;
+                    } else {
+                        vref.bias = "0;" + vref.bias;
+                    }
+                    if (conf.debug) {
+                        StringBuilder sb = new StringBuilder();
+                        for (String str : tmp) {
+                            if (sb.length() > 0) {
+                                sb.append(" & ");
+                            }
+                            sb.append(str);
+                        }
+                        vref.DEBUG = sb.toString();
+                    }
+                }
+            }
+            if (vars.ref.containsKey(p)) {
+                Var vref = vars.ref.get(p);
+                vref.tcov = tcov;
+                vref.cov = 0;
+                vref.freq = 0;
+                vref.rfc = rfc;
+                vref.rrc = rrc;
+                vref.fwd = 0;
+                vref.rev = 0;
+                vref.msi = 0;
+                vref.msint = 0;
+                vref.bias += ";0";
+                vref.shift3 = 0;
+                vref.sp = p;
+                vref.ep = p;
+                vref.hifreq = round(vref.hifreq, 3);
+                String r = ref.containsKey(p) ? ref.get(p).toString() : "";
+                vref.refallele = r;
+                vref.varallele = r;
+                vref.genotype = r + "/" + r;
+                vref.leftseq = "";
+                vref.rightseq = "";
+                if (conf.debug) {
+                    StringBuilder sb = new StringBuilder();
+                    for (String str : tmp) {
+                        if (sb.length() > 0) {
+                            sb.append(" & ");
+                        }
+                        sb.append(str);
+                    }
+                    vref.DEBUG = sb.toString();
                 }
             }
 
         }
 
-        return null;
+        return vars;
     }
 
     private static Tuple3<Double, Integer, String> findMSI(String tseq1, String tseq2, String left) {
@@ -1702,7 +1902,7 @@ public class VarDict {
         int cov;
         int fwd;
         int rev;
-        int bias;
+        String bias;
         double freq;
         double pmean;
         boolean pstd;
@@ -1717,6 +1917,20 @@ public class VarDict {
         double nm;
         int hicnt;
         int hicov;
+
+        String leftseq;
+        String rightseq;
+        int msint;
+        int sp;
+        int ep;
+        int rrc;
+        int rfc;
+        int tcov;
+        String genotype;
+        String varallele;
+        String refallele;
+
+        String DEBUG;
     }
 
     private static double round(double value, int dp) {
@@ -1750,13 +1964,13 @@ public class VarDict {
         for (Entry<Integer, Sclip> ent5 : sclip5.entrySet()) {
             tmp5.add(Tuple2.newTuple(ent5.getKey(), ent5.getValue()));
         }
-        Collections.sort(tmp5, COMP2); //  TODO sort {$a->[1] <=> $b->[1];} ????
+        Collections.sort(tmp5, COMP3); //  TODO sort {$a->[1] <=> $b->[1];} ????
 
         List<Tuple2<Integer, Sclip>> tmp3 = new ArrayList<>();
         for (Entry<Integer, Sclip> ent3 : sclip3.entrySet()) {
             tmp3.add(Tuple2.newTuple(ent3.getKey(), ent3.getValue()));
         }
-        Collections.sort(tmp3, COMP2); //  TODO sort {$a->[1] <=> $b->[1];} ????
+        Collections.sort(tmp3, COMP3); //  TODO sort {$a->[1] <=> $b->[1];} ????
 
         for (Tuple2<Integer,Sclip> t5 : tmp5) {
             final int p5 = t5._1();
@@ -2148,6 +2362,13 @@ public class VarDict {
     static final Comparator<Tuple2<Integer, Sclip>> COMP2 = new Comparator<Tuple2<Integer, Sclip>>() {
         @Override
         public int compare(Tuple2<Integer, Sclip> o1, Tuple2<Integer, Sclip> o2) {
+            return Integer.compare(o2._2().variation.cnt, o1._2().variation.cnt);
+        }
+    };
+
+    static final Comparator<Tuple2<Integer, Sclip>> COMP3 = new Comparator<Tuple2<Integer, Sclip>>() {
+        @Override
+        public int compare(Tuple2<Integer, Sclip> o1, Tuple2<Integer, Sclip> o2) {
             return Integer.compare(o1._2().variation.cnt, o2._2().variation.cnt);
         }
     };
@@ -2463,7 +2684,7 @@ public class VarDict {
         public int compare(Object[] o1, Object[] o2) {
             int x1 = (Integer)o1[2] - (Integer)o1[3];
             int x2 = (Integer)o2[2] - (Integer)o2[3];
-            return Integer.compare(x1, x2);
+            return Integer.compare(x2, x1);
         }
     };
 
