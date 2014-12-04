@@ -158,6 +158,7 @@ public class VarDict {
         double qratio = 1.5; //-o
         double mapq = 0; // -O The minimun mean mapping quality to be considered, default 0
         boolean doPileup = false; // -p Do pileup regarless the frequency
+        double lofreq = 0.05d; // -V The lowest frequency in normal sample allowed for a putative somatic mutations, default to 0.05
 
         public boolean isColumnForChromosomeSet() {
             return columnForChromosome >= 0;
@@ -402,10 +403,10 @@ public class VarDict {
                 if (conf.bam.hasBam2()) {
                     Tuple2<Integer, Vars> tpl1 = toVars(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
                     Tuple2<Integer, Vars> tpl2 = toVars(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, tpl1._1(), conf);
-                    somdict(region, tpl1._2(), tpl2._2(), sample, splice, conf);
+                    rlen = somdict(region, tpl1._2(), tpl2._2(), sample, chrs, splice, ampliconBasedCalling, tpl2._1(), conf);
                 } else {
                     Tuple2<Integer, Vars> tpl = toVars(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
-                    vardict(region, tpl._2());
+                    vardict(region, tpl._2(), conf.bam.getBam1(), sample, conf);
                 }
             }
         }
@@ -477,7 +478,7 @@ public class VarDict {
     }
 
 
-    private void somdict(Region segs, Vars vars1, Vars vars2, String sample, Map<String, Integer> splice, Configuration conf) {
+    private static int somdict(Region segs, Vars vars1, Vars vars2, String sample, Map<String, Integer> chrs, Map<String, Integer> splice, String ampliconBasedCalling,  int rlen, Configuration conf) throws IOException {
 
         double fisherp = 0.01d;
 
@@ -562,19 +563,326 @@ public class VarDict {
                         if (vartype.equals("Complex")) {
                             adjComplex(vref);
                         }
-                        //TODO !!!
+                        Var v2nt = getVarMaybe(vars2, p, varn, nt);
+                        if (v2nt != null) {
+                            String type;
+                            if (isGoodVar(v2nt, getVarMaybe(vars2, p, VarsType.ref), vartype, splice, conf)) {
+                                if (vref.freq > (1 - conf.lofreq) && v2nt.freq < 0.8d && v2nt.freq > 0.2d) {
+                                    type = "LikelyLOH";
+                                } else {
+                                    type = "Germline";
+                                }
+                            } else {
+                                if (v2nt.freq < conf.lofreq || v2nt.cov <= 1) {
+                                    type = "LikelySomatic";
+                                } else {
+                                    type = "AFDiff";
+                                }
+                            }
+                            if ( isNoise(v2nt, conf) && vartype.equals("SNV")) {
+                                type = "StrongSomatic";
+                            }
+                            System.out.println(join("\t", sample, segs.gene, segs.chr,
+                                    vref.sp, vref.ep, vref.refallele, vref.varallele,
+                                    vref.tcov, vref.cov, vref.rfc, vref.rrc, vref.fwd, vref.rev, vref.genotype, vref.freq, vref.bias, vref.pmean, vref.pstd, vref.qual, vref.qstd,
+                                    vref.mapq, vref.qratio, vref.hifreq, vref.extrafreq, vref.nm,
+                                    v2nt.tcov, v2nt.cov, v2nt.rfc, v2nt.rrc, v2nt.fwd, v2nt.rev, v2nt.genotype, v2nt.freq, v2nt.bias, v2nt.pmean, v2nt.pstd, v2nt.qual, v2nt.qstd,
+                                    v2nt.mapq, v2nt.qratio, v2nt.hifreq, v2nt.extrafreq, v2nt.nm,
+                                    v2nt.shift3, v2nt.msi, v2nt.msint, v2nt.leftseq, v2nt.rightseq,
+                                    segs.chr + ":" + segs.start + "-" + segs.end,
+                                    type, vartype));
 
+                        } else { // sample 1 only, should be strong somatic
+                            String type = "StrongSomatic";
+                            Map<String, Var> map = new HashMap<>();
+                            v2nt = new Var();
+                            map.put(nt, v2nt);
+                            vars2.varn.put(p, map);// Ensure it's initialized before passing to combineAnalysis
+                            Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
+                            rlen = tpl._1();
+                            String newtype = tpl._2();
+                            if ("FALSE".equals(newtype)) {
+                                n++;
+                                continue;
+                            }
+                            if(newtype.length() > 0) {
+                                type = newtype;
+                            }
+                            if (type.equals("StrongSomatic")) {
+                                String tvf;
+                                if (vars2.ref.get(p) == null) {
+                                    Var v2m = getVarMaybe(vars2, p, var, 0);
+                                    int tcov = v2m != null && v2m.tcov != 0 ? v2m.tcov : 0;
+                                    tvf = join("\t", tcov, 0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0);
+                                } else {
+                                    Var v2ref = vars2.ref.get(p);
+                                    tvf = join("\t",
+                                            v2ref.tcov, v2ref.cov, v2ref.rfc, v2ref.rrc, v2ref.fwd, v2ref.rev, v2ref.genotype, v2ref.freq, v2ref.bias, v2ref.pmean, v2ref.pstd, v2ref.qual, v2ref.qstd,
+                                            v2ref.mapq, v2ref.qratio, v2ref.hifreq, v2ref.extrafreq, v2ref.nm
+                                            );
+                                }
+                                System.out.println(join("\t", sample, segs.gene, segs.chr,
+                                        vref.sp, vref.ep, vref.refallele, vref.varallele,
+                                        vref.tcov, vref.cov, vref.rfc, vref.rrc, vref.fwd, vref.rev, vref.genotype, vref.freq, vref.bias, vref.pmean, vref.pstd, vref.qual, vref.qstd,
+                                        vref.mapq, vref.qratio, vref.hifreq, vref.extrafreq, vref.nm,
+                                        tvf,
+                                        vref.shift3, vref.msi, vref.msint, vref.leftseq, vref.rightseq,
+                                        segs.chr + ":" + segs.start + "-" + segs.end,
+                                        "StrongSomatic", vartype));
+                            } else {
+                                System.out.println(join("\t", sample, segs.gene, segs.chr,
+
+                                        vref.sp, vref.ep, vref.refallele, vref.varallele,
+                                        vref.tcov, vref.cov, vref.rfc, vref.rrc, vref.fwd, vref.rev, vref.genotype, vref.freq, vref.bias, vref.pmean, vref.pstd, vref.qual, vref.qstd,
+                                        vref.mapq, vref.qratio, vref.hifreq, vref.extrafreq, vref.nm,
+
+                                        v2nt.tcov, v2nt.cov, v2nt.rfc, v2nt.rrc, v2nt.fwd, v2nt.rev, v2nt.genotype, v2nt.freq, v2nt.bias, v2nt.pmean, v2nt.pstd, v2nt.qual, v2nt.qstd,
+                                        v2nt.mapq, v2nt.qratio, v2nt.hifreq, v2nt.extrafreq, v2nt.nm,
+
+                                        vref.shift3, vref.msi, vref.msint, vref.leftseq, vref.rightseq,
+                                        segs.chr + ":" + segs.start + "-" + segs.end,
+
+                                        type, vartype));
+                            }
+                        }
+                        n++;
+                    }
+                    if (n == 0) {
+                        Var v2 = getVarMaybe(vars2, p, var, 0);
+                        if(v2 == null) {
+                            continue;
+                        }
+                        vartype = varType(v2.refallele, v2.varallele);
+                        if (!isGoodVar(v2, getVarMaybe(vars2, p, ref), vartype, splice, conf)) {
+                            continue;
+                        }
+                        // potentail LOH
+                        String nt = v2.n;
+                        Var v1nt = getVarMaybe(vars1, p, varn, nt);
+                        if (v1nt != null) {
+                            String type = v1nt.freq < conf.lofreq ? "LikelyLOH" : "Germline";
+                            if ("Complex".equals(vartype)) {
+                                adjComplex(v1nt);
+                            }
+                            System.out.println(join("\t", sample, segs.gene, segs.chr,
+                                    v1nt.sp, v1nt.ep, v1nt.refallele, v1nt.varallele,
+                                    v1nt.tcov, v1nt.cov, v1nt.rfc, v1nt.rrc, v1nt.fwd, v1nt.rev, v1nt.genotype, v1nt.freq, v1nt.bias, v1nt.pmean, v1nt.pstd, v1nt.qual, v1nt.qstd,
+                                    v1nt.mapq, v1nt.qratio, v1nt.hifreq, v1nt.extrafreq, v1nt.nm,
+
+
+                                    v2.tcov, v2.cov, v2.rfc, v2.rrc, v2.fwd, v2.rev, v2.genotype, v2.freq, v2.bias, v2.pmean, v2.pstd, v2.qual, v2.qstd,
+                                    v2.mapq, v2.qratio, v2.hifreq, v2.extrafreq, v2.nm,
+
+                                    v2.shift3, v2.msi, v2.msint, v2.leftseq, v2.rightseq,
+                                    segs.chr + ":" + segs.start + "-" + segs.end,
+                                    type, varType(v1nt.refallele, v1nt.varallele)
+                                    ));
+                        } else {
+                            String th1;
+                            Var v1ref = getVarMaybe(vars1, p, ref);
+                            if(v1ref != null) {
+                                th1 = join("\t",
+                                        v1ref.tcov, v1ref.cov, v1ref.rfc, v1ref.rrc, v1ref.fwd, v1ref.rev, v1ref.genotype, v1ref.freq, v1ref.bias, v1ref.pmean, v1ref.pstd, v1ref.qual, v1ref.qstd,
+                                        v1ref.mapq, v1ref.qratio, v1ref.hifreq, v1ref.extrafreq, v1ref.nm
+                                        );
+                            } else {
+                                th1 = join("\t", v1.get(0).tcov,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0);
+                            }
+                            if ("Complex".equals(vartype)) {
+                                adjComplex(v2);
+                            }
+                            System.out.println(join("\t", sample, segs.gene, segs.chr,
+                                    v2.sp, v2.ep, v2.refallele, v2.varallele,
+                                    th1,
+                                    v2.tcov, v2.cov, v2.rfc, v2.rrc, v2.fwd, v2.rev, v2.genotype, v2.freq, v2.bias, v2.pmean, v2.pstd, v2.qual, v2.qstd,
+                                    v2.mapq, v2.qratio, v2.hifreq, v2.extrafreq, v2.nm,
+
+                                    v2.shift3, v2.msi, v2.msint, v2.leftseq, v2.rightseq,
+                                    segs.chr + ":" + segs.start + "-" + segs.end,
+                                    "StrongLOH", vartype
+                                    ));
+                        }
+                    }
+                } else if (vars2.var.containsKey(p)) { // sample 1 has only reference
+                    Var v2var = vars2.var.get(p).get(0);
+                    vartype = varType(v2var.refallele, v2var.varallele);
+                    Var v2ref = getVarMaybe(vars2, p, ref);
+                    if (!isGoodVar(v2var, v2ref, vartype, splice, conf)) {
+                        continue;
+                    }
+                    // potential LOH
+                    String nt = v2var.n;
+                    String type = "StrongLOH";
+                    Map<String, Var> map = vars1.varn.get(p);
+                    if (map == null) {
+                        map = new HashMap<>();
+                        vars1.varn.put(p, map);
+                    }
+                    Var v1nt = map.get(nt);
+                    if (v1nt == null) {
+                        v1nt = new Var();
+                        map.put(nt, v1nt);
+                    }
+                    v1nt.cov = 0;
+                    Tuple2<Integer, String> tpl = combineAnalysis(vars2.varn.get(p).get(nt), v1nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
+                    rlen = tpl._1();
+                    String newtype = tpl._2();
+                    if ("FALSE".equals(newtype)) {
+                        continue;
+                    }
+                    String th1;
+                    if (newtype.length() > 0) {
+                        type = newtype;
+                        th1 = join("\t",
+                                v1nt.tcov, v1nt.cov, v1nt.rfc, v1nt.rrc, v1nt.fwd, v1nt.rev, v1nt.genotype, v1nt.freq, v1nt.bias, v1nt.pmean, v1nt.pstd, v1nt.qual, v1nt.qstd,
+                                v1nt.mapq, v1nt.qratio, v1nt.hifreq, v1nt.extrafreq, v1nt.nm
+                                );
+                    } else {
+                        Var v1ref = vars1.ref.get(p);
+                        th1 = join("\t",
+                                v1ref.tcov, v1ref.cov, v1ref.rfc, v1ref.rrc, v1ref.fwd, v1ref.rev, v1ref.genotype, v1ref.freq, v1ref.bias, v1ref.pmean, v1ref.pstd, v1ref.qual, v1ref.qstd,
+                                v1ref.mapq, v1ref.qratio, v1ref.hifreq, v1ref.extrafreq, v1ref.nm
+                                );
                     }
 
+                    if ("Complex".equals(vartype)) {
+                        adjComplex(v2var);
+                    }
+                    System.out.println(join("\t", sample, segs.gene, segs.chr,
+                            v2var.sp, v2var.ep, v2var.refallele, v2var.varallele,
+                            th1,
+
+                            v2var.tcov, v2var.cov, v2var.rfc, v2var.rrc, v2var.fwd, v2var.rev, v2var.genotype, v2var.freq, v2var.bias, v2var.pmean, v2var.pstd, v2var.qual, v2var.qstd,
+                            v2var.mapq, v2var.qratio, v2var.hifreq, v2var.extrafreq, v2var.nm,
+
+                            v2var.shift3, v2var.msi, v2var.msint, v2var.leftseq, v2var.rightseq,
+
+                            segs.chr + ":" + segs.start + "-" + segs.end,
+                            type, vartype
+
+                            ));
                 }
             }
         }
 
-
+        return rlen;
     }
 
-    private void vardict(Region region, Vars vars) {
-        // TODO Auto-generated method stub
+
+    // Taken a likely somatic indels and see whether combine two bam files still support somatic status.  This is mainly
+    // for Indels that softclipping overhang is too short to positively being called in one bam file, but can be called
+    // in the other bam file, thus creating false positives
+    private static Tuple2<Integer, String> combineAnalysis(Var var1, Var var2, String chr, int p, String nt, Map<String, Integer> chrs, Map<String, Integer> splice, String ampliconBasedCalling, int rlen, Configuration conf) throws IOException {
+        if (conf.y) {
+            System.err.printf("Start Combine %s %s\n", p, nt);
+        }
+        Tuple2<Integer, Vars> tpl = toVars(new Region(chr, var1.sp - rlen, var1.ep + rlen, ""),  conf.bam.getBam1() + ":" + conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
+        rlen = tpl._1();
+        Vars vars = tpl._2();
+        Var vref = getVarMaybe(vars, p, varn, nt);
+        if (vref != null) {
+            if (conf.y) {
+                System.err.printf( "Combine: 1: %s comb: %s\n", var1.cov, vref.cov);
+            }
+            if (vref.cov - var1.cov >= conf.minr) {
+                var2.tcov = vref.tcov - var1.tcov;
+                if(var2.tcov < 0) var2.tcov = 0;
+
+                var2.cov = vref.cov - var1.cov;
+                if(var2.cov < 0) var2.cov = 0;
+
+                var2.rfc  = vref.rfc - var1.rfc;
+                if(var2.rfc < 0) var2.rfc = 0;
+
+                var2.rrc = vref.rrc - var1.rrc;
+                if(var2.rrc < 0) var2.rrc = 0;
+
+                var2.fwd = vref.fwd - var1.fwd;
+                if(var2.fwd < 0) var2.fwd = 0;
+
+                var2.rev = vref.rev - var1.rev;
+                if(var2.rev < 0) var2.rev = 0;
+
+                var2.pmean = round((vref.pmean * vref.cov - var1.pmean * var1.cov) / var2.cov, 3);
+                var2.qual = round((vref.qual * vref.cov - var1.qual * var1.cov) / var2.cov, 3);
+                var2.mapq = round((vref.mapq * vref.cov - var1.mapq * var1.cov) / var2.cov, 3);
+                var2.hifreq = round((vref.hifreq * vref.cov - var1.hifreq * var1.cov) / var2.cov, 3);
+                var2.extrafreq = round((vref.extrafreq * vref.cov - var1.extrafreq * var1.cov) / var2.cov, 3);
+                var2.nm = round((vref.nm * vref.cov - var1.nm * var1.cov) / var2.cov, 3);
+
+                var2.pstd = true;
+                var2.qstd = true;
+
+                if (var2.tcov <= 0) {
+                    return Tuple2.newTuple(rlen, "FALSE");
+                }
+
+                double freq2 = round(var2.cov / (double)var2.tcov, 3);
+                var2.freq = freq2;
+                var2.qratio = var1.qratio; // Can't back calculate and should be inaccurate
+                var2.genotype = vref.genotype;
+                var2.bias = strandBias(var2.rfc, var2.rrc, conf) + ";" + strandBias(var2.fwd, var2.rev, conf);
+                return Tuple2.newTuple(rlen, "Germline");
+            } else if (vref.cov < var1.cov - 2) {
+                if (conf.y) {
+                    System.err.printf("Combine produce less: %s %s %s %s %s\n", chr, p, nt, vref.cov, var1.cov);
+                }
+                return Tuple2.newTuple(rlen, "FALSE");
+            } else {
+                return Tuple2.newTuple(rlen, "");
+            }
+
+        }
+        return Tuple2.newTuple(rlen, "");
+    }
+
+
+    private static boolean isNoise(Var vref, Configuration conf) {
+        if (((vref.qual < 4.5d || (vref.qual < 12 && !vref.qstd)) && vref.cov <= 3)
+                || (vref.qual < conf.goodq && vref.freq < 2 * conf.lofreq && vref.cov <= 1)) {
+
+            vref.tcov -= vref.cov;
+            vref.cov = 0;
+            vref.fwd = 0;
+            vref.rev = 0;
+            vref.freq = 0;
+            vref.hifreq = 0;
+
+            return true;
+
+        }
+        return false;
+    }
+
+
+    private void vardict(Region region, Vars vars, String bam1, String sample, Configuration conf) {
+        for(int p = region.start; p <= region.end; p++) {
+            List<String> vts = new ArrayList<>();
+            List<Var> vrefs = new ArrayList<>();
+            if(!vars.var.containsKey(p)) {
+                if (!conf.doPileup) {
+                    continue;
+                }
+                Var vref = getVarMaybe(vars, p, ref);
+                if (vref == null) {
+                    System.out.println(join("\t",  sample, region.gene, region.chr, p, p,
+                            "", "", 0, 0, 0, 0, 0, 0, "", 0, "0;0", 0, 0, 0, 0, 0, "", 0, 0, 0, 0, 0, 0, "", "", 0, 0,
+                            region.chr + ":" + region.start + "-" + region.end
+                            ));
+                    continue;
+                }
+                vts.add("");
+                vrefs.add(vref);
+            } else {
+                List<Var> vvar = vars.var.get(p);
+                for (int i = 0; i < vvar.size(); i++) {
+                    Var vref = vvar.get(i);
+                    String vartype = varType(vref.refallele, vref.varallele);
+
+                }
+
+            }
+        }
 
     }
 
