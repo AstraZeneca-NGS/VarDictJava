@@ -3,6 +3,7 @@ package com.epam;
 import static com.epam.VarDict.DEFAULT_BED_ROW_FORMAT;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
@@ -45,6 +46,10 @@ public class Main {
         // -v is not used
         // -M is not used
 
+        String[] args = cmd.getArgs();
+        if (args.length > 0) {
+            conf.bed = args[0];
+        }
         conf.printHeader = cmd.hasOption('h');
         conf.chromosomeNameIsNumber = cmd.hasOption("C");
         conf.debug = cmd.hasOption("D");
@@ -149,7 +154,7 @@ public class Main {
                 .create('F'));
 
         options.addOption(OptionBuilder.withArgName("0/1")
-                .hasArg(true)
+                .hasOptionalArgs(1)
                 .withDescription("Indicate wehther is zero-based cooridates, as IGV does.  Default: 1 for BED file or amplicon BED file.\n"
                         + "Use 0 to turn it off. When use -R option, it's set to 0")
                 .withType(Number.class)
@@ -157,7 +162,7 @@ public class Main {
                 .create('z'));
 
         options.addOption(OptionBuilder.withArgName("0/1")
-                .hasArg(true)
+                .hasOptionalArgs(1)
                 .withDescription("Indicate whether to perform local realignment.  Default: 1 or yes.  Set to 0 to disable it.")
                 .withType(Number.class)
                 .isRequired(false)

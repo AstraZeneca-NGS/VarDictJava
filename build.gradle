@@ -1,4 +1,5 @@
 apply plugin: 'java'
+apply plugin:'application'
 
 version = '0.1'
 
@@ -14,5 +15,7 @@ dependencies {
     compile 'commons-cli:commons-cli:1.2' 
     testCompile 'junit:junit:4.8.2' 
 }
+
+mainClassName = "com.epam.Main"
 
 

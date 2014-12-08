@@ -941,7 +941,7 @@ public class VarDict {
         try (SamtoolsReader reader = new SamtoolsReader("faidx", fasta, chr + ":" + start + "-" + end)) {
             String header = reader.read();
             String exon = reader.read();
-            return new String[] { header, exon.replaceAll("\\s+", "") };
+            return new String[] { header, exon != null ? exon.replaceAll("\\s+", "") : ""};
         }
 
     }
@@ -1137,16 +1137,22 @@ public class VarDict {
 
         private Process proc;
         private BufferedReader reader;
+        private final List<String> list;
 
         public SamtoolsReader(String... args) throws IOException {
-            List<String> list = new ArrayList<String>(1 + args.length);
+            list = new ArrayList<String>(1 + args.length);
             list.add("samtools");
             for (String arg : args) {
                 list.add(arg);
             }
             ProcessBuilder builder = new ProcessBuilder(list);
-            builder.redirectErrorStream(true);
+            builder.redirectErrorStream(false);
             proc = builder.start();
+            BufferedReader er = new BufferedReader(new InputStreamReader(proc.getErrorStream()));
+            String line = null;
+            while ((line = er.readLine()) != null) {
+                System.err.println(line);
+            }
             reader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
         }
 
@@ -1159,7 +1165,16 @@ public class VarDict {
             reader.close();
             proc.getInputStream().close();
             proc.getOutputStream().close();
+            proc.getErrorStream().close();
             proc.destroy();
+            int exitValue = proc.exitValue();
+            if (exitValue != 0) {
+                StringBuilder sb = new StringBuilder();
+                for (String string : list) {
+                    sb.append(string).append(" ");
+                }
+                throw new RuntimeException("Process: '" + sb + "' exit with error.");
+            }
         }
     }
 
@@ -1223,7 +1238,7 @@ public class VarDict {
             String[] subSeq = retriveSubSeq(conf.fasta, region.getChr(), s_start, s_end);
             String header = subSeq[0];
             String exon = subSeq[1];
-            for(int i = s_start; i <= s_start + exon.length(); i++) { //TODO why '<=' ?
+            for(int i = s_start; i < s_start + exon.length(); i++) { //TODO why '<=' ?
                 ref.put(i, Character.toUpperCase(exon.charAt(i - s_start)));
             }
 
@@ -1232,7 +1247,7 @@ public class VarDict {
                 chr = region.getChr().substring("chr".length());
             }
             String samfilter = conf.samfilter != null ? "-F " + conf.samfilter : "";
-            try (SamtoolsReader reader = new SamtoolsReader("faidx", "view", samfilter, bami, chr + ":" + s_start + "-" + s_end)) {
+            try (SamtoolsReader reader = new SamtoolsReader("view", samfilter, bami, chr + ":" + s_start + "-" + s_end)) {
                 Map<String, Boolean> dup = new HashMap<>();
                 int dupp = -1;
                 String line;
