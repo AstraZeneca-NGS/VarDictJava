@@ -82,24 +82,38 @@ public class VarDict {
     }
 
 
-    public void start(Configuration conf) throws IOException {
+    public static void start(Configuration conf) throws IOException {
+        if (conf.printHeader) {
+            System.out.println(VarDict.join("\t",
+                    "Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt", "Depth", "AltDepth", "RefFwdReads",
+                    "RefRevReads", "AltFwdReads", "AltRevReads", "Genotype", "AF", "Bias", "PMean", "PStd",
+                    "QMean", "QStd", "5pFlankSeq", "3pFlankSeq"));
+        }
+
         Tuple2<String, String> stpl = getSample(conf.bam.getBamRaw(), conf.sampleName, conf.sampleNameRegexp);
         String sample = stpl._1();
         String samplem = stpl._2();
+
         Map<String, Integer> chrs = readCHR(conf.bam.getBamX());
+
+        if (!conf.hasFasta && chrs.containsKey("1")) {
+           conf.fasta = "/ngs/reference_data/genomes/Hsapiens/GRCh37/seq/GRCh37.fa";
+        }
+
         if (conf.regionOfInterest != null) {
-            List<List<Region>> regions = buildRegions(conf.regionOfInterest, conf.numberNucleotideToExtend, conf.zeroBased);
+            List<List<Region>> regions = buildRegions(conf.regionOfInterest, conf.numberNucleotideToExtend, conf.isZeroBasedDefined() ? conf.zeroBased : false);
             finalCycle(regions, chrs, conf.ampliconBasedCalling, sample, samplem, conf);
         } else {
-            Tuple2<String, List<String>> tpl = readBedFile(conf);
+            Tuple3<String, Boolean, List<String>> tpl = readBedFile(conf);
             String ampliconBasedCalling = tpl._1();
-            List<String> segraw = tpl._2();
+            Boolean zeroBased = tpl._2();
+            List<String> segraw = tpl._3();
 
             if (ampliconBasedCalling != null) {
-                aa(segraw, chrs, ampliconBasedCalling, sample, conf);
+                aa(segraw, chrs, ampliconBasedCalling, sample, zeroBased != null ? zeroBased : false, conf);
             } else {
-                List<List<Region>> regions = buildRegionsFromFile(segraw, conf);
-                finalCycle(regions, chrs, ampliconBasedCalling, sample, samplem, conf);
+                List<List<Region>> regions = buildRegionsFromFile(segraw, zeroBased, conf);
+                finalCycle(regions, chrs, null, sample, samplem, conf);
             }
         }
     }
@@ -123,19 +137,21 @@ public class VarDict {
     }
 
     public static class Configuration {
-        String rawBam;
-        String delimiter;
-        String bed;
-        int numberNucleotideToExtend;
-        boolean zeroBased; // -z,  default true if set -R
+        boolean printHeader; //-h
+        String delimiter; // -d
+        String bed; // -b
+        int numberNucleotideToExtend; // -x
+        Boolean zeroBased; // -z,  default true if set -R
         String ampliconBasedCalling; //-a
         int columnForChromosome = -1;
+        BedRowFormat badRowFormat;
         String sampleNameRegexp; // -n
         String sampleName; //-N
-        String fasta;
+        String fasta; // -G
+        boolean hasFasta; // -G
         Bam bam;
         Double downsampling;
-        boolean chromosomeNameIsNumber;
+        boolean chromosomeNameIsNumber; // -C
         Integer mappingQuality;//-Q
         boolean removeDuplicatedReads; //-t
         int mismatch; //-m, default = 8
@@ -151,10 +167,10 @@ public class VarDict {
         int minr = 2; // -r, he minimum # of variance reads, default 2 //TODO -p
         boolean debug = false; // -D
         double freq = 0.5; // -f and -p
-        boolean  moveIndelsTo3 = false;
+        boolean  moveIndelsTo3 = false; //-3
         String samfilter = "0x500"; //-F
         String regionOfInterest; //-R chr:start[-end]
-        int readPosFilter = 5; // - P The read position filter, default 5
+        int readPosFilter = 5; // -P The read position filter, default 5
         double qratio = 1.5; //-o
         double mapq = 0; // -O The minimun mean mapping quality to be considered, default 0
         boolean doPileup = false; // -p Do pileup regarless the frequency
@@ -170,6 +186,10 @@ public class VarDict {
 
         public boolean hasMappingQuality() {
             return mappingQuality != null;
+        }
+
+        public boolean isZeroBasedDefined() {
+            return zeroBased != null;
         }
 
 
@@ -229,10 +249,10 @@ public class VarDict {
         }
     };
 
-    public static List<List<Region>> buildRegionsFromFile(List<String> segraw, Configuration conf) throws IOException {
-        boolean zeroBased = conf.zeroBased;
+    public static List<List<Region>> buildRegionsFromFile(List<String> segraw, Boolean zeroBased, Configuration conf) throws IOException {
+        boolean zb = false;
         List<List<Region>> segs = new LinkedList<>();
-        BedRowFormat format = DEFAULT_BED_ROW_FORMAT;
+        BedRowFormat format = conf.badRowFormat;
         for (String seg : segraw) {
             String[] splitA = seg.split(conf.delimiter);
             if (!conf.isColumnForChromosomeSet() && splitA.length == 4) {
@@ -241,7 +261,9 @@ public class VarDict {
                     int a2 = toInt(splitA[2]);
                     if (a1 <= a2) {
                         format = CUSTOM_BED_ROW_FORMAT;
-                        zeroBased = true;
+                        if (zeroBased == null) {
+                            zb = true;
+                        }
                     }
                 } catch (NumberFormatException e) {
                 }
@@ -269,7 +291,7 @@ public class VarDict {
                     e = cdse;
                 s -= conf.numberNucleotideToExtend;
                 e += conf.numberNucleotideToExtend;
-                if (zeroBased && s < e) {
+                if (zb && s < e) {
                     s++;
                 }
                 cds.add(new Region(chr, s, e, gene));
@@ -280,7 +302,7 @@ public class VarDict {
     }
 
 
-    private static void aa(List<String> segraw, Map<String, Integer> chrs, String ampliconBasedCalling, String sample, Configuration conf) throws IOException {
+    private static void aa(List<String> segraw, Map<String, Integer> chrs, String ampliconBasedCalling, String sample, boolean zeroBased, Configuration conf) throws IOException {
         List<List<Region>> segs = new LinkedList<>();
         Map<String, List<Region>> tsegs = new HashMap<>();
         for (String string : segraw) {
@@ -291,7 +313,7 @@ public class VarDict {
             String gene = split[3];
             int istart = toInt(split[6]);
             int iend = toInt(split[7]);
-            if (conf.zeroBased && start < end) {
+            if (zeroBased && start < end) {
                 start++;
                 end++;
             }
@@ -323,8 +345,9 @@ public class VarDict {
     }
 
 
-    private static Tuple2<String, List<String>> readBedFile(Configuration conf) throws IOException, FileNotFoundException {
+    private static Tuple3<String, Boolean, List<String>> readBedFile(Configuration conf) throws IOException, FileNotFoundException {
         String a = conf.ampliconBasedCalling;
+        Boolean zeroBased = conf.zeroBased;
         List<String> segraw = new ArrayList<>();
         try (BufferedReader bedFileReader = new BufferedReader(new FileReader(conf.bed))) {
             String line;
@@ -344,6 +367,9 @@ public class VarDict {
                             int a7 = toInt(ampl[7]);
                             if (a6 >= a1 && a7 <= a2) {
                                 a = "10:0.95";
+                                if (!conf.isZeroBasedDefined()) {
+                                    zeroBased = true;
+                                }
                             }
                         } catch (NumberFormatException e) {
                             continue;
@@ -354,7 +380,7 @@ public class VarDict {
 
             }
         }
-        return Tuple2.newTuple(a, segraw);
+        return Tuple3.newTuple(a, zeroBased, segraw);
     }
 
     public static class Bam {
@@ -390,7 +416,7 @@ public class VarDict {
 
     }
 
-    public void finalCycle(List<List<Region>> segs, Map<String, Integer> chrs, String ampliconBasedCalling, String sample, String samplem, Configuration conf) throws IOException {
+    public static void finalCycle(List<List<Region>> segs, Map<String, Integer> chrs, String ampliconBasedCalling, String sample, String samplem, Configuration conf) throws IOException {
         if (conf.bam.hasBam2()) {
             Tuple2<String, String> stpl = getSampleFromBam(sample, samplem, conf.bam.getBam1(), conf.bam.getBam2(), conf.sampleName, conf.sampleNameRegexp);
             sample = stpl._1();
@@ -406,7 +432,7 @@ public class VarDict {
                     rlen = somdict(region, tpl1._2(), tpl2._2(), sample, chrs, splice, ampliconBasedCalling, tpl2._1(), conf);
                 } else {
                     Tuple2<Integer, Vars> tpl = toVars(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
-                    vardict(region, tpl._2(), conf.bam.getBam1(), sample, conf);
+                    vardict(region, tpl._2(), conf.bam.getBam1(), sample, splice, conf);
                 }
             }
         }
@@ -855,7 +881,7 @@ public class VarDict {
     }
 
 
-    private void vardict(Region region, Vars vars, String bam1, String sample, Configuration conf) {
+    private static void vardict(Region region, Vars vars, String bam1, String sample, Map<String, Integer> splice, Configuration conf) {
         for(int p = region.start; p <= region.end; p++) {
             List<String> vts = new ArrayList<>();
             List<Var> vrefs = new ArrayList<>();
@@ -867,7 +893,7 @@ public class VarDict {
                 if (vref == null) {
                     System.out.println(join("\t",  sample, region.gene, region.chr, p, p,
                             "", "", 0, 0, 0, 0, 0, 0, "", 0, "0;0", 0, 0, 0, 0, 0, "", 0, 0, 0, 0, 0, 0, "", "", 0, 0,
-                            region.chr + ":" + region.start + "-" + region.end
+                            region.chr + ":" + region.start + "-" + region.end, ""
                             ));
                     continue;
                 }
@@ -875,13 +901,37 @@ public class VarDict {
                 vrefs.add(vref);
             } else {
                 List<Var> vvar = vars.var.get(p);
+                Var rref = getVarMaybe(vars, p, ref);
                 for (int i = 0; i < vvar.size(); i++) {
                     Var vref = vvar.get(i);
                     String vartype = varType(vref.refallele, vref.varallele);
 
+                    if( !isGoodVar( vref, rref, vartype , splice, conf) && !conf.doPileup) {
+                        continue;
+                    }
+                    vts.add(vartype);
+                    vrefs.add(vref);
                 }
-
             }
+            for(int vi = 0; vi < vts.size(); vi++) {
+                String vartype = vts.get(vi);
+                Var vref = vrefs.get(vi);
+                if("Complex".equals(vartype)) {
+                    adjComplex(vref);
+                }
+                System.out.println(join("\t", sample, region.gene, region.chr,
+                            vref.sp, vref.ep, vref.refallele, vref.varallele, vref.tcov, vref.cov, vref.rfc, vref.rrc,
+                            vref.fwd, vref.rev, vref.genotype, vref.freq, vref.bias, vref.pmean, vref.pstd, vref.qual,
+                            vref.qstd, vref.mapq, vref.qratio, vref.hifreq, vref.extrafreq, vref.shift3, vref.msi,
+                            vref.msint, vref.nm, vref.hicnt, vref.hicov, vref.leftseq, vref.rightseq,
+                            region.chr + ":" + region.start + "-" + region.end, vartype
+                        ));
+                if (conf.debug) {
+                    System.out.println("\t" + vref.DEBUG);
+                }
+                System.out.println();
+            }
+
         }
 
     }
@@ -1816,7 +1866,7 @@ public class VarDict {
                         }
                         for(int i = offset; i < m; i++) {
                             boolean trim = false;
-                            if ( conf.trimBasesAfter > 0) {
+                            if ( conf.trimBasesAfter != 0) {
                                 if (dir == false) {
                                     if (n > conf.trimBasesAfter) {
                                         trim = true;
@@ -4010,7 +4060,7 @@ public class VarDict {
         incCnt(map, s, 1);
     }
 
-    private static final BedRowFormat DEFAULT_BED_ROW_FORMAT = new BedRowFormat(2, 6, 7, 9, 10, 12);
+    public static final BedRowFormat DEFAULT_BED_ROW_FORMAT = new BedRowFormat(2, 6, 7, 9, 10, 12);
     private static final BedRowFormat CUSTOM_BED_ROW_FORMAT = new BedRowFormat(0, 1, 2, 3, 1, 2);
 
     public static class BedRowFormat {
