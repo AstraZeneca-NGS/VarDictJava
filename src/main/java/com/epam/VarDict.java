@@ -427,11 +427,11 @@ public class VarDict {
         for (List<Region> list : segs) {
             for (Region region : list) {
                 if (conf.bam.hasBam2()) {
-                    Tuple2<Integer, Vars> tpl1 = toVars(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
-                    Tuple2<Integer, Vars> tpl2 = toVars(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, tpl1._1(), conf);
+                    Tuple2<Integer, Map<Integer, Vars>> tpl1 = toVars(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
+                    Tuple2<Integer, Map<Integer, Vars>> tpl2 = toVars(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, tpl1._1(), conf);
                     rlen = somdict(region, tpl1._2(), tpl2._2(), sample, chrs, splice, ampliconBasedCalling, tpl2._1(), conf);
                 } else {
-                    Tuple2<Integer, Vars> tpl = toVars(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
+                    Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
                     vardict(region, tpl._2(), conf.bam.getBam1(), sample, splice, conf);
                 }
             }
@@ -497,27 +497,21 @@ public class VarDict {
         return Tuple2.newTuple(sample, samplem);
     }
 
-    private static boolean hasVar(Vars vars, int key) {
-        return vars.var.containsKey(key)
-                || vars.varn.containsKey(key)
-                || vars.ref.containsKey(key);
-    }
 
-
-    private static int somdict(Region segs, Vars vars1, Vars vars2, String sample, Map<String, Integer> chrs, Map<String, Integer> splice, String ampliconBasedCalling,  int rlen, Configuration conf) throws IOException {
+    private static int somdict(Region segs, Map<Integer, Vars> vars1, Map<Integer, Vars> vars2, String sample, Map<String, Integer> chrs, Map<String, Integer> splice, String ampliconBasedCalling,  int rlen, Configuration conf) throws IOException {
 
         double fisherp = 0.01d;
 
         for (int p = 0; p <= segs.end; p++) {
-            if (!hasVar(vars1, p) && !hasVar(vars2, p)) { // both samples have no coverag
+            if (!vars1.containsKey(p) && !vars2.containsKey(p)) { // both samples have no coverag
                 continue;
             }
 
             String vartype = "";
 
-            if (!hasVar(vars1, p)) { // no coverage for sample 1
-                if (vars2.var.containsKey(p)) {
-                    Var var = vars2.var.get(p).get(0);
+            if (!vars1.containsKey(p)) { // no coverage for sample 1
+                if (vars2.containsKey(p) && vars2.get(p).var.size() > 0) {
+                    Var var = vars2.get(p).var.get(0);
                     vartype = varType(var.refallele, var.varallele);
                     if (!isGoodVar(var, getVarMaybe(vars2, p, VarsType.ref), vartype, splice, conf)) {
                         continue;
@@ -532,9 +526,9 @@ public class VarDict {
                             segs.chr + ":" + segs.start + "-" + segs.end,
                             "Deletion", vartype));
                 }
-            } else if (!hasVar(vars2, p)) { // no coverage for sample 2
-                if (vars1.var.containsKey(p)) {
-                    Var var = vars1.var.get(p).get(0);
+            } else if (!vars2.containsKey(p)) { // no coverage for sample 2
+                if (vars1.containsKey(p) && vars1.get(p).var.size() > 0) {
+                    Var var = vars1.get(p).var.get(0);
                     vartype = varType(var.refallele, var.varallele);
                     if (!isGoodVar(var, getVarMaybe(vars1, p, VarsType.ref), vartype, splice, conf)) {
                         continue;
@@ -552,12 +546,12 @@ public class VarDict {
                 }
 
             } else { // both samples have coverage
-                if (!vars1.var.containsKey(p) && !vars2.var.containsKey(p)) {
+                if (!vars1.containsKey(p) || vars1.get(p).var.isEmpty() || !vars2.containsKey(p) || vars2.get(p).var.isEmpty()) {
                     continue;
                 }
-                if (vars1.var.containsKey(p)) {
+                if (vars1.containsKey(p) && vars1.get(p).var.size() > 0) {
                     int n = 0;
-                    List<Var> v1 = vars1.var.get(p);
+                    List<Var> v1 = vars1.get(p).var;
                     while(n < v1.size() && isGoodVar(v1.get(n), getVarMaybe(vars1, p, VarsType.ref), varType(v1.get(n).refallele, v1.get(n).varallele), splice, conf) ) {
                         Var vref = v1.get(n);
                         String nt = vref.n;
@@ -620,10 +614,7 @@ public class VarDict {
 
                         } else { // sample 1 only, should be strong somatic
                             String type = "StrongSomatic";
-                            Map<String, Var> map = new HashMap<>();
-                            v2nt = new Var();
-                            map.put(nt, v2nt);
-                            vars2.varn.put(p, map);// Ensure it's initialized before passing to combineAnalysis
+                            getOrPutVars(vars2, p).varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
                             Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
                             rlen = tpl._1();
                             String newtype = tpl._2();
@@ -636,12 +627,12 @@ public class VarDict {
                             }
                             if (type.equals("StrongSomatic")) {
                                 String tvf;
-                                if (vars2.ref.get(p) == null) {
+                                if (vars2.get(p).ref == null) {
                                     Var v2m = getVarMaybe(vars2, p, var, 0);
                                     int tcov = v2m != null && v2m.tcov != 0 ? v2m.tcov : 0;
                                     tvf = join("\t", tcov, 0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0);
                                 } else {
-                                    Var v2ref = vars2.ref.get(p);
+                                    Var v2ref = vars2.get(p).ref;
                                     tvf = join("\t",
                                             v2ref.tcov, v2ref.cov, v2ref.rfc, v2ref.rrc, v2ref.fwd, v2ref.rev, v2ref.genotype, v2ref.freq, v2ref.bias, v2ref.pmean, v2ref.pstd, v2ref.qual, v2ref.qstd,
                                             v2ref.mapq, v2ref.qratio, v2ref.hifreq, v2ref.extrafreq, v2ref.nm
@@ -729,8 +720,8 @@ public class VarDict {
                                     ));
                         }
                     }
-                } else if (vars2.var.containsKey(p)) { // sample 1 has only reference
-                    Var v2var = vars2.var.get(p).get(0);
+                } else if (vars2.containsKey(p) && vars2.get(p).var.size() > 0) { // sample 1 has only reference
+                    Var v2var = vars2.get(p).var.get(0);
                     vartype = varType(v2var.refallele, v2var.varallele);
                     Var v2ref = getVarMaybe(vars2, p, ref);
                     if (!isGoodVar(v2var, v2ref, vartype, splice, conf)) {
@@ -739,18 +730,13 @@ public class VarDict {
                     // potential LOH
                     String nt = v2var.n;
                     String type = "StrongLOH";
-                    Map<String, Var> map = vars1.varn.get(p);
-                    if (map == null) {
-                        map = new HashMap<>();
-                        vars1.varn.put(p, map);
-                    }
-                    Var v1nt = map.get(nt);
+                    Var v1nt = getOrPutVars(vars1, p).varn.get(nt);
                     if (v1nt == null) {
                         v1nt = new Var();
-                        map.put(nt, v1nt);
+                        vars1.get(p).varn.put(nt, v1nt);
                     }
                     v1nt.cov = 0;
-                    Tuple2<Integer, String> tpl = combineAnalysis(vars2.varn.get(p).get(nt), v1nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
+                    Tuple2<Integer, String> tpl = combineAnalysis(vars2.get(p).varn.get(nt), v1nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
                     rlen = tpl._1();
                     String newtype = tpl._2();
                     if ("FALSE".equals(newtype)) {
@@ -764,7 +750,7 @@ public class VarDict {
                                 v1nt.mapq, v1nt.qratio, v1nt.hifreq, v1nt.extrafreq, v1nt.nm
                                 );
                     } else {
-                        Var v1ref = vars1.ref.get(p);
+                        Var v1ref = vars1.get(p).ref;
                         th1 = join("\t",
                                 v1ref.tcov, v1ref.cov, v1ref.rfc, v1ref.rrc, v1ref.fwd, v1ref.rev, v1ref.genotype, v1ref.freq, v1ref.bias, v1ref.pmean, v1ref.pstd, v1ref.qual, v1ref.qstd,
                                 v1ref.mapq, v1ref.qratio, v1ref.hifreq, v1ref.extrafreq, v1ref.nm
@@ -802,9 +788,9 @@ public class VarDict {
         if (conf.y) {
             System.err.printf("Start Combine %s %s\n", p, nt);
         }
-        Tuple2<Integer, Vars> tpl = toVars(new Region(chr, var1.sp - rlen, var1.ep + rlen, ""),  conf.bam.getBam1() + ":" + conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
+        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(new Region(chr, var1.sp - rlen, var1.ep + rlen, ""),  conf.bam.getBam1() + ":" + conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, rlen, conf);
         rlen = tpl._1();
-        Vars vars = tpl._2();
+        Map<Integer, Vars> vars = tpl._2();
         Var vref = getVarMaybe(vars, p, varn, nt);
         if (vref != null) {
             if (conf.y) {
@@ -881,11 +867,11 @@ public class VarDict {
     }
 
 
-    private static void vardict(Region region, Vars vars, String bam1, String sample, Map<String, Integer> splice, Configuration conf) {
+    private static void vardict(Region region, Map<Integer, Vars> vars, String bam1, String sample, Map<String, Integer> splice, Configuration conf) {
         for(int p = region.start; p <= region.end; p++) {
             List<String> vts = new ArrayList<>();
             List<Var> vrefs = new ArrayList<>();
-            if(!vars.var.containsKey(p)) {
+            if(!vars.containsKey(p) || vars.get(p).var.isEmpty()) {
                 if (!conf.doPileup) {
                     continue;
                 }
@@ -900,7 +886,7 @@ public class VarDict {
                 vts.add("");
                 vrefs.add(vref);
             } else {
-                List<Var> vvar = vars.var.get(p);
+                List<Var> vvar = vars.get(p).var;
                 Var rref = getVarMaybe(vars, p, ref);
                 for (int i = 0; i < vvar.size(); i++) {
                     Var vref = vvar.get(i);
@@ -1218,7 +1204,7 @@ public class VarDict {
     }
 
 
-    private static Tuple2<Integer, Vars> toVars(Region region, String bam, Map<String, Integer> chrs, Map<String, Integer> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
+    private static Tuple2<Integer, Map<Integer, Vars>> toVars(Region region, String bam, Map<String, Integer> chrs, Map<String, Integer> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
         String[] bams = bam.split(":");
         Map<Integer, Character> ref = new HashMap<>();
         Map<Integer, Map<String, Variation>> hash = new HashMap<>();
@@ -2030,7 +2016,7 @@ public class VarDict {
 
         adjMNP(hash, mnp, cov, conf);
 
-        Vars vars = new Vars();
+        Map<Integer, Vars> vars = new HashMap<>();
         for (Entry<Integer, Map<String, Variation>> entH : hash.entrySet()) {
             int p = entH.getKey();
             Map<String, Variation> v = entH.getValue();
@@ -2174,44 +2160,34 @@ public class VarDict {
             });
             for (Var tvar : var) {
                 if (tvar.n.equals(String.valueOf(ref.get(p)))) {
-                    vars.ref.put(p, tvar);
+                    getOrPutVars(vars, p).ref = tvar;
                 } else {
-                    List<Var> list = vars.var.get(p);
-                    if (list == null) {
-                        list = new ArrayList<>();
-                        vars.var.put(p, list);
-                    }
-                    list.add(tvar);
-                    Map<String, Var> map = vars.varn.get(p);
-                    if (map == null) {
-                        map = new HashMap<>();
-                        vars.varn.put(p, map);
-                    }
-                    map.put(tvar.n, tvar);
+                    getOrPutVars(vars, p).var.add(tvar);
+                    getOrPutVars(vars, p).varn.put(tvar.n, tvar);
                 }
             }
             // Make sure the first bias is always for the reference nucleotide
             int rfc = 0;
             int rrc = 0;
             String genotype1 = "";
-            if (vars.ref.containsKey(p)) {
-                if (vars.ref.get(p).freq >= conf.freq) {
-                    genotype1 = vars.ref.get(p).n;
-                } else if (vars.var.containsKey(p)) {
-                    genotype1 =  vars.var.get(p).get(0).n;
+            if (vars.get(p).ref != null) {
+                if (vars.get(p).ref.freq >= conf.freq) {
+                    genotype1 = vars.get(p).ref.n;
+                } else if (vars.get(p).var.size() > 0) {
+                    genotype1 =  vars.get(p).var.get(0).n;
                 }
-            } else if (vars.var.containsKey(p)) {
-                genotype1 =  vars.var.get(p).get(0).n;
+            } else if (vars.get(p).var.size() > 0) {
+                genotype1 =  vars.get(p).var.get(0).n;
             }
             String genotype2 = "";
-            if (vars.ref.containsKey(p)) {
-                rfc = vars.ref.get(p).fwd;
-                rrc = vars.ref.get(p).rev;
+            if (vars.get(p).ref != null) {
+                rfc = vars.get(p).ref.fwd;
+                rrc = vars.get(p).ref.rev;
             }
 
             // only reference reads are observed.
-            if (vars.var.containsKey(p)) {
-                for (Var vref : vars.var.get(p)) {
+            if (vars.get(p).var.size() > 0) {
+                for (Var vref : vars.get(p).var) {
                     genotype2 = vref.n;
                     String vn = vref.n;
                     int dellen = 0;
@@ -2366,8 +2342,8 @@ public class VarDict {
                     vref.tcov = tcov;
                     vref.rfc = rfc;
                     vref.rrc = rrc;
-                    if (vars.ref.containsKey(p)) {
-                        vref.bias = vars.ref.get(p).bias + ";" + vref.bias;
+                    if (vars.get(p).ref != null) {
+                        vref.bias = vars.get(p).ref.bias + ";" + vref.bias;
                     } else {
                         vref.bias = "0;" + vref.bias;
                     }
@@ -2383,8 +2359,8 @@ public class VarDict {
                     }
                 }
             }
-            if (vars.ref.containsKey(p)) {
-                Var vref = vars.ref.get(p);
+            if (vars.get(p).ref != null) {
+                Var vref = vars.get(p).ref;
                 vref.tcov = tcov;
                 vref.cov = 0;
                 vref.freq = 0;
@@ -2463,9 +2439,9 @@ public class VarDict {
     }
 
     private static class Vars {
-        private Map<Integer, Var> ref = new HashMap<>();
-        private Map<Integer, List<Var>> var = new HashMap<>();
-        private Map<Integer, Map<String, Var>> varn = new HashMap<>();
+        private Var ref;
+        private List<Var> var = new ArrayList<>();
+        private Map<String, Var> varn = new HashMap<>();
     }
 
     private static class Var {
@@ -4101,13 +4077,13 @@ public class VarDict {
         Map<String, Integer> splice = new HashMap<>();
         int rlen = 0;
         for (List<Region> regions : segs) {
-            List<Vars> vars = new ArrayList<>();
+            List<Map<Integer, Vars>> vars = new ArrayList<>();
             Region rg = null;
             Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
             int j = 0;
             for (Region region : regions) {
                 rg = region;
-                Tuple2<Integer, Vars> tpl = toVars(region, bam1, chrs, splice, ampliconBasedCalling, rlen, conf);
+                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, bam1, chrs, splice, ampliconBasedCalling, rlen, conf);
                 rlen = tpl._1();
                 vars.add(tpl._2());
                 for (int p = region.istart; p <= region.iend; p++) {
@@ -4141,8 +4117,8 @@ public class VarDict {
                     final int S = amps._2().start;
                     final int E = amps._2().end;
 
-                    List<Var> l = vars.get(amp).var.get(p);
-                    Var refAmpP = vars.get(amp).ref.get(p);
+                    List<Var> l = vars.get(amp).get(p).var;
+                    Var refAmpP = vars.get(amp).get(p).ref;
                     if (l != null && !l.isEmpty()) {
                         Var tv = l.get(0);
                         vcovs.add(tv.tcov);
@@ -4238,10 +4214,10 @@ public class VarDict {
 
                         String regStr = reg.chr + ":" + reg.start + "-" + reg.end;
 
-                        if (vars.get(amp).var.containsKey(p)) {
-                            badv.add(Tuple2.newTuple(vars.get(amp).var.get(p).get(0), regStr));
-                        } else if (vars.get(amp).ref.containsKey(p)) {
-                            badv.add(Tuple2.newTuple(vars.get(amp).ref.get(p), regStr));
+                        if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).var.size() > 0) {
+                            badv.add(Tuple2.newTuple(vars.get(amp).get(p).var.get(0), regStr));
+                        } else if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).ref != null) {
+                            badv.add(Tuple2.newTuple(vars.get(amp).get(p).ref, regStr));
                         } else {
                             badv.add(Tuple2.newTuple((Var)null, regStr));
                         }
@@ -4359,18 +4335,27 @@ public class VarDict {
 
     static enum VarsType {varn,ref,var,}
 
-    private static Var getVarMaybe(Vars vars, int key, VarsType type, Object... keys) {
-        switch (type) {
-            case var:
-                if (vars.var.containsKey(key) && vars.var.get(key).size() > (Integer)keys[0]) {
-                    return vars.var.get(key).get((Integer)keys[0]);
-                }
-            case varn:
-                if (vars.varn.containsKey(key)) {
-                    return vars.varn.get(key).get(keys[0]);
-                }
-            case ref:
-                return vars.ref.get(key);
+    private static Vars getOrPutVars(Map<Integer, Vars> map, int position) {
+        Vars vars = map.get(position);
+        if (vars == null) {
+            vars = new Vars();
+            map.put(position, vars);
+        }
+        return vars;
+    }
+
+    private static Var getVarMaybe(Map<Integer, Vars> vars, int key, VarsType type, Object... keys) {
+        if (vars.containsKey(key)) {
+            switch (type) {
+                case var:
+                    if (vars.get(key).var.size() > (Integer)keys[0]) {
+                        return vars.get(key).var.get((Integer)keys[0]);
+                    }
+                case varn:
+                    return vars.get(key).varn.get(keys[0]);
+                case ref:
+                    return vars.get(key).ref;
+            }
         }
         return null;
     }
