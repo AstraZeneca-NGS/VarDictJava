@@ -55,12 +55,12 @@ public class VarDict {
 
 
 
-        Matcher matcher = INDEL.matcher("123I45D666ID");
+        Matcher matcher = IDLEN.matcher("123I45D666ID");
         while(matcher.find()) {
             System.err.println(matcher.group(1));
         }
 
-        Matcher matcher2 = INDEL.matcher("123I45D666ID");
+        Matcher matcher2 = IDLEN.matcher("123I45D666ID");
         System.err.println(matcher2.matches());
 //        if (matcher2.matches()) {
 //            System.err.println("yyy");
@@ -942,7 +942,7 @@ public class VarDict {
     }
 
     final static Random RND = new Random(System.currentTimeMillis());
-    private static final Pattern INDEL = Pattern.compile("(\\d+)[ID]");
+    private static final Pattern IDLEN = Pattern.compile("(\\d+)[ID]");
     private static final Pattern NUMBER_MISMATCHES = Pattern.compile("(?i)NM:i:(\\d+)");
     private static final Pattern MATCH_INSERTION = Pattern.compile("(\\d+)[MI]");
     private static final Pattern SOFT_CLIPPED = Pattern.compile("(\\d+)[MIS]");
@@ -1133,6 +1133,7 @@ public class VarDict {
     private static final Pattern D_S_D_M = Pattern.compile("^(\\d+)S(\\d+)M");
     private static final Pattern D_M_D_S_END = Pattern.compile("\\d+M\\d+S$");
     private static final Pattern ANY_D_M_D_S = Pattern.compile("^(.*?)(\\d+)M(\\d+)S$");
+    private static final Pattern START_DIG = Pattern.compile("^-(\\d+)");
 
 
 
@@ -1298,15 +1299,11 @@ public class VarDict {
                         }
                     }
 
-                    int nm = 0;
-                    int idlen = 0;
-                    for (String s : globalFind(INDEL, row.cigar)) {
-                        idlen += toInt(s);
-                    }
+                    int tnm = 0;
                     Matcher nmMatcher = NUMBER_MISMATCHES.matcher(line);
                     if (nmMatcher.find()) { // number of mismatches. Don't use NM since it includes gaps, which can be from indels
-                        nm = toInt(nmMatcher.group(1)) - idlen;
-                        if (nm > conf.mismatch) { // edit distance - indels is the # of mismatches
+                        tnm = toInt(nmMatcher.group(1)) - extractIndel(row.cigar);
+                        if (tnm > conf.mismatch) { // edit distance - indels is the # of mismatches
                             continue;
                         }
                     } else {
@@ -1315,6 +1312,7 @@ public class VarDict {
                             continue;
                         }
                     }
+                    final int nm = tnm;
                     int n = 0; // keep track the read position, including softclipped
                     int p = 0; // keep track the position in the alignment, excluding softclipped
                     boolean dir = row.flag.isReverseStrand();
@@ -1740,7 +1738,7 @@ public class VarDict {
                                 }
                                 n += m;
                                 offset = 0;
-                                start = row.position;  // had to reset the start due to softclipping adjustment
+                                start = position;  // had to reset the start due to softclipping adjustment
                                 continue;
                             case "H":
                                 continue;
@@ -1824,10 +1822,8 @@ public class VarDict {
                                     hv.nm += nm;
 
                                     // Adjust the reference count for insertion reads
-                                    if ( ref.containsKey(start - 1)
-                                            && hash.containsKey(start - 1)
-                                            && hash.get(start - 1).containsKey(ref.get(start - 1))
-                                            && String.valueOf(row.querySeq.charAt(n-1)).equals(ref.get(start - 1))) {
+                                    if ( getVariationMaybe(hash, start - 1, ref.get(start - 1)) != null
+                                            && isEquals(row.querySeq.charAt(n-1), ref.get(start - 1))) {
 
 //                                        subCnt(getVariation(hash, start - 1, ref.get(start - 1 ).toString()), dir, tp, tmpq, Qmean, nm, conf);
                                         subCnt(getVariation(hash, start - 1, String.valueOf(row.querySeq.charAt(n - 1))), dir, tp, row.queryQual.charAt(n - 1) - 33, row.mapq, nm, conf);
@@ -1966,12 +1962,7 @@ public class VarDict {
                                     }
                                 }
                             }
-                            String s = null;
-                            try {
-                                s = String.valueOf(row.querySeq.charAt(n));
-                            } catch(StringIndexOutOfBoundsException e) {
-                                System.err.println();
-                            }
+                            String s = String.valueOf(row.querySeq.charAt(n));
                             if (s.equals("N")) {
                                 start++;
                                 n++;
@@ -2102,7 +2093,7 @@ public class VarDict {
 //        System.err.println("S line: " + lineTotal);
 
 
-//        List<Integer> hkk = new ArrayList<>(hash.keySet());
+//        List<Integer> hkk = new ArrayList<>(iHash.keySet());
 //        Collections.sort(hkk);
 //        for (Integer integer : hkk) {
 //            System.out.println(integer);
@@ -2294,8 +2285,9 @@ public class VarDict {
                     genotype2 = vref.n;
                     String vn = vref.n;
                     int dellen = 0;
-                    if (Pattern.compile("^-\\d+").matcher(vn).find()) {
-                        dellen = toInt(vn.substring(1));
+                    Matcher matcher = START_DIG.matcher(vn);
+                    if (matcher.find()) {
+                        dellen = toInt(matcher.group(1));
                     }
                     int ep = p;
                     if (vn.startsWith("-")) {
@@ -2499,6 +2491,15 @@ public class VarDict {
         }
 
         return Tuple2.newTuple(Rlen, vars);
+    }
+
+
+    private static int extractIndel(String cigar) {
+        int idlen = 0;
+        for (String s : globalFind(IDLEN, cigar)) {
+            idlen += toInt(s);
+        }
+        return idlen;
     }
 
     private static Tuple3<Double, Integer, String> findMSI(String tseq1, String tseq2, String left) {
