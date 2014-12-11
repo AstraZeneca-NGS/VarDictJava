@@ -614,6 +614,7 @@ public class VarDict {
 
                         } else { // sample 1 only, should be strong somatic
                             String type = "StrongSomatic";
+                            v2nt = new Var();
                             getOrPutVars(vars2, p).varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
                             Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
                             rlen = tpl._1();
@@ -987,9 +988,6 @@ public class VarDict {
 
     private static Variation getVariation(Map<Integer, Map<String, Variation>> hash, int start, String ref) {
         Map<String, Variation> map = hash.get(start);
-        if (start == 20001) {
-//            System.err.println("");
-        }
         if (map == null) {
             map = new HashMap<>();
             hash.put(start, map);
@@ -1054,10 +1052,8 @@ public class VarDict {
 
     public static class Variation {
         int cnt;
-        Map<Boolean, int[]> dir = new HashMap<Boolean, int[]>() {{
-            put(false, new int[1]);
-            put(true, new int[1]);
-        }};
+        int dirPlus;
+        int dirMinus;
         int pmean;
         int qmean;
         int Qmean;
@@ -1072,19 +1068,37 @@ public class VarDict {
         int extracnt;
 
         public void incDir(boolean dir) {
-            this.dir.get(dir)[0]++;
+            if (dir)
+                this.dirMinus++;
+            else
+                this.dirPlus++;
         }
+
         public void decDir(boolean dir) {
-            this.dir.get(dir)[0]--;
+            if (dir)
+                this.dirMinus--;
+            else
+                this.dirPlus--;
         }
+
         public int getDir(boolean dir) {
-            return this.dir.get(dir)[0];
+            if (dir)
+                return this.dirMinus;
+            return this.dirPlus;
         }
+
         public void addDir(boolean dir, int add) {
-            this.dir.get(dir)[0] += add;
+            if (dir)
+                this.dirMinus += add;
+            else
+                this.dirPlus += add;
         }
+
         public void subDir(boolean dir, int sub) {
-            this.dir.get(dir)[0] -= sub;
+            if (dir)
+                this.dirMinus -= sub;
+            else
+                this.dirPlus -= sub;
         }
 
     }
@@ -1381,7 +1395,6 @@ public class VarDict {
                     int offset = 0;
                     boolean flag = true;
                     while (flag) {
-//                        System.out.println(">>> " + cigarStr);
                         flag = false;
                         Matcher cm = D_S_D_ID.matcher(cigarStr);
                         if (cm.find()) {
@@ -1389,14 +1402,12 @@ public class VarDict {
                             position = cm.group(3).equals("D") ? 2 : 0;
                             cigarStr = cm.replaceFirst(tslen);
                             flag = true;
-//                            System.err.println("-|1|");
                         }
                         cm = D_ID_D_S.matcher(cigarStr);
                         if (cm.find()) {
                             String tslen = toInt(cm.group(3)) + (cm.group(2).equals("I") ? toInt(cm.group(1)) : 0) + "S";
                             cigarStr = cm.replaceFirst(tslen);
                             flag = true;
-//                            System.err.println("-|2|");
                         }
                         cm = D_S_D_M_ID.matcher(cigarStr);
                         if (cm.find()) {
@@ -1406,7 +1417,6 @@ public class VarDict {
                                 position += tmid + (cm.group(4).equals("D") ? toInt(cm.group(3)) : 0);
                                 cigarStr = cm.replaceFirst(tslen);
                                 flag = true;
-//                                System.err.print("-|3|");
                             }
                         }
                         cm = D_ID_D_M_S.matcher(cigarStr);
@@ -1416,7 +1426,6 @@ public class VarDict {
                                 String tslen = toInt(cm.group(4)) + tmid + (cm.group(2).equals("I") ? toInt(cm.group(1)) : 0) + "S";
                                 cigarStr = cm.replaceFirst(tslen);
                                 flag = true;
-//                                System.err.print("-|4|");
                             }
                         }
 
@@ -1440,7 +1449,6 @@ public class VarDict {
                                 position += n0;
                                 cigarStr = cigarStr.replaceFirst("^\\dM\\d+[ID]\\d+M", tslen + "S" + mlen + "M");
                                 flag = true;
-//                                System.err.print("-|5|");
                             }
                         }
                         cm = D_ID_DD_M.matcher(cigarStr);
@@ -1450,7 +1458,6 @@ public class VarDict {
                                 String tslen = tmid + (cm.group(2).equals("I") ? toInt(cm.group(1)) : 0) + "S";
                                 cigarStr = cm.replaceFirst(tslen);
                                 flag = true;
-//                                System.err.print("-|6|");
                             }
                         }
 
@@ -1484,7 +1491,6 @@ public class VarDict {
                                 dlen -= rn;
                                 tslen -= rn;
                                 cigarStr = D_M_D_DD_M_D_I_D_M_D_DD_prim.matcher(cigarStr).replaceFirst(RDOFF + "M" + dlen + "D" + tslen + "I");
-//                                System.err.print("-|7|");
                                 flag = true;
                             }
                         }
@@ -1498,7 +1504,6 @@ public class VarDict {
                                 ilen += toInt(istr.substring(0, istr.length() - 1));
                             }
                             cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
-//                            System.err.print("-|8|");
                             flag = true;
                         }
 
@@ -1513,11 +1518,8 @@ public class VarDict {
                             }
                             cigarStr = cm.replaceFirst(dlen + "D" + ilen);
                             flag = true;
-//                            System.err.print("-|9|");
                         }
 
-//                        System.out.println(cigarStr);
-//                        System.out.println();
                     }
 
                     Matcher mtch = ANY_D_M_D_S.matcher(cigarStr);
@@ -1826,7 +1828,8 @@ public class VarDict {
                                             && isEquals(row.querySeq.charAt(n-1), ref.get(start - 1))) {
 
 //                                        subCnt(getVariation(hash, start - 1, ref.get(start - 1 ).toString()), dir, tp, tmpq, Qmean, nm, conf);
-                                        subCnt(getVariation(hash, start - 1, String.valueOf(row.querySeq.charAt(n - 1))), dir, tp, row.queryQual.charAt(n - 1) - 33, row.mapq, nm, conf);
+                                        Variation tv = getVariation(hash, start - 1, String.valueOf(row.querySeq.charAt(n - 1)));
+                                        subCnt(tv, dir, tp, row.queryQual.charAt(n - 1) - 33, row.mapq, nm, conf);
                                     }
                                     // Adjust count if the insertion is at the edge so that the AF won't > 1
                                     if (ci == 2 && (cigar.get(1).contains("S") || cigar.get(1).contains("H"))) {
@@ -2028,7 +2031,7 @@ public class VarDict {
                                 if (start - qbases + 1 >=region.start && start - qbases + 1 <= region.end) {
                                     Variation hv = getVariation(hash, start - qbases + 1, s);
                                     hv.incDir(dir);
-                                    if (Pattern.compile("^[ATGC]&[ATGC]+$").matcher(s).find()) {
+                                    if (B_ATGS_ATGS_E.matcher(s).find()) {
                                         increment(mnp, start - qbases + 1, s);
                                     }
                                     hv.cnt++;
@@ -2045,7 +2048,7 @@ public class VarDict {
                                     hv.Qmean += row.mapq;
                                     hv.pp = tp;
                                     hv.pq = q;
-                                    hv.nm = nm;
+                                    hv.nm += nm;
                                     if (q >= conf.goodq) {
                                         hv.hicnt++;
                                     } else {
@@ -3427,6 +3430,7 @@ public class VarDict {
     private static final Pattern B_MIN_DIG = Pattern.compile("^-(\\d+)");
     private static final Pattern UP_DIG_E = Pattern.compile("\\^(\\d+)$");
     private static final Pattern ATGS_ATGS = Pattern.compile("(\\+[ATGC]+)&[ATGC]+$");
+    private static final Pattern B_ATGS_ATGS_E = Pattern.compile("^[ATGC]&[ATGC]+$");
 
     private static final Comparator<Object[]> COMP1 = new Comparator<Object[]>() {
         @Override
@@ -4040,26 +4044,32 @@ public class VarDict {
             Map<Integer, Integer> cov, Configuration conf) {
 
         for (Map.Entry<Integer, Map<String, Integer>> entry: mnp.entrySet()) {
-            Integer p = entry.getKey();
+            final Integer p = entry.getKey();
             Map<String, Integer> v = entry.getValue();
 
             for (Map.Entry<String, Integer> en: v.entrySet()) {
-                String vn = en.getKey();
-                String mnt = vn.replace("&", "");
+                final String vn = en.getKey();
+                String mnt = vn.replaceFirst("&", "");
+                Variation vref = hash.get(p).get(vn);
                 for (int i = 0; i < mnt.length() - 1; i++) {
                     String left = substr(mnt, 0, i + 1);
                     String right = substr(mnt, -(mnt.length() - i - 1));
-                    Variation vref = getVariation(hash, p, vn);
                     if (hash.containsKey(p) && hash.get(p).containsKey(left)) {
-                        Variation tref = getVariation(hash, p, left);
+                        Variation tref = hash.get(p).get(left);
                         if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= i + 1) {
+                            if (conf.y) {
+                                System.err.printf("AdjMnt Left: %s %s %s\n", p, vn, tref.cnt);
+                            }
                             adjCnt(vref, tref, conf);
                             hash.get(p).remove(left);
                         }
                     }
                     if (hash.containsKey(p + i + 1) && hash.get(p + i + 1).containsKey(right)) {
-                        Variation tref = getVariation(hash, p + i + 1, right);
+                        Variation tref = hash.get(p + i + 1).get(right);
                         if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= mnt.length() - i - 1) {
+                            if (conf.y) {
+                                System.err.printf("AdjMnt Right: %s %s %s\n", p, vn, tref.cnt);
+                            }
                             adjCnt(vref, tref, conf);
                             incCnt(cov, p, tref.cnt);
                             hash.get(p + i + 1).remove(right);
