@@ -3,7 +3,6 @@ package com.epam;
 import static com.epam.VarDict.DEFAULT_BED_ROW_FORMAT;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
@@ -60,15 +59,15 @@ public class Main {
             conf.zeroBased = 1 == getIntValue(cmd, "z", 0);
         }
         conf.ampliconBasedCalling = cmd.getOptionValue("a");
-        conf.performLocalRealignment = 1 == getIntValue(cmd, "k", 0);
+        conf.performLocalRealignment = 1 == getIntValue(cmd, "k", 1);
         conf.hasFasta = cmd.hasOption("G");
         conf.fasta = cmd.getOptionValue("G", "/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa");
         conf.regionOfInterest = cmd.getOptionValue("R");
         conf.delimiter = cmd.getOptionValue("d", "\t");
-        conf.sampleName = cmd.getOptionValue("n");
+        conf.sampleName = cmd.getOptionValue("N");
 
-        if (cmd.hasOption('N')) {
-            String regexp = cmd.getOptionValue('N');
+        if (cmd.hasOption('n')) {
+            String regexp = cmd.getOptionValue('n');
             if (regexp.startsWith("/"))
                 regexp = regexp.substring(1);
             if (regexp.endsWith("/"))
@@ -145,6 +144,7 @@ public class Main {
         options.addOption("M", false, "Similar to -D, but will append individual quality and position data instead of mean");
         options.addOption("t", false, "Indicate to remove duplicated reads.  Only one pair with same start positions will be kept");
         options.addOption("3", false, "Indicate to move indels to 3-prime if alternative alignment can be achieved.");
+
 
         options.addOption(OptionBuilder.withArgName("bit")
                 .hasArg(true)
@@ -362,6 +362,10 @@ public class Main {
                 .withType(String.class)
                 .isRequired(false)
                 .create('I'));
+
+        options.addOption(OptionBuilder
+                .isRequired(false)
+                .create('y'));
 
 
         return options;
