@@ -53,8 +53,6 @@ public class VarDict {
             System.err.println(nmMatcher.group(1));
         }
 
-
-
         Matcher matcher = IDLEN.matcher("123I45D666ID");
         while(matcher.find()) {
             System.err.println(matcher.group(1));
@@ -1777,7 +1775,8 @@ public class VarDict {
                                             if (row.queryQual.charAt(n + m + vi) - 33 < conf.goodq) {
                                                 break;
                                             }
-                                            if (ref.containsKey(start + vi) && String.valueOf(row.querySeq.charAt(n + m + vi)).equals(ref.get(start + vi))) {
+                                            if (ref.containsKey(start + vi)
+                                                    && isNotEquals(row.querySeq.charAt(n + m + vi), ref.get(start + vi))) {
                                                 offset = vi + 1;
                                             }
                                         }
@@ -2125,6 +2124,10 @@ public class VarDict {
             if (!cov.containsKey(p) || cov.get(p) == 0) {
                 continue;
             }
+            int tcov = cov.get(p);
+            if (tcov == 0) { //  ignore when there's no coverage
+                continue;
+            }
 
             int hicov = 0;
             for (Variation vr : v.values()) {
@@ -2133,7 +2136,6 @@ public class VarDict {
 
             List<Var> var = new ArrayList<>();
             List<String> tmp = new ArrayList<>();
-            int tcov = cov.get(p);
             for (Entry<String, Variation> entV : v.entrySet()) {
                 String n = entV.getKey();
                 Variation cnt = entV.getValue();
@@ -2286,7 +2288,7 @@ public class VarDict {
             if (vars.get(p).var.size() > 0) {
                 for (Var vref : vars.get(p).var) {
                     genotype2 = vref.n;
-                    String vn = vref.n;
+                    final String vn = vref.n;
                     int dellen = 0;
                     Matcher matcher = START_DIG.matcher(vn);
                     if (matcher.find()) {
@@ -2326,7 +2328,7 @@ public class VarDict {
                                 shift3 = tshift3;
                                 msint = tmsint;
                             }
-                            if (shift3/(double)tseq1.length() < msi) {
+                            if (msi <= shift3/(double)tseq1.length()) {
                                 msi = shift3/(double)tseq1.length();
                             }
                         }
@@ -2429,7 +2431,7 @@ public class VarDict {
                     vref.extrafreq = round(vref.extrafreq, 3);
                     vref.freq = round(vref.freq, 3);
                     vref.hifreq = round(vref.hifreq, 3);
-                    vref.msi = round(vref.msi, 3);
+                    vref.msi = round(msi, 3);
                     vref.msint = msint.length();
                     vref.shift3 = shift3;
                     vref.sp = sp;
@@ -4542,7 +4544,7 @@ public class VarDict {
             return false;
         }
         if ( vref.bias.equals("2;1") && vref.freq < 0.25d ) {
-            if (type == null || type.isEmpty() || type.equals("SNV") || (vref.refallele.length() <= 3 && vref.varallele.length() <= 3)) {
+            if (type == null || type.equals("SNV") || (vref.refallele.length() <= 3 && vref.varallele.length() <= 3)) {
                 return false;
             }
         }
