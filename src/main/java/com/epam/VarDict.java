@@ -2395,8 +2395,8 @@ public class VarDict {
                         genotype1 += tch;
                         ep += extra.length();
                         if (vn.startsWith("+")) {
-                            refallele = refallele.substring(0);
-                            varallele = varallele.substring(0);
+                            refallele = refallele.substring(1);
+                            varallele = varallele.substring(1);
                             sp++;
                         }
                     }
