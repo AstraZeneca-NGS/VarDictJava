@@ -914,7 +914,6 @@ public class VarDict {
                 if (conf.debug) {
                     System.out.println("\t" + vref.DEBUG);
                 }
-                System.out.println();
             }
 
         }
@@ -987,7 +986,7 @@ public class VarDict {
     private static Variation getVariation(Map<Integer, Map<String, Variation>> hash, int start, String ref) {
         Map<String, Variation> map = hash.get(start);
         if (map == null) {
-            map = new HashMap<>();
+            map = new LinkedHashMap<>();
             hash.put(start, map);
         }
         Variation variation = map.get(ref);
@@ -1010,7 +1009,7 @@ public class VarDict {
         return  map.get(ref.toString());
     }
 
-    private static void subCnt(Variation vref, boolean dir, int rp, int q, int Q, int nm, Configuration conf) {
+    private static void subCnt(Variation vref, boolean dir, int rp, double q, int Q, int nm, Configuration conf) {
         // ref dir read_position quality
         vref.cnt--;
         vref.decDir(dir);
@@ -1026,7 +1025,7 @@ public class VarDict {
     }
 
 
-    private static void addCnt(Variation vref, boolean dir, int rp, int q, int Q, int nm, int goodq) {
+    private static void addCnt(Variation vref, boolean dir, int rp, double q, int Q, int nm, int goodq) {
         vref.cnt++;
         vref.incDir(dir);
         vref.pmean += rp;
@@ -1053,7 +1052,7 @@ public class VarDict {
         int dirPlus;
         int dirMinus;
         int pmean;
-        int qmean;
+        double qmean;
         int Qmean;
         int nm;
         int locnt;
@@ -1062,7 +1061,7 @@ public class VarDict {
         boolean pstd;
         boolean qstd;
         int pp;
-        int pq;
+        double pq;
         int extracnt;
 
         public void incDir(boolean dir) {
@@ -1799,7 +1798,7 @@ public class VarDict {
                                     hv.incDir(dir);
                                     hv.cnt++;
                                     int tp = p < rlen - p ? p + 1 : rlen - p;
-                                    int tmpq = 0;
+                                    double tmpq = 0;
                                     for (int i = 0; i < q.length(); i++) {
                                         tmpq += q.charAt(i) - 33;
                                     }
@@ -1892,13 +1891,13 @@ public class VarDict {
                                                 if (row.queryQual.charAt(n + vi) - 33 < conf.goodq) {
                                                     break;
                                                 }
-                                                if (ref.containsKey(start + m + vi) && String.valueOf(row.querySeq.charAt(n + vi)).equals(ref.get(start + m + vi))) {
+                                                if (isNotEquals(row.querySeq.charAt(n + vi), ref.get(start + m + vi))) {
                                                     offset = vi + 1;
                                                 }
                                             }
                                             if (offset != 0) {
-                                                ss.append(substr(row.querySeq, n + m, offset));
-                                                q.append(substr(row.queryQual, n + m, offset));
+                                                ss.append(substr(row.querySeq, n, offset));
+                                                q.append(substr(row.queryQual, n, offset));
                                                 for (int osi = 0; osi < offset; osi++) {
                                                     incCnt(cov, start + osi, 1);
                                                 }
@@ -1912,11 +1911,12 @@ public class VarDict {
                                     q.append(q1 > q2 ? q1 : q2);
                                     if ( start >= region.start && start <= region.end ) {
                                         Variation hv = getVariation(hash, start, s.toString());
+                                        increment(dels5, start, s.toString());
                                         hv.incDir(dir);
                                         hv.cnt++;
 
                                         int tp = p < rlen - p ? p + 1 : rlen - p;
-                                        int tmpq = 0;
+                                        double tmpq = 0;
 
                                         for (int i = 0; i < q.length(); i++) {
                                             tmpq += q.charAt(i) - 33;
@@ -1971,7 +1971,7 @@ public class VarDict {
                                 p++;
                                 continue;
                             }
-                            int q = row.queryQual.charAt(n) - 33;
+                            double q = row.queryQual.charAt(n) - 33;
                             int qbases = 1;
                             int qibases = 0;
                             // for more than one nucleotide mismatch
@@ -2145,7 +2145,7 @@ public class VarDict {
                 int fwd = cnt.getDir(false);
                 int rev = cnt.getDir(true);
                 int bias = strandBias(fwd, rev, conf);
-                double vqual = round(cnt.qmean / (double)cnt.cnt, 1); // base quality
+                double vqual = round(cnt.qmean / cnt.cnt, 1); // base quality
                 double mq = round(cnt.Qmean/(double)cnt.cnt, 1); // mapping quality
                 int hicnt  = cnt.hicnt;
                 int locnt  = cnt.locnt;
@@ -2198,7 +2198,7 @@ public class VarDict {
                     int fwd = cnt.getDir(false);
                     int rev = cnt.getDir(true);
                     int bias = strandBias(fwd, rev, conf);
-                    double vqual = round(cnt.qmean / (double)cnt.cnt, 1); // base quality
+                    double vqual = round(cnt.qmean / cnt.cnt, 1); // base quality
                     double mq = round(cnt.Qmean/(double)cnt.cnt, 1); // mapping quality
                     int hicnt  = cnt.hicnt;
                     int locnt  = cnt.locnt;
@@ -2361,7 +2361,7 @@ public class VarDict {
                             shift3 = tshift3;
                             msint = tmsint;
                         }
-                        if (shift3 / (double)dellen < msi) {
+                        if (msi <= shift3 / (double)dellen) {
                             msi = shift3 / (double)dellen;
                         }
                         if (!vn.contains("&") && !vn.contains("#") && !vn.contains("\\^")) {
@@ -2372,9 +2372,9 @@ public class VarDict {
                             refallele = varallele;
                             sp--;
                         }
-                        refallele += joinRef(ref, p, dellen - 1);
+                        refallele += joinRef(ref, p, p + dellen - 1);
                     } else {
-                        String tseq1 = joinRef(ref, p - 70 > 1 ? p - 70 : 1, p - 1);
+                        String tseq1 = joinRef(ref, p - 30 > 1 ? p - 30 : 1, p + 1);
                         int chr0 = getOrElse(chrs, region.chr, 0);
                         String tseq2 = joinRef(ref, p + 2, p + 70 > chr0 ? chr0 : p + 70);
 
@@ -2530,7 +2530,7 @@ public class VarDict {
             double curmsi = msimatch.length() / (double)nmsi;
             mtch = Pattern.compile("^((" + msint + ")+)").matcher(tseq2);
             if (mtch.find()) {
-                curmsi = mtch.group(1).length() / (double)nmsi;
+                curmsi += mtch.group(1).length() / (double)nmsi;
             }
             if (curmsi > msicnt) {
                 maxmsi = msint;

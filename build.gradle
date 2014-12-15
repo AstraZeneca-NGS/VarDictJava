@@ -17,5 +17,6 @@ dependencies {
 }
 
 mainClassName = "com.epam.Main"
+applicationDefaultJvmArgs = ["-Xmx512m"]
 
 
