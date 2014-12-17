@@ -11,12 +11,23 @@ repositories {
 targetCompatibility = "1.7"
 sourceCompatibility = "1.7"
 
+
+afterEvaluate {
+    if(project.hasProperty("hprof")) {
+        applicationDefaultJvmArgs = ["-Xrunhprof:cpu=times,depth=10", "-Xmx512m"]
+    } else {
+        applicationDefaultJvmArgs = ["-Xmx512m"]
+    }
+}
+
+
 dependencies {
     compile 'commons-cli:commons-cli:1.2' 
+    compile 'com.edropple.jregex:jregex:1.2_01'
     testCompile 'junit:junit:4.8.2' 
 }
 
 mainClassName = "com.epam.Main"
-applicationDefaultJvmArgs = ["-Xmx512m"]
+//applicationDefaultJvmArgs = ["-Xmx512m"]
 
 
