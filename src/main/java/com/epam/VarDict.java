@@ -1,7 +1,9 @@
 package com.epam;
 
+import static com.epam.VarDict.VarsType.ref;
+import static com.epam.VarDict.VarsType.var;
+import static com.epam.VarDict.VarsType.varn;
 import static java.lang.String.format;
-import static com.epam.VarDict.VarsType.*;
 
 import java.io.*;
 import java.util.*;
@@ -9,76 +11,12 @@ import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import jregex.Replacer;
+
 public class VarDict {
 
     final static Pattern SN = Pattern.compile("\\s+SN:(\\S+)");
     final static Pattern LN = Pattern.compile("\\sLN:(\\d+)");
-
-    public static void main(String[] args) throws Exception {
-
-        String xx = "200SIxx4544IDyyy555";
-        List<String> l = new LinkedList<>();
-        Matcher xxm = Pattern.compile("(\\d+)([A-Z])").matcher(xx);
-        while (xxm.find()) {
-            l.add(xxm.group(1));
-            l.add(xxm.group(2));
-        }
-
-        System.err.println(l);
-
-
-        if (true)
-            return;
-
-        Matcher m = D_S_D_ID.matcher("123S77DIxxxxxxxxxxxxxx4456SIyyyy");
-        if (m.find()) {
-            String tslen = Integer.parseInt(m.group(1)) + Integer.parseInt(m.group(2)) + "S";
-            System.err.println(m.replaceFirst(tslen));
-        }
-
-
-        System.err.println("asdfasdf\tSA:Z:ererer  asdasd".matches(".*\\tSA:Z:(\\S+).*"));
-
-
-
-        System.err.println("123Ssdfgsdfg".matches("^(\\d+)S.*"));
-        System.err.println("saffasf123S".matches("^.*(\\d+)S$"));
-
-//      if ( $a[5] =~ /^(\d+)S/ ) {
-
-
-
-        Matcher nmMatcher = NUMBER_MISMATCHES.matcher("nM:i:2345asdd");
-        if (nmMatcher.find()) {
-            System.err.println(nmMatcher.group(1));
-        }
-
-        Matcher matcher = IDLEN.matcher("123I45D666ID");
-        while(matcher.find()) {
-            System.err.println(matcher.group(1));
-        }
-
-        Matcher matcher2 = IDLEN.matcher("123I45D666ID");
-        System.err.println(matcher2.matches());
-//        if (matcher2.matches()) {
-//            System.err.println("yyy");
-//            for (int i = 1; i <= matcher2.groupCount(); i++) {
-//                System.err.println(matcher2.group(i));
-//            }
-//        }
-
-        if (true)
-            return;
-
-        Bam bam = new Bam("/Users/kirst/Work/bcbio.coverage/test/data/aligned-reads.bam");
-
-        Map<String, Integer> chr = readCHR(bam.getBamX());
-
-        for (Map.Entry<String, Integer> string : chr.entrySet()) {
-            System.out.println(string.getKey() + " == " + string.getValue());
-        }
-    }
-
 
     public static void start(Configuration conf) throws IOException {
         if (conf.printHeader) {
@@ -1126,11 +1064,17 @@ public class VarDict {
     }
 
     private static final Pattern D_S_D_ID = Pattern.compile("^(\\d+)S(\\d+)([ID])");
+    private static final jregex.Pattern j_D_S_D_ID =  new jregex.Pattern("^(\\d+)S(\\d+)([ID])");
     private static final Pattern D_ID_D_S = Pattern.compile("(\\d+)([ID])(\\d+)S$");
+    private static final jregex.Pattern j_D_ID_D_S = new jregex.Pattern("(\\d+)([ID])(\\d+)S$");
     private static final Pattern D_S_D_M_ID = Pattern.compile("^(\\d+)S(\\d+)M(\\d+)([ID])");
+    private static final jregex.Pattern j_D_S_D_M_ID = new jregex.Pattern("^(\\d+)S(\\d+)M(\\d+)([ID])");
     private static final Pattern D_ID_D_M_S = Pattern.compile("(\\d+)([ID])(\\d+)M(\\d+)S$");
+    private static final jregex.Pattern j_D_ID_D_M_S = new jregex.Pattern("(\\d+)([ID])(\\d+)M(\\d+)S$");
     private static final Pattern D_M_D_ID_D_M = Pattern.compile("^(\\d)M(\\d+)([ID])(\\d+)M");
+    private static final jregex.Pattern j_D_M_D_ID_D_M = new jregex.Pattern("^(\\d)M(\\d+)([ID])(\\d+)M");
     private static final Pattern D_ID_DD_M = Pattern.compile("(\\d+)([ID])(\\d)M$");
+    private static final jregex.Pattern j_D_ID_DD_M = new jregex.Pattern("(\\d+)([ID])(\\d)M$");
     private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD = Pattern.compile("^(.*?)(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
     private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD_prim = Pattern.compile("(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
     private static final Pattern D_MIS = Pattern.compile("(\\d+)[MIS]");
@@ -1145,6 +1089,7 @@ public class VarDict {
     private static final Pattern D_M_D_S_END = Pattern.compile("\\d+M\\d+S$");
     private static final Pattern ANY_D_M_D_S = Pattern.compile("^(.*?)(\\d+)M(\\d+)S$");
     private static final Pattern START_DIG = Pattern.compile("^-(\\d+)");
+    private static final Pattern SA_Z = Pattern.compile("\\tSA:Z:\\S+");
 
 
 
@@ -1377,7 +1322,7 @@ public class VarDict {
                         // to be implemented
                     } else {
                         if (row.mrnm.equals("=")) {
-                            if (Pattern.compile(".*\\tSA:Z:(\\S+).*").matcher(line).find()) {
+                            if (SA_Z.matcher(line).find()) {
                                 if (row.flag.isSupplementaryAlignment()) { // the supplementary alignment
                                     continue; // Ignore the supplmentary for now so that it won't skew the coverage
                                 }
@@ -1393,35 +1338,39 @@ public class VarDict {
                     boolean flag = true;
                     while (flag) {
                         flag = false;
-                        Matcher cm = D_S_D_ID.matcher(cigarStr);
-                        if (cm.find()) {
-                            String tslen = toInt(cm.group(1)) + (cm.group(3).equals("I") ? toInt(cm.group(2)) : 0) + "S";
-                            position = cm.group(3).equals("D") ? 2 : 0;
-                            cigarStr = cm.replaceFirst(tslen);
+                        jregex.Matcher mm = j_D_S_D_ID.matcher(cigarStr);
+                        if (mm.find()) {
+                            String tslen = toInt(mm.group(1)) + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0) + "S";
+                            position = mm.group(3).equals("D") ? 2 : 0;
+                            Replacer r = j_D_S_D_ID.replacer(tslen);
+                            cigarStr = r.replace(cigarStr);
                             flag = true;
                         }
-                        cm = D_ID_D_S.matcher(cigarStr);
-                        if (cm.find()) {
-                            String tslen = toInt(cm.group(3)) + (cm.group(2).equals("I") ? toInt(cm.group(1)) : 0) + "S";
-                            cigarStr = cm.replaceFirst(tslen);
+                        mm = j_D_ID_D_S.matcher(cigarStr);
+                        if (mm.find()) {
+                            String tslen = toInt(mm.group(3)) + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+                            Replacer r = j_D_ID_D_S.replacer(tslen);
+                            cigarStr = r.replace(cigarStr);
                             flag = true;
                         }
-                        cm = D_S_D_M_ID.matcher(cigarStr);
-                        if (cm.find()) {
-                            int tmid = toInt(cm.group(2));
+                        mm = j_D_S_D_M_ID.matcher(cigarStr);
+                        if (mm.find()) {
+                            int tmid = toInt(mm.group(2));
                             if (tmid <= 10 ) {
-                                String tslen = toInt(cm.group(1)) + tmid + (cm.group(4).equals("I") ? toInt(cm.group(3)) : 0) + "S";
-                                position += tmid + (cm.group(4).equals("D") ? toInt(cm.group(3)) : 0);
-                                cigarStr = cm.replaceFirst(tslen);
+                                String tslen = toInt(mm.group(1)) + tmid + (mm.group(4).equals("I") ? toInt(mm.group(3)) : 0) + "S";
+                                position += tmid + (mm.group(4).equals("D") ? toInt(mm.group(3)) : 0);
+                                Replacer r = j_D_S_D_M_ID.replacer(tslen);
+                                cigarStr = r.replace(cigarStr);
                                 flag = true;
                             }
                         }
-                        cm = D_ID_D_M_S.matcher(cigarStr);
-                        if (cm.find()) {
-                            int tmid = toInt(cm.group(3));
+                        mm = j_D_ID_D_M_S.matcher(cigarStr);
+                        if (mm.find()) {
+                            int tmid = toInt(mm.group(3));
                             if (tmid <= 10 ) {
-                                String tslen = toInt(cm.group(4)) + tmid + (cm.group(2).equals("I") ? toInt(cm.group(1)) : 0) + "S";
-                                cigarStr = cm.replaceFirst(tslen);
+                                String tslen = toInt(mm.group(4)) + tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+                                Replacer r = j_D_ID_D_M_S.replacer(tslen);
+                                cigarStr = r.replace(cigarStr);
                                 flag = true;
                             }
                         }
@@ -1430,13 +1379,13 @@ public class VarDict {
 
                         // The following two clauses to make indels at the end of reads as softly
                         // clipped reads and let VarDict's algorithm identify indels
-                        cm = D_M_D_ID_D_M.matcher(cigarStr);
-                        if (cm.find()) {
-                            int tmid = toInt(cm.group(1));
-                            int mlen = toInt(cm.group(4));
+                        mm = j_D_M_D_ID_D_M.matcher(cigarStr);
+                        if (mm.find()) {
+                            int tmid = toInt(mm.group(1));
+                            int mlen = toInt(mm.group(4));
                             if (tmid <= 8 ) {
-                                int tslen = tmid + (cm.group(3).equals("I") ? toInt(cm.group(2)) : 0);
-                                position += tmid + (cm.group(3).equals("D") ? toInt(cm.group(2)) : 0);
+                                int tslen = tmid + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0);
+                                position += tmid + (mm.group(3).equals("D") ? toInt(mm.group(2)) : 0);
                                 int n0 = 0;
                                 while (n0 < mlen && !Character.valueOf(row.querySeq.charAt(tslen + n0)).equals(ref.get(position + n0))) {
                                     n0++;
@@ -1448,18 +1397,19 @@ public class VarDict {
                                 flag = true;
                             }
                         }
-                        cm = D_ID_DD_M.matcher(cigarStr);
-                        if (cm.find()) {
-                            int tmid = toInt(cm.group(3));
+                        mm = j_D_ID_DD_M.matcher(cigarStr);
+                        if (mm.find()) {
+                            int tmid = toInt(mm.group(3));
                             if (tmid <= 8 ) {
-                                String tslen = tmid + (cm.group(2).equals("I") ? toInt(cm.group(1)) : 0) + "S";
-                                cigarStr = cm.replaceFirst(tslen);
+                                String tslen = tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+                                Replacer r = j_D_ID_DD_M.replacer(tslen);
+                                cigarStr = r.replace(cigarStr);
                                 flag = true;
                             }
                         }
 
                         //Combine two deletions and insertion into one complex if they are close
-                        cm = D_M_D_DD_M_D_I_D_M_D_DD.matcher(cigarStr);
+                        Matcher cm = D_M_D_DD_M_D_I_D_M_D_DD.matcher(cigarStr);
                         if (cm.find()) {
                             int mid = toInt(cm.group(4)) + toInt(cm.group(6));
                             if (mid <= 10) {
@@ -1618,9 +1568,6 @@ public class VarDict {
                                             && isEquals(ref.get(start - 1), row.querySeq.charAt(m - 1))
                                             && row.queryQual.charAt(m - 1) - 33 > 10) {
                                         Variation variation = getVariation(hash, start - 1, ref.get(start - 1).toString());
-                                        if (variation.cnt != 0) {
-                                            variation.cnt = 0;
-                                        }
                                         addCnt(variation, dir, m, row.queryQual.charAt(m - 1) - 33, row.mapq, nm, conf.goodq);
                                         incCnt(cov, start - 1, 1);
                                         start--;
@@ -1643,7 +1590,7 @@ public class VarDict {
                                             q += tq;
                                             qn++;
                                         }
-                                        if (qn >= 1 && qn > lowqcnt && start >= s_start - conf.buffer && start <= s_end + conf.buffer) {
+                                        if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
                                             Sclip sclip = sclip5.get(start);
                                             if (sclip == null) {
                                                 sclip = new Sclip();
@@ -1654,18 +1601,16 @@ public class VarDict {
                                                 int idx = m - 1 - si;
                                                 Map<Character, Integer> cnts = sclip.nt.get(idx);
                                                 if (cnts == null) {
-                                                    cnts = new HashMap<>();
+                                                    cnts = new LinkedHashMap<>();
                                                     sclip.nt.put(idx, cnts);
                                                 }
                                                 incCnt(cnts, ch, 1);
                                                 Variation seqVariation = getVariationFromSeq(sclip, idx, ch);
-                                                if (seqVariation.cnt != 0) {
-                                                    seqVariation.cnt = 0;
-                                                }
+//                                                if (seqVariation.cnt != 0) {
+//                                                    seqVariation.cnt = 0;
+//                                                }
                                                 addCnt(seqVariation, dir, si - (m - qn), row.queryQual.charAt(si) - 33, row.mapq, nm, conf.goodq);
                                             }
-                                            if (sclip.cnt != 0)
-                                                sclip.cnt = 0;
                                             addCnt(sclip, dir, m, q / qn, row.mapq, nm, conf.goodq);
                                         }
 
@@ -1677,12 +1622,8 @@ public class VarDict {
                                             && row.queryQual.charAt(n) - 33 > 10) {
 
                                         Variation variation = getVariation(hash, start, ref.get(start).toString());
-                                        if (variation.cnt != 0) {
-                                            variation.cnt = 0;
-                                        }
                                         addCnt(variation, dir, rlen2 - p, row.queryQual.charAt(n) - 33, row.mapq, nm, conf.goodq);
                                         incCnt(cov, start, 1);
-
                                         n++;
                                         start++;
                                         m--;
@@ -1722,13 +1663,8 @@ public class VarDict {
                                                 }
                                                 incCnt(cnts, ch, 1);
                                                 Variation variation = getVariationFromSeq(sclip, idx, ch);
-                                                if (variation.cnt != 0) {
-                                                    variation.cnt = 0;
-                                                }
                                                 addCnt(variation, dir, qn -  si, row.queryQual.charAt(n + si) - 33, row.mapq, nm, conf.goodq);
                                             }
-                                            if (sclip.cnt != 0)
-                                                sclip.cnt = 0;
                                             addCnt(sclip, dir, m, q / qn, row.mapq, nm, conf.goodq);
                                         }
 
@@ -1774,8 +1710,7 @@ public class VarDict {
                                             if (row.queryQual.charAt(n + m + vi) - 33 < conf.goodq) {
                                                 break;
                                             }
-                                            if (ref.containsKey(start + vi)
-                                                    && isNotEquals(row.querySeq.charAt(n + m + vi), ref.get(start + vi))) {
+                                            if (isNotEquals(row.querySeq.charAt(n + m + vi), ref.get(start + vi))) {
                                                 offset = vi + 1;
                                             }
                                         }
@@ -1792,7 +1727,7 @@ public class VarDict {
                                     s.append("&").append(ss);
                                 }
 
-                                if (start - 1 >= s_start && start - 1 <= s_end && !s.toString().contains("N")) {
+                                if (start - 1 >= region.start && start - 1 <= region.end && !s.toString().contains("N")) {
                                     incCnt(getOrElse(ins, start - 1, new HashMap<String, Integer>()), "+" + s, 1);
                                     Variation hv = getVariation(iHash, start - 1, "+" + s);
                                     hv.incDir(dir);
@@ -1898,9 +1833,6 @@ public class VarDict {
                                             if (offset != 0) {
                                                 ss.append(substr(row.querySeq, n, offset));
                                                 q.append(substr(row.queryQual, n, offset));
-                                                for (int osi = 0; osi < offset; osi++) {
-                                                    incCnt(cov, start + osi, 1);
-                                                }
                                             }
                                         }
                                     }
@@ -1985,7 +1917,7 @@ public class VarDict {
                                 if (row.querySeq.charAt(n + 1) == 'N' ) {
                                     break;
                                 }
-                                if (ref.containsKey(start + 1) && !isEquals(ref.get(start + 1), row.querySeq.charAt(n + 1))) {
+                                if (isNotEquals(ref.get(start + 1), row.querySeq.charAt(n + 1))) {
                                     ss.append(row.querySeq.charAt(n + 1));
                                     q += row.queryQual.charAt(n + 1) - 33;
                                     qbases++;
@@ -2058,7 +1990,8 @@ public class VarDict {
                                     }
                                     if (s.startsWith("-")) {
                                         increment(dels5, start - qbases + 1, s);
-                                        for (int qi = 0; qi < cigar.get(ci + 2).length(); qi++) {
+                                        int to = toInt(cigar.get(ci + 2));
+                                        for (int qi = 1; qi < to; qi++) {
                                             incCnt(cov, start + qi, 1);
                                         }
                                     }
@@ -2683,7 +2616,6 @@ public class VarDict {
                         ins = (p3 - p5) + "^" + ins;
                         bi = p3;
                         vref = getVariation(hash, p3, ins);
-                        vref.cnt = 0;
                     } else if (tmp.length() < ins.length() ) {
                         int p3s = p3 + tmp.length();
                         int p3e = p3s + seq3.length() - ins.length() + 2;
@@ -2691,7 +2623,6 @@ public class VarDict {
                         ins = "+" + ins;
                         bi = p3 - 1;
                         vref = getVariation(iHash, bi, ins);
-                        vref.cnt = 0;
                     } else { // long MNP
                         if ( seq3.length() > ins.length()
                                 && !ismatch(substr(seq3, ins.length()), joinRef(ref,  p3 + ins.length(), p3 + seq3.length() + 2) , 1, conf)) {
@@ -2705,7 +2636,6 @@ public class VarDict {
                         ins = substr(ins, 0, 1) + "&" + substr(ins, -(ins.length()-1));
                         bi = p3;
                         vref = getVariation(hash, p3, ins);
-                        vref.cnt = 0;
                     }
                 } else {
                     String tmp;
@@ -2718,7 +2648,6 @@ public class VarDict {
                     ins = "+" + tmp + ins;
                     bi = p5 - 1;
                     vref = getVariation(iHash, bi, ins);
-                    vref.cnt = 0;
                 }
                 sc3v.used = true;
                 sc5v.used = true;
@@ -2769,10 +2698,10 @@ public class VarDict {
         int b3 = 0;
         int b5 = 0;
         for (int i = 0; i < seq5.length() - 8; i++) {
-            for (int j = 0; j < seq3.length() - 8; j++) {
+            for (int j = 1; j < seq3.length() - 8; j++) {
                 int nm = 0;
                 int n = 0;
-                while (n + j <= seq3.length() && i + n <= seq5.length()) {
+                while (n + j < seq3.length() && i + n < seq5.length()) {
                     if (seq3.charAt(seq3.length() - j - n) != seq5.charAt(i + n)) {
                         nm++;
                     }
@@ -2841,7 +2770,6 @@ public class VarDict {
                 continue;
             }
             final Variation iref = getVariation(iHash, bi, "+" + ins);
-            iref.cnt = 0;
             iref.pstd = true;
             iref.qstd = true;
             adjCnt(iref, sc5v, conf);
@@ -2857,7 +2785,8 @@ public class VarDict {
             if (ins.indexOf('&') != -1) {
                 len--;
             }
-            for(int ii = len + 1; ii < sc5v.seq.size(); ii++) {
+            int seqLen = max(sc5v.seq.keySet()) + 1;
+            for(int ii = len + 1; ii < seqLen; ii++) {
                 int pii = bi - ii + len;
                 if (!sc5v.seq.containsKey(ii)) {
                     continue;
@@ -2866,7 +2795,6 @@ public class VarDict {
                     Character tnt = ent.getKey();
                     Variation tv = ent.getValue();
                     Variation tvr = getVariation(hash, pii, tnt.toString());
-                    tvr.cnt = 0;
                     adjCnt(tvr, tv, conf);
                     tvr.pstd = true;
                     tvr.qstd = true;
@@ -2923,7 +2851,6 @@ public class VarDict {
                 continue;
             }
             final Variation iref = getVariation(iHash, bi, "+" + ins);
-            iref.cnt = 0;
             iref.pstd = true;
             iref.qstd = true;
             final Variation lref = getVariationMaybe(hash, bi, ref.get(bi));
@@ -2940,7 +2867,8 @@ public class VarDict {
             if (ins.indexOf('&') != -1) {
                 len--;
             }
-            for (int ii = len; ii < sc3v.seq.size(); ii++) {
+            int lenSeq = max(sc3v.seq.keySet()) + 1;
+            for (int ii = len; ii < lenSeq; ii++) {
                 int pii = p + ii - len;
                 Map<Character, Variation> map = sc3v.seq.get(ii);
                 if (map == null) {
@@ -2950,7 +2878,6 @@ public class VarDict {
                     Character tnt = ent.getKey();
                     Variation tv = ent.getValue();
                     Variation vref = getVariation(hash, pii, tnt.toString());
-                    vref.cnt = 0;
                     adjCnt(vref, tv, conf);
                     vref.pstd = true;
                     vref.qstd = true;
@@ -3054,7 +2981,7 @@ public class VarDict {
                     if (extra.length() > 0) {
                         insert.append("&").append(extra);
                     } else {
-                        while (isEquals(insert.charAt(s), ref.get(p + s)) && s >= -n) {
+                        while (s >= -n && isEquals(charAt(insert, s), ref.get(p + s))) {
                             s--;
                         }
                         if (s < -1) {
@@ -3124,6 +3051,9 @@ public class VarDict {
         }
     };
 
+    private final static Pattern B_AAAAAAA = Pattern.compile("^.AAAAAAA");
+    private final static Pattern B_TTTTTTT = Pattern.compile("^.TTTTTTT");
+
     private static void realignlgdel(Map<Integer, Map<String, Variation>> hash,
             Map<Integer, Integer> cov,
             Map<Integer, Sclip> sclip5,
@@ -3153,7 +3083,7 @@ public class VarDict {
             if (seq.isEmpty()) {
                 continue;
             }
-            if (seq.matches("^.AAAAAAA") || seq.matches("^.TTTTTTT")) {
+            if (B_AAAAAAA.matcher(seq).matches() || B_TTTTTTT.matcher(seq).matches()) {
                 continue;
             }
             if (seq.length() < 7) {
@@ -3179,7 +3109,6 @@ public class VarDict {
             final String gt = extra.length() == 0 ? "-" + dellen : "-" + dellen  + "&" + extra;
 
             final Variation tv = getVariation(hash, bp, gt);
-            tv.cnt = 0;
             tv.qstd = true; // more accurate implementation lat
             tv.pstd = true; // more accurate implementation lat
             for (int tp = bp; tp < bp + dellen; tp++) {
@@ -3273,10 +3202,11 @@ public class VarDict {
             }
             StringBuilder extra = new StringBuilder();
             int en = 0;
-            while(!Character.valueOf(seq.charAt(en)).equals(ref.get(bp + en)) && en < seq.length()) {
+            while(en < seq.length() && isNotEquals(seq.charAt(en), ref.get(bp + en))) {
                 extra.append(seq.charAt(en));
                 en++;
             }
+            bp = p; // Set it to 5'
             final String gt;
             if (extra.length() == 0) {
                 gt = "-" + dellen;
@@ -3288,7 +3218,6 @@ public class VarDict {
             }
 
             Variation tv = getVariation(hash, bp, gt);
-            tv.cnt = 0;
             tv.qstd = true; // more accurate implementation later
             tv.pstd = true; // more accurate implementation later
             for(int tp = bp; tp < bp + dellen; tp++) {
@@ -3340,6 +3269,7 @@ public class VarDict {
 
         final int maxmm = 3; // maximum mismatches allowed
         int bp = 0;
+        int score = 0;
         int idx = chrs.containsKey(chr) ? chrs.get(chr) : 0;
         for (int n = 0; n < dis; n++) {
             int mm = 0;
@@ -3361,18 +3291,19 @@ public class VarDict {
                     break;
                 }
             }
-            if (m.size() >= 3) {
+            if (m.size() < 3) {
                 continue;
             }
             if (mm <= maxmm - n / 100 && i >= seq.length() - 2 && i >= 8 && mm / (double)i < 0.12) {
                 int lbp = sp + dir * n - (dir < 0 ? dir : 0);
                 if (mm == 0 && i == seq.length()) {
                     if (conf.y) {
-                        System.err.printf("Findbp: %s %s %s %s %s\n", seq, sp, bp, mm, i);
+                        System.err.printf("Findbp: %s %s %s %s %s\n", seq, sp, lbp, mm, i);
                     }
-                    return bp;
-                } else {
+                    return lbp;
+                } else if (i - mm > score) {
                     bp = lbp;
+                    score = i - mm;
                 }
             }
         }
@@ -3462,7 +3393,6 @@ public class VarDict {
             if (conf.y) {
                 System.err.println(format("Realign Ins for: %s %s %s", p, vn, icnt));
             }
-            Variation vref = getVariation(iHash, p, vn);
             String insert;
             Matcher mtch = B_PLUS_ATGC.matcher(vn);
             if (mtch.find()) {
@@ -3526,7 +3456,7 @@ public class VarDict {
 
             List<Tuple3<String, Integer, Integer>> mmm = new ArrayList<>(mm3);
             mmm.addAll(mm5);
-
+            Variation vref = getVariation(iHash, p, vn);
             for (Tuple3<String, Integer, Integer> tuple3 : mmm) {
                 String mm = tuple3._1();
                 Integer mp = tuple3._2();
@@ -3571,7 +3501,6 @@ public class VarDict {
 
                     lref = hash.get(p).get(ref.get(p).toString());
                 }
-
                 adjCnt(vref, tv, lref, conf);
                 hash.get(mp).remove(mm);
                 if (hash.get(mp).isEmpty()) {
@@ -3911,14 +3840,17 @@ public class VarDict {
     // Find the consensus sequence in soft-clipped reads.  Consensus is called if
     // the matched nucleotides are >90% of all softly clipped nucleotides.
     private static String findconseq(Sclip scv) {
-        if (scv.sequence != null) {
+        if (scv.sequence != null && !scv.sequence.isEmpty()) {
             return scv.sequence;
         }
 
         int total = 0;
         int match = 0;
         StringBuilder seq = new StringBuilder();
-        for (Map<Character, Integer> nv : scv.nt.values()) {
+        List<Integer> keys = new ArrayList<>(scv.nt.keySet());
+        Collections.sort(keys);
+        for (Integer key : keys) {
+            Map<Character, Integer> nv = scv.nt.get(key);
             int max = 0;
             Character mnt = null;
             int tt = 0;
@@ -3930,9 +3862,6 @@ public class VarDict {
                     max = ncnt;
                     mnt = nt;
                 }
-            }
-            if (tt - max > 1 && max / (double)tt < 0.8) {
-                break;
             }
             if ((tt - max > 2 || max <= tt - max) && max / (double)tt < 0.8) {
                 break;
@@ -3999,12 +3928,12 @@ public class VarDict {
         int mcnt = 0;
         List<Integer> sc3p = new ArrayList<>();
         StringBuilder str = new StringBuilder();
-        while(ref.containsKey(p + n) && ref.get(p + n).equals(seq.charAt(n))) {
+        while(n < seq.length() && isEquals(ref.get(p + n), seq.charAt(n))) {
             n++;
         }
         sc3p.add(p + n);
         int Tbp = p + n;
-        while (ref.containsKey(p + n) && !ref.get(p + n).equals(seq.charAt(n)) && mcnt <= longmm && n < seq.length()) {
+        while (mcnt <= longmm && n < seq.length() && isNotEquals(ref.get(p + n), seq.charAt(n))) {
             str.append(seq.charAt(n));
             mm.add(Tuple3.newTuple(str.toString(), Tbp, 3 ));
             n++;
@@ -4013,14 +3942,14 @@ public class VarDict {
         }
         //  Adject clipping position if only one mismatch
         if (str.length() == 1) {
-            while(ref.containsKey(p + n) && ref.get(p + n).equals(seq.charAt(n))) {
+            while(n < seq.length() && isEquals(ref.get(p + n), seq.charAt(n))) {
                 n++;
                 mn++;
             }
             if (mn > 1) {
                 sc3p.add(p + n);
             }
-            if (sclip3.containsKey(p + n) && mn > 1) {
+            if (mn < 1 && sclip3.containsKey(p + n)) {
                 sclip3.get(p + n).used = true;
             }
         }
@@ -4576,16 +4505,6 @@ public class VarDict {
 
     }
 
-    public static class ToVarsContext {
-        Map<Integer, Character> ref = new HashMap<>();
-        Map<Integer, Map<String, Variation>> hash = new HashMap<>();
-        Map<Integer, Map<String, Variation>> iHash = new HashMap<>();
-        Map<Integer, Integer> cov = new HashMap<>();
-        Map<Integer, Sclip> sclip3 = new HashMap<>();
-        Map<Integer, Sclip> sclip5 = new HashMap<>();
-        Map<Integer, Map<String, Integer>> inc = new HashMap<>();
-    }
-
     public static class Tuple2 <T1, T2> {
 
         private final T1 _f;
@@ -4638,12 +4557,26 @@ public class VarDict {
         }
     }
 
-    public static int sum(List<?> list) {
+    public static int sum(Collection<?> list) {
         int result = 0;
         for (Object object : list) {
             result += toInt(String.valueOf(object));
         }
         return result;
+    }
+
+    public static <T extends Number & Comparable<T>> T max(Collection<T> list) {
+        T t = null;
+        for (T object : list) {
+            if (t == null) {
+                t = object;
+            } else {
+                if (t.compareTo(object) == -1) {
+                    t = object;
+                }
+            }
+        }
+        return t;
     }
 
     public static int toInt(String intStr) {
@@ -4673,6 +4606,18 @@ public class VarDict {
             }
             return string.substring(begin, end);
         }
+    }
+
+    public static char charAt(String str, int index) {
+        if (index < 0)
+            return str.charAt(str.length() + index);
+        return str.charAt(index);
+    }
+
+    public static char charAt(StringBuilder str, int index) {
+        if (index < 0)
+            return str.charAt(str.length() + index);
+        return str.charAt(index);
     }
 
     // TODO validate region format chr:start[-end][:gene]
