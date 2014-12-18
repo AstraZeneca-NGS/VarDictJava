@@ -2710,10 +2710,10 @@ public class VarDict {
                     }
                     n++;
                 }
-                if ((n + j >= seq3.length() || i + n >= seq5.length())
-                        && n - nm > max
+                if (n - nm > max
                         && n - nm > 8
-                        && nm/(double)n < 0.1d) {
+                        && nm/(double)n < 0.1d
+                        && (n + j >= seq3.length() || i + n >= seq5.length())) {
 
                     max = n - nm;
                     b3 = j;
@@ -3092,7 +3092,7 @@ public class VarDict {
             if (islowcomplexseq(seq)) {
                 continue;
             }
-            final int bp = findbp(seq, p - 5, ref, conf.indelsize, -1, chr, chrs, conf);
+            int bp = findbp(seq, p - 5, ref, conf.indelsize, -1, chr, chrs, conf);
             final int dellen = p - bp;
             if (bp == 0) {
                 continue;
@@ -3106,7 +3106,13 @@ public class VarDict {
                 extra.append(seq.charAt(en));
                 en++;
             }
-            final String gt = extra.length() == 0 ? "-" + dellen : "-" + dellen  + "&" + extra;
+            final String gt;
+            if (extra.length() > 0) {
+                gt = "-" + dellen + "&" + extra;
+                bp -= extra.length();
+            } else {
+                gt = "-" + dellen;
+            }
 
             final Variation tv = getVariation(hash, bp, gt);
             tv.qstd = true; // more accurate implementation lat
@@ -3119,20 +3125,26 @@ public class VarDict {
 
             // Work on the softclipped read at 3'
             int n = 0;
-            while (ref.containsKey(bp + n) && ref.containsKey(bp + dellen + n) && ref.get(bp + n) == ref.get(bp + dellen + n)) {
+            while (ref.containsKey(bp + n)
+                    && ref.containsKey(bp + dellen + n)
+                    && isEquals(ref.get(bp + n), ref.get(bp + dellen + n))) {
                 n++;
             }
             int sc3p = bp + n;
             StringBuilder str = new StringBuilder();
             int mcnt = 0;
-            while (ref.containsKey(bp + n) && ref.containsKey(bp + dellen + n) && ref.get(bp + n) != ref.get(bp + dellen + n)
-                    && mcnt <= longmm) {
+            while (mcnt <= longmm
+                    && ref.containsKey(bp + n)
+                    && ref.containsKey(bp + dellen + n)
+                    && isNotEquals(ref.get(bp + n), ref.get(bp + dellen + n))) {
                 str.append(ref.get(bp + dellen + n));
                 n++;
                 mcnt++;
             }
             if (str.length() == 1) {
-                while (ref.containsKey(bp + n) && ref.containsKey(bp + dellen + n) && ref.get(bp + n) == ref.get(bp + dellen + n)) {
+                while (ref.containsKey(bp + n)
+                        && ref.containsKey(bp + dellen + n)
+                        && isEquals(ref.get(bp + n), ref.get(bp + dellen + n))) {
                     n++;
                 }
                 sc3p = bp + n;
@@ -3162,8 +3174,9 @@ public class VarDict {
                 }
                 sclip.used = true;
             }
+            final int fbp = bp;
             Map<Integer, Map<String, Integer>> dels5 = new HashMap() {{
-                    put(bp, new HashMap() {{
+                    put(fbp, new HashMap() {{
                             put(gt, tv.cnt);
                         }});
                 }};
@@ -3186,7 +3199,7 @@ public class VarDict {
             if (seq.isEmpty()) {
                 continue;
             }
-            if (seq.matches("^.AAAAAAA") || seq.matches("^.TTTTTTT")) {
+            if (B_AAAAAAA.matcher(seq).matches() || B_TTTTTTT.matcher(seq).matches()) {
                 continue;
             }
             if (seq.length() < 7) {
@@ -3208,10 +3221,10 @@ public class VarDict {
             }
             bp = p; // Set it to 5'
             final String gt;
-            if (extra.length() == 0) {
-                gt = "-" + dellen;
-            } else {
+            if (extra.length() > 0) {
                 gt = "-" + dellen  + "&" + extra;
+            } else {
+                gt = "-" + dellen;
                 while (isEquals(ref.get(bp -1), ref.get(bp + dellen - 1))) {
                     bp--;
                 }
