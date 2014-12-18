@@ -829,9 +829,12 @@ public class VarDict {
                     Var vref = vvar.get(i);
                     String vartype = varType(vref.refallele, vref.varallele);
 
-                    if( !isGoodVar( vref, rref, vartype , splice, conf) && !conf.doPileup) {
-                        continue;
+                    if (!isGoodVar( vref, rref, vartype , splice, conf)) {
+                        if (!conf.doPileup) {
+                            continue;
+                        }
                     }
+
                     vts.add(vartype);
                     vrefs.add(vref);
                 }
@@ -978,8 +981,8 @@ public class VarDict {
     }
 
     public static class Sclip extends Variation {
-        Map<Integer, Map<Character, Integer>> nt = new HashMap<>();
-        Map<Integer, Map<Character, Variation>> seq = new HashMap<>();
+        TreeMap<Integer, Map<Character, Integer>> nt = new TreeMap<>();
+        TreeMap<Integer, Map<Character, Variation>> seq = new TreeMap<>();
         String sequence;
         boolean used;
     }
@@ -2785,7 +2788,7 @@ public class VarDict {
             if (ins.indexOf('&') != -1) {
                 len--;
             }
-            int seqLen = max(sc5v.seq.keySet()) + 1;
+            int seqLen = sc5v.seq.lastKey() + 1;
             for(int ii = len + 1; ii < seqLen; ii++) {
                 int pii = bi - ii + len;
                 if (!sc5v.seq.containsKey(ii)) {
@@ -2867,7 +2870,7 @@ public class VarDict {
             if (ins.indexOf('&') != -1) {
                 len--;
             }
-            int lenSeq = max(sc3v.seq.keySet()) + 1;
+            int lenSeq = sc3v.seq.lastKey() + 1;
             for (int ii = len; ii < lenSeq; ii++) {
                 int pii = p + ii - len;
                 Map<Character, Variation> map = sc3v.seq.get(ii);
@@ -3860,10 +3863,7 @@ public class VarDict {
         int total = 0;
         int match = 0;
         StringBuilder seq = new StringBuilder();
-        List<Integer> keys = new ArrayList<>(scv.nt.keySet());
-        Collections.sort(keys);
-        for (Integer key : keys) {
-            Map<Character, Integer> nv = scv.nt.get(key);
+        for (Map<Character, Integer> nv : scv.nt.values()) {
             int max = 0;
             Character mnt = null;
             int tt = 0;
@@ -3888,8 +3888,8 @@ public class VarDict {
 
         if (total > 0
                 && match / (double) total > 0.9
-                && seq.length()/1.5d > scv.nt.size() - seq.length()
-                && (seq.length() /(double) scv.nt.size() > 0.8 || scv.nt.size() - seq.length() < 10 || seq.length() > 25)) {
+                && seq.length()/1.5d > scv.nt.lastKey() + 1 - seq.length()
+                && (seq.length() /(double) (scv.nt.lastKey() + 1) > 0.8 || scv.nt.lastKey() + 1 - seq.length() < 10 || seq.length() > 25)) {
             return scv.sequence;
 
         }
@@ -3961,9 +3961,9 @@ public class VarDict {
             }
             if (mn > 1) {
                 sc3p.add(p + n);
-            }
-            if (mn < 1 && sclip3.containsKey(p + n)) {
-                sclip3.get(p + n).used = true;
+                if (sclip3.containsKey(p + n)) {
+                    sclip3.get(p + n).used = true;
+                }
             }
         }
         //print STDERR "MM3: $seq $len $p '@sc3p'\n";
