@@ -847,8 +847,9 @@ public class VarDict {
                 }
                 System.out.println(join("\t", sample, region.gene, region.chr,
                             vref.sp, vref.ep, vref.refallele, vref.varallele, vref.tcov, vref.cov, vref.rfc, vref.rrc,
-                            vref.fwd, vref.rev, vref.genotype, vref.freq, vref.bias, vref.pmean, vref.pstd, vref.qual,
-                            vref.qstd, vref.mapq, vref.qratio, vref.hifreq, vref.extrafreq, vref.shift3, vref.msi,
+                            vref.fwd, vref.rev, vref.genotype, format("%.3f", vref.freq), vref.bias, vref.pmean, vref.pstd?1:0, format("%.1f", vref.qual),
+                            vref.qstd?1:0, format("%.1f", vref.mapq), format("%.3f", vref.qratio), format("%.3f", vref.hifreq),
+                            vref.extrafreq == 0? 0 : format("%.3f", vref.extrafreq), vref.shift3, vref.msi == 0? 0 : format("%.3f", vref.msi),
                             vref.msint, vref.nm, vref.hicnt, vref.hicov, vref.leftseq, vref.rightseq,
                             region.chr + ":" + region.start + "-" + region.end, vartype
                         ));
@@ -2300,7 +2301,7 @@ public class VarDict {
                         if (msi <= shift3 / (double)dellen) {
                             msi = shift3 / (double)dellen;
                         }
-                        if (!vn.contains("&") && !vn.contains("#") && !vn.contains("\\^")) {
+                        if (!vn.contains("&") && !vn.contains("#") && !vn.contains("^")) {
                             if ( conf.moveIndelsTo3 ) {
                                 sp += shift3;
                             }
@@ -2656,7 +2657,7 @@ public class VarDict {
                 sc5v.used = true;
                 vref.pstd = true;
                 vref.qstd = true;
-
+                incCnt(cov, bi, sc5v.cnt);
                 if (conf.y) {
                     System.err.printf("lgins30 Found: '%s' %s %s %s\n", ins, bi, bp3, bp5);
                 }
@@ -2704,8 +2705,8 @@ public class VarDict {
             for (int j = 1; j < seq3.length() - 8; j++) {
                 int nm = 0;
                 int n = 0;
-                while (n + j < seq3.length() && i + n < seq5.length()) {
-                    if (seq3.charAt(seq3.length() - j - n) != seq5.charAt(i + n)) {
+                while (n + j <= seq3.length() && i + n <= seq5.length()) {
+                    if (!substr(seq3, - j - n, 1).equals(substr(seq5, i + n, 1))) {
                         nm++;
                     }
                     if (nm > longmm) {
@@ -3050,7 +3051,7 @@ public class VarDict {
     static final Comparator<Tuple3<Integer, Sclip, Integer>> COMP3 = new Comparator<Tuple3<Integer, Sclip, Integer>>() {
         @Override
         public int compare(Tuple3<Integer, Sclip, Integer> o1, Tuple3<Integer, Sclip, Integer> o2) {
-            return Integer.compare(o1._2().cnt, o2._2().cnt);
+            return Integer.compare(o1._1(), o2._1());
         }
     };
 
@@ -3560,7 +3561,7 @@ public class VarDict {
                             incCnt(cov, p, tv.cnt);
                         }
                         Variation lref = null;
-                        if (sc3pp <= p &&
+                        if (sc3pp > p &&
                                 hash.containsKey(p) &&
                                 ref.containsKey(p) &&
                                 hash.get(p).containsKey(ref.get(p).toString())) {
