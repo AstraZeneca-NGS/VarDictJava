@@ -56,7 +56,7 @@ public class Main {
         conf.moveIndelsTo3 = cmd.hasOption("3");
         conf.samfilter = cmd.getOptionValue("F", "0x500");
         if (cmd.hasOption("z")) {
-            conf.zeroBased = 1 == getIntValue(cmd, "z", 0);
+            conf.zeroBased = 1 == getIntValue(cmd, "z", 1);
         }
         conf.ampliconBasedCalling = cmd.getOptionValue("a");
         conf.performLocalRealignment = 1 == getIntValue(cmd, "k", 1);

@@ -4,6 +4,7 @@ import static com.epam.VarDict.VarsType.ref;
 import static com.epam.VarDict.VarsType.var;
 import static com.epam.VarDict.VarsType.varn;
 import static java.lang.String.format;
+import static java.lang.Math.*;
 
 import java.io.*;
 import java.util.*;
@@ -176,6 +177,12 @@ public class VarDict {
         public int getIEnd() {
             return iend;
         }
+
+        @Override
+        public String toString() {
+            return "Region [chr=" + chr + ", start=" + start + ", end=" + end + ", gene=" + gene + ", istart=" + istart + ", iend=" + iend + "]";
+        }
+
     }
 
     final static Comparator<Region> ISTART_COMPARATOR = new Comparator<Region>() {
@@ -251,7 +258,7 @@ public class VarDict {
             int iend = toInt(split[7]);
             if (zeroBased && start < end) {
                 start++;
-                end++;
+                istart++;
             }
             List<Region> list = tsegs.get(chr);
             if (list == null) {
@@ -260,13 +267,13 @@ public class VarDict {
             }
             list.add(new Region(chr, start, end, gene, istart, iend));
         }
+        List<Region> list = new LinkedList<>();
+        segs.add(list);
+        int pend = -1;
         for (Map.Entry<String, List<Region>> entry : tsegs.entrySet()) {
             List<Region> regions = entry.getValue();
             Collections.sort(regions, ISTART_COMPARATOR);
             String pchr = null;
-            int pend = -1;
-            List<Region> list = new LinkedList<>();
-            segs.add(list);
             for (Region region : regions) {
                 if (pend != -1 && (!region.getChr().equals(pchr) || region.getIStart() > pend)) {
                     list = new LinkedList<>();
@@ -277,7 +284,8 @@ public class VarDict {
                 pend = region.getIEnd();
             }
         }
-        ampVardict(segs, chrs, ampliconBasedCalling, sample, conf.bam.getBam1(), conf);
+
+        ampVardict(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
     }
 
 
@@ -311,9 +319,8 @@ public class VarDict {
                             continue;
                         }
                     }
-                    segraw.add(line);
                 }
-
+                segraw.add(line);
             }
         }
         return Tuple3.newTuple(a, zeroBased, segraw);
@@ -1110,11 +1117,11 @@ public class VarDict {
                 list.add(arg);
             }
 
-            StringBuilder sb = new StringBuilder("Process: ");
-            for (String string : list) {
-                sb.append(string).append(" ");
-            }
-            System.err.println(sb);
+//            StringBuilder sb = new StringBuilder("Process: ");
+//            for (String string : list) {
+//                sb.append(string).append(" ");
+//            }
+//            System.err.println(sb);
 
             ProcessBuilder builder = new ProcessBuilder(list);
             builder.redirectErrorStream(false);
@@ -1316,8 +1323,8 @@ public class VarDict {
                           // No segment overlapping test since samtools should take care of it
                           int ts1 = segstart > s_start ? segstart : s_start;
                           int te1 = segend < s_end ? segend : s_end;
-                          if ((((Math.abs(segstart - s_start) <= dis) && (Math.abs(segend - s_end) <= dis))
-                                  && Math.abs(ts1 - te1) / (double)(segend - segstart) > ovlp) == false) {
+                          if ((abs(segstart - region.start) > dis || abs(segend - region.end) > dis)
+                                  || abs((ts1-te1)/(double)(segend-segstart)) <= ovlp) {
                               continue;
                           }
                         }
@@ -1467,7 +1474,7 @@ public class VarDict {
                             if (istr != null) {
                                 ilen += toInt(istr.substring(0, istr.length() - 1));
                             }
-                            cigarStr = cm.replaceFirst(dlen + "D" + ilen);
+                            cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
                             flag = true;
                         }
 
@@ -1491,8 +1498,14 @@ public class VarDict {
                             }
                         }
                         int rn = 0;
-                        while (rn + 1 < soft && isEquals(ref.get(refoff + rn + 1), row.querySeq.charAt(rdoff + rn + 1))) {
-                            rn++;
+
+                        try {
+                            while (rn + 1 < soft && isEquals(ref.get(refoff + rn + 1), row.querySeq.charAt(rdoff + rn + 1))) {
+                                rn++;
+                            }
+                        } catch (StringIndexOutOfBoundsException e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
                         }
                         if (rn > 3 || isEquals(ref.get(refoff), row.querySeq.charAt(rdoff))) {
                             mch += rn + 1;
@@ -4154,6 +4167,7 @@ public class VarDict {
             Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
             int j = 0;
             for (Region region : regions) {
+//                System.err.println(region);
                 rg = region;
                 Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, bam1, chrs, splice, ampliconBasedCalling, rlen, conf);
                 rlen = tpl._1();
@@ -4189,8 +4203,9 @@ public class VarDict {
                     final int S = amps._2().start;
                     final int E = amps._2().end;
 
-                    List<Var> l = vars.get(amp).get(p).var;
-                    Var refAmpP = vars.get(amp).get(p).ref;
+                    Vars vtmp = vars.get(amp).get(p);
+                    List<Var> l = vtmp==null ? null : vtmp.var;
+                    Var refAmpP = vtmp==null ? null : vtmp.ref;
                     if (l != null && !l.isEmpty()) {
                         Var tv = l.get(0);
                         vcovs.add(tv.tcov);
@@ -4298,7 +4313,8 @@ public class VarDict {
                 if (vartype.equals("Complex")) {
                     adjComplex(vref);
                 }
-                System.out.print(join("\t", sample, rg.gene, rg.chr, joinVar1(vref, "\t"), gvs.get(0)._2(), vartype, gvs.size(), gvs.size() + badv.size(), nocov, flag ? 1 : 0));
+                System.out.print(join("\t", sample, rg.gene, rg.chr,
+                        joinVar1(vref, "\t"), gvs.get(0)._2(), vartype, gvs.size(), gvs.size() + badv.size(), nocov, flag ? 1 : 0));
                 if (conf.debug) {
                     System.out.print("\t" + vref.DEBUG);
                 }
@@ -4329,13 +4345,13 @@ public class VarDict {
         sb.append(var.freq).append(delm);
         sb.append(var.bias).append(delm);
         sb.append(var.pmean).append(delm);
-        sb.append(var.pstd).append(delm);
-        sb.append(var.qual).append(delm);
-        sb.append(var.qstd).append(delm);
-        sb.append(var.mapq).append(delm);
-        sb.append(var.qratio).append(delm);
-        sb.append(var.hifreq).append(delm);
-        sb.append(var.extrafreq);
+        sb.append(var.pstd?1:0).append(delm);
+        sb.append(format("%.1f", var.qual)).append(delm);
+        sb.append(var.qstd?1:0).append(delm);
+        sb.append(format("%.1f", var.mapq)).append(delm);
+        sb.append(format("%.3f", var.qratio)).append(delm);
+        sb.append(format("%.3f", var.hifreq)).append(delm);
+        sb.append(var.extrafreq == 0? 0 : format("%.3f", var.extrafreq));
         return null;
     }
 
@@ -4352,18 +4368,18 @@ public class VarDict {
         sb.append(var.fwd).append(delm);
         sb.append(var.rev).append(delm);
         sb.append(var.genotype).append(delm);
-        sb.append(var.freq).append(delm);
+        sb.append(format("%.3f", var.freq)).append(delm);
         sb.append(var.bias).append(delm);
         sb.append(var.pmean).append(delm);
-        sb.append(var.pstd).append(delm);
-        sb.append(var.qual).append(delm);
-        sb.append(var.qstd).append(delm);
-        sb.append(var.mapq).append(delm);
-        sb.append(var.qratio).append(delm);
-        sb.append(var.hifreq).append(delm);
-        sb.append(var.extrafreq).append(delm);
+        sb.append(var.pstd?1:0).append(delm);
+        sb.append(format("%.1f", var.qual)).append(delm);
+        sb.append(var.qstd?1:0).append(delm);
+        sb.append(format("%.1f", var.mapq)).append(delm);
+        sb.append(format("%.3f", var.qratio)).append(delm);
+        sb.append(format("%.3f", var.hifreq)).append(delm);
+        sb.append(var.extrafreq == 0? 0 : format("%.3f", var.extrafreq)).append(delm);
         sb.append(var.shift3).append(delm);
-        sb.append(var.msi).append(delm);
+        sb.append(var.msi == 0? 0 : format("%.3f", var.msi)).append(delm);
         sb.append(var.msint).append(delm);
         sb.append(var.nm).append(delm);
         sb.append(var.hicnt).append(delm);
@@ -4645,8 +4661,9 @@ public class VarDict {
         int end = range.length < 2 ? start : toInt(range[1].replaceAll(",", ""));
         start -= numberNucleotideToExtend;
         end += numberNucleotideToExtend;
-        if (zeroBased)
+        if (zeroBased && start < end) {
             start++;
+        }
         if (start > end)
             start = end;
         segs.add(Collections.singletonList(new Region(chr, start, end, gene)));
