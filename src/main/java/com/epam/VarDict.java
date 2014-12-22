@@ -4204,8 +4204,8 @@ public class VarDict {
                     final int E = amps._2().end;
 
                     Vars vtmp = vars.get(amp).get(p);
-                    List<Var> l = vtmp==null ? null : vtmp.var;
-                    Var refAmpP = vtmp==null ? null : vtmp.ref;
+                    List<Var> l = vtmp == null ? null : vtmp.var;
+                    Var refAmpP = vtmp == null ? null : vtmp.ref;
                     if (l != null && !l.isEmpty()) {
                         Var tv = l.get(0);
                         vcovs.add(tv.tcov);
