@@ -441,7 +441,13 @@ public class VarDict {
     }
 
 
-    private static int somdict(Region segs, Map<Integer, Vars> vars1, Map<Integer, Vars> vars2, String sample, Map<String, Integer> chrs, Map<String, Integer> splice, String ampliconBasedCalling,  int rlen, Configuration conf) throws IOException {
+    private static int somdict(Region segs, Map<Integer, Vars> vars1, Map<Integer, Vars> vars2,
+            String sample,
+            Map<String, Integer> chrs,
+            Map<String, Integer> splice,
+            String ampliconBasedCalling,
+            int rlen,
+            Configuration conf) throws IOException {
 
         double fisherp = 0.01d;
 
@@ -453,7 +459,8 @@ public class VarDict {
             String vartype = "";
 
             if (!vars1.containsKey(p)) { // no coverage for sample 1
-                if (vars2.containsKey(p) && vars2.get(p).var.size() > 0) {
+
+                if (vars2.get(p).var.size() > 0) {
                     Var var = vars2.get(p).var.get(0);
                     vartype = varType(var.refallele, var.varallele);
                     if (!isGoodVar(var, getVarMaybe(vars2, p, VarsType.ref), vartype, splice, conf)) {
@@ -470,7 +477,7 @@ public class VarDict {
                             "Deletion", vartype));
                 }
             } else if (!vars2.containsKey(p)) { // no coverage for sample 2
-                if (vars1.containsKey(p) && vars1.get(p).var.size() > 0) {
+                if (vars1.get(p).var.size() > 0) {
                     Var var = vars1.get(p).var.get(0);
                     vartype = varType(var.refallele, var.varallele);
                     if (!isGoodVar(var, getVarMaybe(vars1, p, VarsType.ref), vartype, splice, conf)) {
@@ -489,17 +496,20 @@ public class VarDict {
                 }
 
             } else { // both samples have coverage
-                if (!vars1.containsKey(p) || vars1.get(p).var.isEmpty() || !vars2.containsKey(p) || vars2.get(p).var.isEmpty()) {
+                Vars v1 = vars1.get(p);
+                Vars v2 = vars2.get(p);
+                if (v1.var.isEmpty() && v2.var.isEmpty()) {
                     continue;
                 }
-                if (vars1.containsKey(p) && vars1.get(p).var.size() > 0) {
+                if (v1.var.size() > 0) {
                     int n = 0;
-                    List<Var> v1 = vars1.get(p).var;
-                    while(n < v1.size() && isGoodVar(v1.get(n), getVarMaybe(vars1, p, VarsType.ref), varType(v1.get(n).refallele, v1.get(n).varallele), splice, conf) ) {
-                        Var vref = v1.get(n);
+                    while(n < v1.var.size()
+                            && isGoodVar(v1.var.get(n), v1.ref, varType(v1.var.get(n).refallele, v1.var.get(n).varallele), splice, conf) ) {
+                        Var vref = v1.var.get(n);
                         String nt = vref.n;
                         if ( nt.length() > 1
                                 && vref.refallele.length() == vref.varallele.length()
+                                &&(!isGoodVar(getVarMaybe(vars2, p, varn, nt), null, null, splice, conf))
                                 && !vref.genotype.contains("-")
                                 && !vref.genotype.contains("m")
                                 && !vref.genotype.contains("i") ) {
@@ -609,16 +619,16 @@ public class VarDict {
                         n++;
                     }
                     if (n == 0) {
-                        Var v2 = getVarMaybe(vars2, p, var, 0);
-                        if(v2 == null) {
+                        if(v2.var.isEmpty()) {
                             continue;
                         }
-                        vartype = varType(v2.refallele, v2.varallele);
-                        if (!isGoodVar(v2, getVarMaybe(vars2, p, ref), vartype, splice, conf)) {
+                        Var v2var = v2.var.get(0);
+                        vartype = varType(v2var.refallele, v2var.varallele);
+                        if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
                             continue;
                         }
                         // potentail LOH
-                        String nt = v2.n;
+                        String nt = v2var.n;
                         Var v1nt = getVarMaybe(vars1, p, varn, nt);
                         if (v1nt != null) {
                             String type = v1nt.freq < conf.lofreq ? "LikelyLOH" : "Germline";
@@ -627,45 +637,48 @@ public class VarDict {
                             }
                             System.out.println(join("\t", sample, segs.gene, segs.chr,
                                     v1nt.sp, v1nt.ep, v1nt.refallele, v1nt.varallele,
-                                    v1nt.tcov, v1nt.cov, v1nt.rfc, v1nt.rrc, v1nt.fwd, v1nt.rev, v1nt.genotype, v1nt.freq, v1nt.bias, v1nt.pmean, v1nt.pstd, v1nt.qual, v1nt.qstd,
-                                    v1nt.mapq, v1nt.qratio, v1nt.hifreq, v1nt.extrafreq, v1nt.nm,
+                                    v1nt.tcov, v1nt.cov, v1nt.rfc, v1nt.rrc, v1nt.fwd, v1nt.rev, v1nt.genotype, v1nt.freq, v1nt.bias,
+                                    v1nt.pmean, v1nt.pstd, v1nt.qual, v1nt.qstd,v1nt.mapq, v1nt.qratio, v1nt.hifreq, v1nt.extrafreq,
+                                    v1nt.nm,
 
 
-                                    v2.tcov, v2.cov, v2.rfc, v2.rrc, v2.fwd, v2.rev, v2.genotype, v2.freq, v2.bias, v2.pmean, v2.pstd, v2.qual, v2.qstd,
-                                    v2.mapq, v2.qratio, v2.hifreq, v2.extrafreq, v2.nm,
+                                    v2var.tcov, v2var.cov, v2var.rfc, v2var.rrc, v2var.fwd, v2var.rev, v2var.genotype, v2var.freq, v2var.bias,
+                                    v2var.pmean, v2var.pstd, v2var.qual, v2var.qstd,v2var.mapq, v2var.qratio, v2var.hifreq, v2var.extrafreq,
+                                    v2var.nm,
 
-                                    v2.shift3, v2.msi, v2.msint, v2.leftseq, v2.rightseq,
+                                    v2var.shift3, v2var.msi, v2var.msint, v2var.leftseq, v2var.rightseq,
                                     segs.chr + ":" + segs.start + "-" + segs.end,
                                     type, varType(v1nt.refallele, v1nt.varallele)
                                     ));
                         } else {
                             String th1;
-                            Var v1ref = getVarMaybe(vars1, p, ref);
+                            Var v1ref = v1.ref;
                             if(v1ref != null) {
                                 th1 = join("\t",
                                         v1ref.tcov, v1ref.cov, v1ref.rfc, v1ref.rrc, v1ref.fwd, v1ref.rev, v1ref.genotype, v1ref.freq, v1ref.bias, v1ref.pmean, v1ref.pstd, v1ref.qual, v1ref.qstd,
                                         v1ref.mapq, v1ref.qratio, v1ref.hifreq, v1ref.extrafreq, v1ref.nm
                                         );
                             } else {
-                                th1 = join("\t", v1.get(0).tcov,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0);
+                                th1 = join("\t", v1.var.get(0).tcov,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0);
                             }
                             if ("Complex".equals(vartype)) {
-                                adjComplex(v2);
+                                adjComplex(v2var);
                             }
                             System.out.println(join("\t", sample, segs.gene, segs.chr,
-                                    v2.sp, v2.ep, v2.refallele, v2.varallele,
+                                    v2var.sp, v2var.ep, v2var.refallele, v2var.varallele,
                                     th1,
-                                    v2.tcov, v2.cov, v2.rfc, v2.rrc, v2.fwd, v2.rev, v2.genotype, v2.freq, v2.bias, v2.pmean, v2.pstd, v2.qual, v2.qstd,
-                                    v2.mapq, v2.qratio, v2.hifreq, v2.extrafreq, v2.nm,
+                                    v2var.tcov, v2var.cov, v2var.rfc, v2var.rrc, v2var.fwd, v2var.rev, v2var.genotype, v2var.freq, v2var.bias,
+                                    v2var.pmean, v2var.pstd, v2var.qual, v2var.qstd, v2var.mapq, v2var.qratio, v2var.hifreq, v2var.extrafreq,
+                                    v2var.nm,
 
-                                    v2.shift3, v2.msi, v2.msint, v2.leftseq, v2.rightseq,
+                                    v2var.shift3, v2var.msi, v2var.msint, v2var.leftseq, v2var.rightseq,
                                     segs.chr + ":" + segs.start + "-" + segs.end,
                                     "StrongLOH", vartype
                                     ));
                         }
                     }
-                } else if (vars2.containsKey(p) && vars2.get(p).var.size() > 0) { // sample 1 has only reference
-                    Var v2var = vars2.get(p).var.get(0);
+                } else if (v2.var.size() > 0) { // sample 1 has only reference
+                    Var v2var = v2.var.get(0);
                     vartype = varType(v2var.refallele, v2var.varallele);
                     Var v2ref = getVarMaybe(vars2, p, ref);
                     if (!isGoodVar(v2var, v2ref, vartype, splice, conf)) {
@@ -690,14 +703,16 @@ public class VarDict {
                     if (newtype.length() > 0) {
                         type = newtype;
                         th1 = join("\t",
-                                v1nt.tcov, v1nt.cov, v1nt.rfc, v1nt.rrc, v1nt.fwd, v1nt.rev, v1nt.genotype, v1nt.freq, v1nt.bias, v1nt.pmean, v1nt.pstd, v1nt.qual, v1nt.qstd,
-                                v1nt.mapq, v1nt.qratio, v1nt.hifreq, v1nt.extrafreq, v1nt.nm
+                                v1nt.tcov, v1nt.cov, v1nt.rfc, v1nt.rrc, v1nt.fwd, v1nt.rev, v1nt.genotype, v1nt.freq, v1nt.bias,
+                                v1nt.pmean, v1nt.pstd, v1nt.qual, v1nt.qstd, v1nt.mapq, v1nt.qratio, v1nt.hifreq, v1nt.extrafreq,
+                                v1nt.nm
                                 );
                     } else {
                         Var v1ref = vars1.get(p).ref;
                         th1 = join("\t",
-                                v1ref.tcov, v1ref.cov, v1ref.rfc, v1ref.rrc, v1ref.fwd, v1ref.rev, v1ref.genotype, v1ref.freq, v1ref.bias, v1ref.pmean, v1ref.pstd, v1ref.qual, v1ref.qstd,
-                                v1ref.mapq, v1ref.qratio, v1ref.hifreq, v1ref.extrafreq, v1ref.nm
+                                v1ref.tcov, v1ref.cov, v1ref.rfc, v1ref.rrc, v1ref.fwd, v1ref.rev, v1ref.genotype, v1ref.freq, v1ref.bias,
+                                v1ref.pmean, v1ref.pstd, v1ref.qual, v1ref.qstd, v1ref.mapq, v1ref.qratio, v1ref.hifreq, v1ref.extrafreq,
+                                v1ref.nm
                                 );
                     }
 
@@ -834,8 +849,10 @@ public class VarDict {
                 Var rref = getVarMaybe(vars, p, ref);
                 for (int i = 0; i < vvar.size(); i++) {
                     Var vref = vvar.get(i);
+                    if ( vref.refallele.contains("N") ) {
+                        continue;
+                    }
                     String vartype = varType(vref.refallele, vref.varallele);
-
                     if (!isGoodVar( vref, rref, vartype , splice, conf)) {
                         if (!conf.doPileup) {
                             continue;
@@ -1240,6 +1257,10 @@ public class VarDict {
 
                     if (conf.hasMappingQuality() && row.mapq < conf.mappingQuality) { // ignore low mapping quality reads
                         continue;
+                    }
+
+                    if (row.flag.isNotPrimaryAlignment() && conf.samfilter != null) {
+                            continue;
                     }
 
                     if ("*".equals(row.querySeq)) {
@@ -1720,15 +1741,21 @@ public class VarDict {
                                 } else {
                                     if (cigar.size() > ci + 3 && cigar.get(ci + 3).contains("M")) {
                                         int ci2 = toInt(cigar.get(ci + 2));
-                                        for (int vi = 0; vi < conf.vext && vi < ci2; vi++) {
+                                        int vsn = 0;
+                                        for (int vi = 0; vsn <= conf.vext && vi < ci2; vi++) {
                                             if (row.querySeq.charAt(n + m + vi) == 'N') {
                                                 break;
                                             }
                                             if (row.queryQual.charAt(n + m + vi) - 33 < conf.goodq) {
                                                 break;
                                             }
-                                            if (isNotEquals(row.querySeq.charAt(n + m + vi), ref.get(start + vi))) {
-                                                offset = vi + 1;
+                                            if (ref.containsKey(start + vi)) {
+                                                if (isNotEquals(row.querySeq.charAt(n + m + vi), ref.get(start + vi))) {
+                                                    offset = vi + 1;
+                                                    vsn = 0;
+                                                } else if (isEquals(row.querySeq.charAt(n + m + vi), ref.get(start + vi))) {
+                                                    vsn++;
+                                                }
                                             }
                                         }
                                         if (offset != 0) {
@@ -1836,16 +1863,38 @@ public class VarDict {
                                     } else {
                                         if (cigar.size() > ci + 3 && cigar.get(ci + 3).contains("M")) {
                                             int ci2 = toInt(cigar.get(ci + 2));
-                                            for (int vi = 0; vi < conf.vext && vi < ci2; vi++) {
+//                                            for (int vi = 0; vi < conf.vext && vi < ci2; vi++) {
+//                                                if (row.querySeq.charAt(n + vi) == 'N') {
+//                                                    break;
+//                                                }
+//                                                if (row.queryQual.charAt(n + vi) - 33 < conf.goodq) {
+//                                                    break;
+//                                                }
+//                                                if (isNotEquals(row.querySeq.charAt(n + vi), ref.get(start + m + vi))) {
+//                                                    offset = vi + 1;
+//                                                }
+//                                            }
+                                            int vsn = 0;
+                                            for (int vi = 0; vsn <= conf.vext && vi < ci2; vi++) {
                                                 if (row.querySeq.charAt(n + vi) == 'N') {
                                                     break;
                                                 }
                                                 if (row.queryQual.charAt(n + vi) - 33 < conf.goodq) {
                                                     break;
                                                 }
-                                                if (isNotEquals(row.querySeq.charAt(n + vi), ref.get(start + m + vi))) {
-                                                    offset = vi + 1;
+                                                if (isEquals('N', ref.get(start+m+vi))) {
+                                                    break;
                                                 }
+                                                if (ref.containsKey(start + m + vi)) {
+                                                    if (isNotEquals(row.querySeq.charAt(n + vi), ref.get(start + m + vi))) {
+                                                        offset = vi + 1;
+                                                        vsn=0;
+                                                    } else if(isEquals(row.querySeq.charAt(n + vi), ref.get(start + m + vi))) {
+                                                        vsn++;
+                                                    }
+                                                }
+
+
                                             }
                                             if (offset != 0) {
                                                 ss.append(substr(row.querySeq, n, offset));
@@ -1929,9 +1978,14 @@ public class VarDict {
                             // Update: Forgo the row.queryQual check.  Will recover later
                             while ((start + 1) >= region.start
                                     && (start + 1) <= region.end && (i + 1) < m
-                                    && ref.containsKey(start) && !isEquals(ref.get(start), row.querySeq.charAt(n))) {
+                                    && q >= conf.goodq
+                                    && isHasAndNotEquals(row.querySeq.charAt(n), ref, start)
+                                    && isNotEquals('N', ref.get(start))) {
 
                                 if (row.querySeq.charAt(n + 1) == 'N' ) {
+                                    break;
+                                }
+                                if (isHasAndNotEquals('N', ref, start + 1)) {
                                     break;
                                 }
                                 if (isNotEquals(ref.get(start + 1), row.querySeq.charAt(n + 1))) {
@@ -1951,8 +2005,10 @@ public class VarDict {
                             }
                             if (m - i <= conf.vext
                                     && cigar.size() > ci + 3 && "D".equals(cigar.get(ci + 3))
+                                    && ref.containsKey(start)
                                     && (ss.length() > 0 || isNotEquals(row.querySeq.charAt(n), ref.get(start)))
                                     && row.queryQual.charAt(n) - 33 > conf.goodq) {
+
                                 while (i + 1 < m) {
                                     s += row.querySeq.charAt(n + 1);
                                     q += row.queryQual.charAt(n + 1) - 33;
@@ -2373,7 +2429,7 @@ public class VarDict {
                         genotype1 = genotype1.replaceFirst("\\^", "i");
                         genotype2 = genotype2.replaceFirst("\\^", "i");
                     }
-                    vref.leftseq = joinRef(ref, sp - 20 < 1 ? 0 : sp - 20, sp - 1); // left 20 nt
+                    vref.leftseq = joinRef(ref, sp - 20 < 1 ? 1 : sp - 20, sp - 1); // left 20 nt
                     int chr0 = getOrElse(chrs, region.chr, 0);
                     vref.rightseq = joinRef(ref, ep + 1, ep + 20 > chr0 ? chr0 : ep + 20); // right 20 nt
                     String genotype = genotype1 + "/" + genotype2;
@@ -2650,7 +2706,8 @@ public class VarDict {
                             continue;
 
                         }
-                        ins = substr(ins, 0, 1) + "&" + substr(ins, -(ins.length()-1));
+//                        ins = substr(ins, 0, 1) + "&" + substr(ins, -(ins.length()-1));
+                        ins = "-" + ins.length() + "^" + ins;
                         bi = p3;
                         vref = getVariation(hash, p3, ins);
                     }
@@ -3265,6 +3322,17 @@ public class VarDict {
         }
     }
 
+    private static boolean isHasAndEquals(Character ch1, Map<Integer, Character> ref, int index) {
+        if (!ref.containsKey(index))
+            return false;
+        return isEquals(ch1, ref.get(index));
+    }
+
+    private static boolean isHasAndNotEquals(Character ch1, Map<Integer, Character> ref, int index) {
+        if (!ref.containsKey(index))
+            return false;
+        return isNotEquals(ch1, ref.get(index));
+    }
 
     private static boolean isEquals(Character ch1, Character ch2) {
         if (ch1 == null && ch2 == null)
@@ -3398,8 +3466,8 @@ public class VarDict {
     private static final Comparator<Object[]> COMP1 = new Comparator<Object[]>() {
         @Override
         public int compare(Object[] o1, Object[] o2) {
-            int x1 = (Integer)o1[2] - (Integer)o1[3];
-            int x2 = (Integer)o2[2] - (Integer)o2[3];
+            int x1 = (Integer)o1[2];
+            int x2 = (Integer)o2[2];
             return Integer.compare(x2, x1);
         }
     };
@@ -3559,7 +3627,7 @@ public class VarDict {
             for (Integer sc3pp : sc3p) {
                 Sclip tv = sclip3.get(sc3pp);
                 if (conf.y) {
-                    System.err.printf("33: %s %s %s\n", p, sc3pp, sanpseq);
+                    System.err.printf("33: %s %s %s %s\n", p, sc3pp, vn, sanpseq);
                 }
                 if (tv != null && !tv.used) {
                     String seq = findconseq(tv);
@@ -3718,7 +3786,7 @@ public class VarDict {
                 }
                 // Adjust ref cnt so that AF won't > 1
                 if (mp > p && me == 5) {
-                    double f = (mp-p)/(tv.pmean/(double)tv.cnt);
+                    double f = tv.pmean != 0 ? (mp - p) / (tv.pmean / (double)tv.cnt) : 1;
                     if (f > 1) {
                         f = 1;
                     }
@@ -4105,7 +4173,7 @@ public class VarDict {
         if (ref == null) {
             return;
         }
-        double f = (tv.pmean / (double)tv.cnt - len + 1) / (tv.pmean / (double)tv.cnt);
+        double f = tv.pmean != 0 ? (tv.pmean / (double)tv.cnt - len + 1) / (tv.pmean / (double)tv.cnt) : 0; // the adjustment factor
         if (f < 0) {
             return;
         }
@@ -4462,7 +4530,12 @@ public class VarDict {
         return sb.toString();
     }
 
-    private static boolean isGoodVar(Var vref, Var rref, String type, Map<String, Integer> splice, Configuration conf) {
+    private static boolean isGoodVar(Var vref, Var rref, String type,
+            Map<String, Integer> splice,
+            Configuration conf) {
+        if (vref == null || vref.refallele.isEmpty())
+            return false;
+
         if (type == null || type.isEmpty()) {
             type = varType(vref.refallele, vref.varallele);
         }
