@@ -4,7 +4,6 @@
 use warnings;
 use Getopt::Std;
 use strict;
-use Data::Dumper;
 
 our ($opt_h, $opt_H, $opt_b, $opt_D, $opt_d, $opt_s, $opt_c, $opt_S, $opt_E, $opt_n, $opt_N, $opt_e, $opt_g, $opt_x, $opt_f, $opt_r, $opt_B, $opt_z, $opt_v, $opt_p, $opt_F, $opt_C, $opt_m, $opt_Q, $opt_T, $opt_q, $opt_Z, $opt_X, $opt_P, $opt_3, $opt_k, $opt_R, $opt_G, $opt_a, $opt_o, $opt_O, $opt_V, $opt_t, $opt_y, $opt_I);
 unless( getopts( 'hHvtzypDC3F:d:b:s:e:S:E:n:c:g:x:f:r:B:N:Q:m:T:q:Z:X:P:k:R:G:a:o:O:V:I:' )) {
@@ -12,7 +11,6 @@ unless( getopts( 'hHvtzypDC3F:d:b:s:e:S:E:n:c:g:x:f:r:B:N:Q:m:T:q:Z:X:P:k:R:G:a:
 }
 USAGE() if ( $opt_H );
 USAGE() unless ( $opt_b );
-
 my $BAM = $opt_b; # the bam file
 my $sample = $1 if ( $BAM =~ /([^\/\._]+).sorted[^\/]*.bam/ );
 my $samplem = "";
@@ -38,7 +36,7 @@ $opt_F = defined($opt_F) ? $opt_F : "0x500";
 
 my $VEXT = defined($opt_X) ? $opt_X : 3; # the extension of deletion and insertion for complex variants
 $opt_P = defined($opt_P) ? $opt_P : 5;
-$opt_k = $opt_k ? $opt_k : 0; # Whether to perform local realignment.  Set to 0 to disable.
+$opt_k = defined($opt_k) ? $opt_k : 1; # Whether to perform local realignment.  Set to 0 to disable.
 my $fasta = $opt_G ? $opt_G : "/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa";
 my %CHRS; # Key: chr Value: chr_len
 my $EXT = defined($opt_x) ? $opt_x : 0;
@@ -173,7 +171,6 @@ sub ampVardict {
 	my ($chr, $start, $end, $gene, $istart, $iend);
 	for(my $j = 0; $j < @{$SEGS[$i]}; $j++) {
 	    ($chr, $start, $end, $gene, $istart, $iend) = @{$SEGS[$i]->[$j]};
-#            print "Region [chr=$chr, start=$start, end=$end, gene=$gene, istart=$istart, iend=$iend]\n";
 	    push(@vars, toVars($chr, $start, $end, $BAM1));
 	    for(my $p = $istart; $p <= $iend; $p++) {
 		push(@{ $pos{ $p } }, [$j, $chr, $start, $end, $istart, $iend]);
@@ -307,6 +304,7 @@ sub vardict {
 	} else {
 	    for(my $i = 0; $i < @{ $vars->{$p}->{VAR} }; $i++) {
 		my $vref = $vars->{ $p }->{ VAR }->[$i];
+		last if ( $vref->{refallele} =~ /N/ );
 		my $vartype = varType($vref->{refallele}, $vref->{varallele});
 		unless( isGoodVar( $vars->{ $p }->{ VAR }->[$i], $vars->{ $p }->{ REF }, $vartype ) ) {
 		    next unless( $opt_p );
@@ -378,7 +376,7 @@ sub somdict {
 		 while( $v1->{ VAR }->[$N] && isGoodVar($v1->{ VAR }->[$N], $v1->{ REF }, varType($v1->{ VAR }->[$N]->{ refallele }, $v1->{ VAR }->[$N]->{ varallele }))) {
 		     my $VREF = $v1->{ VAR }->[$N];
 		     my $nt = $VREF->{ n };
-		     if ( length($nt) > 1 && length($VREF->{ refallele }) == length($VREF->{ varallele }) && $VREF->{ genotype } !~ /-/ && $VREF->{ genotype } !~ /m/ && $VREF->{ genotype } !~ /i/ ) {
+		     if ( length($nt) > 1 && length($VREF->{ refallele }) == length($VREF->{ varallele }) && (! isGoodVar($v2->{ VARN }->{ $nt })) && $VREF->{ genotype } !~ /-/ && $VREF->{ genotype } !~ /m/ && $VREF->{ genotype } !~ /i/ ) {
 			 my $fnt = substr($nt, 0, -1); $fnt =~ s/&$//;
 			 my $lnt = substr($nt, 1); $lnt =~ s/^&//; substr($lnt, 1, 0) = "&" if ( length($lnt) > 1 );
 			 if ( $v2->{ VARN }->{ $fnt } && isGoodVar($v2->{ VARN }->{ $fnt }, $v2->{ REF })) {
@@ -447,9 +445,9 @@ sub somdict {
 		 my $newtype = combineAnalysis($v2->{ VARN }->{ $nt }, $v1->{ VARN }->{ $nt }, $chr, $p, $nt);
 		 next if ( $newtype eq "FALSE" );
 		 $type = $newtype if ( $newtype );
-		 my @th1 = $newtype ? (map { $v1->{ VARN }->{ $nt }->{ $_ } ? $v1->{ VARN }->{ $nt }->{ $_ } : 0; } @hdrs) : (map { $v1->{ REF }->{ $_ } } @hdrs);
+		 my @th1 = $newtype ? (map { $v1->{ VARN }->{ $nt }->{ $_ } ? $v1->{ VARN }->{ $nt }->{ $_ } : 0; } @hdrs) : (map { $v1->{ REF }->{ $_ } ? $v1->{ REF }->{ $_ } : 0 } @hdrs);
 		 adjComplex($v2->{ VAR }->[0]) if ( $vartype eq "Complex" );
-		 print join("\t", $sample, $G, $chr, (map { $v2->{ VAR }->[0]->{ $_ }; } @hd1), @th1, (map { $v2->{ VAR }->[0]->{ $_ }; } (@hdrs, @hd2)), "$chr:$S-$E", $type, $vartype), "\n";
+		 print join("\t", $sample, $G, $chr, (map { $v2->{ VAR }->[0]->{ $_ } ? $v2->{ VAR }->[0]->{ $_ } : 0; } @hd1), @th1, (map { $v2->{ VAR }->[0]->{ $_ } ? $v2->{ VAR }->[0]->{ $_ } : 0; } (@hdrs, @hd2)), "$chr:$S-$E", $type, $vartype), "\n";
 	     }
 	 }
     }
@@ -506,6 +504,7 @@ sub isNoise {
 # Determine whether a variant meet specified criteria
 sub isGoodVar {
     my ($vref, $rref, $type) = @_;
+    return 0 unless($vref && $vref->{ refallele });
     $type = varType($vref->{ refallele }, $vref->{ varallele }) unless( $type );
     return 0 if ( $vref->{ freq } < $FREQ );
     return 0 if ( $vref->{ hicnt } < $MINR );
@@ -554,15 +553,12 @@ sub toVars {
     my %sclip3; # soft clipped at 3'
     my %sclip5; # soft clipped at 5'
     my @bams = split(/:/, $bam);
-        my $lineCount = 0;
-        my $lineTotal = 0;
     foreach my $bami (@bams) {
 	#my $tsamcnt = `samtools view $bami $chr:$START-$END | head -1`;
 	#next unless( $tsamcnt || $opt_p ); # to avoid too much IO for exome and targeted while the BED is whole genome
 	# Get the reference sequence
 	my $s_start = $START - $EXT - 700 < 1 ? 1 : $START - $EXT - 700;
 	my $s_end = $END + $EXT + 700 > $CHRS{ $chr } ? $CHRS{ $chr } : $END + $EXT + 700;
-#        print STDERR "Process: "."samtools faidx $fasta $chr:$s_start-$s_end\n";
 	my ($header, $exon) = split(/\n/, `samtools faidx $fasta $chr:$s_start-$s_end`, 2);
 	$exon =~ s/\s+//g;
 	for(my $i = $s_start; $i <= $s_start + length($exon); $i++) {
@@ -570,13 +566,10 @@ sub toVars {
 	}
 	$chr =~ s/^chr// if ( $opt_C );
 	my $SAMFILTER = $opt_F ? "-F $opt_F" : "";
-#        print STDERR "Process: "."samtools view $SAMFILTER $bami $chr:$START-$END\n";
 	open(SAM, "samtools view $SAMFILTER $bami $chr:$START-$END |");
 	my %DUP = ();
 	my $DUPP = 0;
 	while( <SAM> ) {
-            my $line = $_;
-         $lineTotal++;
 	    if ( $opt_Z ) {
 		next if ( rand() <= $opt_Z );
 	    }
@@ -584,6 +577,9 @@ sub toVars {
 	    next if ( defined($opt_Q) && $a[4] < $opt_Q ); # ignore low mapping quality reads
 	    #next if ( $opt_F && ($a[1] & 0x200 || $a[1] & 0x100) ); # ignore "non-primary alignment", or quality failed reads.
 	    #next if ( $opt_F && ($a[1] & 0x100) ); # ignore "non-primary alignment"
+	    if ( $a[1] & 0x100 ) {
+	        next if ($opt_F); # -F 0 to turn it off
+	    }
 	    next if ( $a[9] eq "*" );
 	    # filter duplicated reads if option -t is set
 	    if ( $opt_t ) {
@@ -777,9 +773,7 @@ sub toVars {
 		    $rdoff += $_ foreach(@rdp); 
 		}
 		my $rn = 0;
-                while( $rn + 1 < $soft && $REF{ $refoff + $rn + 1} eq substr($a[9], $rdoff + $rn + 1, 1) ) {
-                    $rn++ 
-                }
+		$rn++ while( $rn + 1 < $soft && $REF{ $refoff + $rn + 1} eq substr($a[9], $rdoff + $rn + 1, 1) );
 		if ( $rn > 3 || $REF{ $refoff } eq substr($a[9], $rdoff, 1) ) {
 		    $mch += $rn + 1;
 		    $soft -= $rn + 1;
@@ -796,8 +790,8 @@ sub toVars {
 		my $mch = $2;
 		my $soft = $1;
 		my $rn = 0;
-		$rn++ while( $rn + 1 < $soft && $REF{ $a[3] - $rn - 2} eq substr($a[9], $soft - $rn - 2, 1) );
-		if ( $rn > 3  || $REF{ $a[3] - 1 } eq substr($a[9], $soft - 1, 1)) {
+		$rn++ while( $rn + 1 < $soft && $REF{ $a[3] - $rn - 2} && $REF{ $a[3] - $rn - 2} eq substr($a[9], $soft - $rn - 2, 1) );
+		if ( $rn > 3  || ($REF{ $a[3] - 1 } && $REF{ $a[3] - 1 } eq substr($a[9], $soft - 1, 1))) {
 		    $mch += $rn + 1;
 		    $soft -= $rn + 1;
 		    if ( $soft > 0 ) {
@@ -859,14 +853,11 @@ sub toVars {
 			}
 			$m = $cigar[$ci];
 		    } elsif ( $ci == @cigar - 2 ) { # 3' soft clipped
-			while( $n < length($a[9]) 
-                            && $REF{ $start } 
-                            && $REF{ $start } eq substr($a[9], $n, 1) 
-                            && ord(substr($a[10], $n, 1))-33 > 10) {
-                                $hash{ $start }->{ $REF{ $start } }->{ cnt } = 0 unless( $hash{ $start }->{ $REF{ $start } }->{ cnt } );
-                                addCnt($hash{ $start }->{ $REF{ $start } }, $dir, $rlen2-$p, ord(substr($a[10], $n, 1))-33, $a[4], $nm);
-                                $cov{$start}++;
-                                $n++; $start++; $m--; $p++;
+			while( $n < length($a[9]) && $REF{ $start } && $REF{ $start } eq substr($a[9], $n, 1) && ord(substr($a[10], $n, 1))-33 > 10) {
+			    $hash{ $start }->{ $REF{ $start } }->{ cnt } = 0 unless( $hash{ $start }->{ $REF{ $start } }->{ cnt } );
+			    addCnt($hash{ $start }->{ $REF{ $start } }, $dir, $rlen2-$p, ord(substr($a[10], $n, 1))-33, $a[4], $nm);
+			    $cov{$start}++;
+			    $n++; $start++; $m--; $p++;
 			}
 			if ( length($a[9]) - $n > 0 ) {
 			    my $q = 0;
@@ -912,10 +903,16 @@ sub toVars {
 			$ci += 4;
 		    } else {
 			if ( $cigar[$ci+3] && $cigar[$ci+3] =~ /M/ ) {
-			    for(my $vi = 0; $vi < $VEXT && $vi < $cigar[$ci+2]; $vi++) {
+			    my $vsn = 0;
+			    for(my $vi = 0; $vsn <= $VEXT && $vi < $cigar[$ci+2]; $vi++) {
 				last if ( substr($a[9], $n+$m+$vi, 1) eq "N" );
 				last if ( ord(substr($a[10], $n+$m+$vi, 1))-33 < $GOODQ );
-				$offset = $vi+1 if ($REF{ $start+$vi } && substr($a[9], $n+$m+$vi, 1) ne $REF{ $start+$vi });
+				if ($REF{ $start+$vi } && substr($a[9], $n+$m+$vi, 1) ne $REF{ $start+$vi }) {
+				    $offset = $vi+1;
+				    $vsn = 0;
+				} elsif ($REF{ $start+$vi } && substr($a[9], $n+$m+$vi, 1) eq $REF{ $start+$vi }) {
+				    $vsn++;
+				}
 			    }
 			    if ($offset) {
 				$ss .= substr($a[9], $n+$m, $offset);
@@ -1001,10 +998,17 @@ sub toVars {
 		        $ci += 2;
 		    } else {
 			if ( $cigar[$ci+3] && $cigar[$ci+3] =~ /M/ ) {
-			    for(my $vi = 0; $vi < $VEXT && $vi < $cigar[$ci+2]; $vi++) {
+			    my $vsn = 0;
+			    for(my $vi = 0; $vsn <= $VEXT && $vi < $cigar[$ci+2]; $vi++) {
 				last if ( substr($a[9], $n+$vi, 1) eq "N" );
 				last if ( ord(substr($a[10], $n+$vi, 1))-33 < $GOODQ );
-				$offset = $vi+1 if ($REF{ $start+$m+$vi } && substr($a[9], $n+$vi, 1) ne $REF{ $start+$m+$vi });
+				last if ( $REF{ $start+$m+$vi } && $REF{ $start+$m+$vi } eq 'N' );
+				if ($REF{ $start+$m+$vi } && substr($a[9], $n+$vi, 1) ne $REF{ $start+$m+$vi }) {
+				    $offset = $vi+1;
+				    $vsn = 0;
+				} elsif ( $REF{ $start+$m+$vi } && substr($a[9], $n+$vi, 1) eq $REF{ $start+$m+$vi }) {
+				    $vsn++;
+				}
 			    }
 			    if ($offset) {
 				$ss .= substr($a[9], $n, $offset);
@@ -1072,9 +1076,10 @@ sub toVars {
 		    my $ss = "";
 		    # More than one mismatches will only perform when all nucleotides have quality > $GOODQ
 		    # Update: Forgo the quality check.  Will recover later
-		    while(($start + 1) >= $START && ($start + 1) <= $END && ($i + 1) < $m && $REF{$start} && substr($a[9], $n, 1) ne $REF{$start} ) {
+		    while(($start + 1) >= $START && ($start + 1) <= $END && ($i + 1) < $m && $REF{$start} && $REF{$start} ne 'N' && substr($a[9], $n, 1) ne $REF{$start} && $q >= $GOODQ) {
 			#last if (ord(substr($a[10], $n+1, 1))-33 < $GOODQ);
 			last if (substr($a[9], $n+1, 1) eq "N" );
+			last if ($REF{$start+1} && $REF{$start+1} ne 'N');
 			if ( substr($a[9], $n+1, 1) ne $REF{ $start + 1 } ) {
 			    $ss .= substr($a[9], $n+1, 1);
 			    $q += ord(substr($a[10], $n+1, 1))-33;
@@ -1088,7 +1093,7 @@ sub toVars {
 			}
 		    }
 		    $s .= "&$ss" if ( $ss );
-		    if ( $m-$i <= $VEXT && $cigar[$ci+2] && $cigar[$ci+3] eq "D" && $REF{$start} && ($ss || substr($a[9], $n, 1) ne $REF{$start}) && ord(substr($a[10], $n, 1))-33 > $GOODQ ) {
+		    if ( $m-$i <= $VEXT && $cigar[$ci+2] && $cigar[$ci+3] eq "D" && $REF{$start} && ($ss || substr($a[9], $n, 1) ne $REF{$start}) && ord(substr($a[10], $n, 1))-33 >= $GOODQ ) {
 			while($i+1 < $m) {
 			    $s .= substr($a[9], $n+1, 1);
 			    $q += ord(substr($a[10], $n+1, 1))-33;
@@ -1110,9 +1115,7 @@ sub toVars {
 		    unless( $trim ) {
 			if ( $start - $qbases + 1 >= $START && $start - $qbases + 1 <= $END ) {
 			    $hash{ $start - $qbases + 1 }->{ $s }->{ $dir }++;
-			    if ( $s =~ /^[ATGC]&[ATGC]+$/ ) {
-                                $mnp{ $start - $qbases + 1 }->{ $s }++;
-                            }
+			    $mnp{ $start - $qbases + 1 }->{ $s }++ if ( $s =~ /^[ATGC]&[ATGC]+$/ );
 			    my $hv = $hash{ $start - $qbases + 1 }->{ $s };
 			    $hv->{ cnt }++;
 			    my $tp = $p < $rlen-$p ? $p + 1: $rlen-$p;
@@ -1155,18 +1158,10 @@ sub toVars {
 		last if ( $start > $END );
 		$offset = 0;
 	    }
-            $lineCount++;
 	}
 	close( SAM );
     }
 
-    # print STDERR "Total line: " . $lineCount . "\n";
-    #print STDERR "S line: " . $lineTotal . "\n";
-
-    #my @hkk = keys %hash;
-    #my @ihkk = grep { $hash{$_}->{ I } } @hkk;
-    #@ihkk = sort { $a <=> $b; } @ihkk;
-    #print $_ . "\n" foreach(@ihkk);
     if ( $opt_k ) {
 	realigndel(\%hash, \%dels5, \%cov, \%sclip5, \%sclip3, \%REF, $chr, \@bams);
 	realignins(\%hash, \%ins, \%cov, \%sclip5, \%sclip3, \%REF, $chr);
@@ -1354,7 +1349,7 @@ sub toVars {
 		    $genotype1 =~ s/\^/i/;
 		    $genotype2 =~ s/\^/i/;
 		}
-		$vref->{ leftseq } = join( "", (map { $REF{ $_ }; } (($sp-20 < 1 ? 0 : $sp-20) .. ($sp - 1))) ); # left 20 nt
+		$vref->{ leftseq } = join( "", (map { $REF{ $_ }; } (($sp-20 < 1 ? 1 : $sp-20) .. ($sp - 1))) ); # left 20 nt
 		$vref->{ rightseq } = join( "", (map { $REF{ $_ }; } (($ep+1) .. ($ep+20 > $CHRS{ $chr } ? $CHRS{ $chr } : $ep+20))) ); # right 20 nt
 		my $genotype = "$genotype1/$genotype2";
 		$genotype =~ s/&//g;
@@ -1534,7 +1529,8 @@ sub realignlgins30 {
 		} else { # long MNP
 		    next if ( length($seq3) > length($ins) && (! ismatch(substr($seq3, length($ins)), join("", (map { $REF->{ $_ }; } ( ($p3 + length($ins)) .. ($p3 + length($seq3)+2))) ), 1)));
 		    next if ( length($seq5) > length($ins) && (! ismatch(substr($seq5, length($ins)), join("", (map { $REF->{ $_ }; } ( ($p3 - (length($seq5)-length($ins)) - 2) .. ($p3 - 1)))), -1)));
-		    $ins = substr($ins, 0, 1) . "&" . substr($ins, -(length($ins)-1));
+		    #$ins = substr($ins, 0, 1) . "&" . substr($ins, -(length($ins)-1));
+		    $ins = "-" . length($ins) . "^$ins"; #substr($ins, 0, 1) . "&" . substr($ins, -(length($ins)-1));
 		    $bi = $p3;
 		    $hash->{ $p3 }->{ $ins }->{ cnt } = 0 unless( $hash->{ $p3 }->{ $ins }->{ cnt } );
 		    $vref = $hash->{ $p3 }->{ $ins };
@@ -1928,10 +1924,9 @@ sub findbi {
 	    my $ins = substr($seq, 0, $n);
 	    my $extra = "";
 	    my $ept = 0;
-	    while(substr($seq, $n + $ept, 1) ne $REF->{ $p + $ept*$dir - ($dir == -1 ? 1 : 0) } 
-                || substr($seq, $n + $ept + 1, 1) ne $REF->{ $p + ($ept+1)*$dir - ($dir == -1 ? 1 : 0) }) {
-                    $extra .= substr($seq, $n + $ept, 1);
-                    $ept++;
+	    while(substr($seq, $n + $ept, 1) ne $REF->{ $p + $ept*$dir - ($dir == -1 ? 1 : 0) } || substr($seq, $n + $ept + 1, 1) ne $REF->{ $p + ($ept+1)*$dir - ($dir == -1 ? 1 : 0) }) {
+		$extra .= substr($seq, $n + $ept, 1);
+		$ept++;
 	    }
 #	print STDERR "bi: $n $i ", substr($seq, $n), " $p $seq $extra $ept $mm\n";
 	    if ($dir == -1) {
@@ -2095,7 +2090,8 @@ sub realigndel {
 	    push(@tmp, [$p, $vn, $dcnt, $ecnt]);
 	}
     }
-    @tmp = sort {$b->[2] - $b->[3] <=> $a->[2] - $a->[3]} @tmp;
+    #@tmp = sort {$b->[2] - $b->[3] <=> $a->[2] - $a->[3]} @tmp;
+    @tmp = sort {$b->[2] <=> $a->[2]} @tmp;
     foreach my $tmpv (@tmp) {
 	my ($p, $vn, $dcnt) = @$tmpv;
 	print STDERR "Realigndel for: $p $vn $dcnt cov: $cov->{ $p }\n" if ( $opt_y );
@@ -2125,7 +2121,7 @@ sub realigndel {
 	    print STDERR "Realigndel Adj: $mm $mp $me $nm3 $nm5 $p $tv->{ cnt } $tv->{ qmean } cov: $cov->{ $p }\n" if ( $opt_y );
 	    # Adjust ref cnt so that AF won't > 1
 	    if ( $mp > $p && $me == 5 ) {
-		my $f = ($mp-$p)/($tv->{pmean}/$tv->{cnt});
+		my $f = $tv->{pmean} ? ($mp-$p)/($tv->{pmean}/$tv->{cnt}) : 1;
 		$f = 1 if ( $f > 1 );
 		$cov->{ $p } += int($tv->{ cnt } * $f);
 		adjRefCnt($tv, $hash->{$p}->{ $REF->{$p} }, $dellen);
@@ -2246,7 +2242,7 @@ sub adjCnt {
 sub adjRefCnt {
     my ($tv, $ref, $len) = @_;
     return unless($ref);
-    my $f = ($tv->{ pmean }/$tv->{ cnt }-$len+1)/($tv->{ pmean }/$tv->{ cnt }); # the adjustment factor
+    my $f = $tv->{ pmean } ? ($tv->{ pmean }/$tv->{ cnt }-$len+1)/($tv->{ pmean }/$tv->{ cnt }) : 0; # the adjustment factor
     $f = 1 if ( $f > 1 );
     return if ( $f < 0 );
     $ref->{ cnt } -= int($f*$tv->{ cnt });
@@ -2328,7 +2324,8 @@ sub realignins {
 	    push(@tmp, [$p, $vn, $icnt, $ecnt]);
 	}
     }
-    @tmp = sort {$b->[2] - $b->[3] <=> $a->[2] - $a->[3]} @tmp;
+    #@tmp = sort {$b->[2] - $b->[3] <=> $a->[2] - $a->[3]} @tmp;
+    @tmp = sort {$b->[2] <=> $a->[2]} @tmp;
     foreach my $tmpv (@tmp) {
 	my ($p, $vn, $icnt) = @$tmpv;
 	print STDERR "Realign Ins: $p $vn $icnt\n" if ( $opt_y );
@@ -2390,7 +2387,7 @@ sub realignins {
 	}
 	#use Object; print STDERR "$p: $sc3p $sc5p $icnt\n"; print STDERR Object::Perl($sclip3);
 	foreach my $sc3pp (@$sc3p) {
-	    print STDERR "33: $p $sc3pp $sanpseq\n" if ( $opt_y );
+	    print STDERR "33: $p $sc3pp $vn $sanpseq\n" if ( $opt_y );
 	    if ( $sclip3->{ $sc3pp } && (! $sclip3->{ $sc3pp }->{ used }) ) {
 		my $tv = $sclip3->{ $sc3pp };
 		my $seq = findconseq( $tv );
@@ -2552,5 +2549,3 @@ COPYRIGHT
 USAGE
    exit(0);
 }
-
-# vim: set tabstop=8
