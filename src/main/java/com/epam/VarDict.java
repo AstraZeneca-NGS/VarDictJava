@@ -870,12 +870,12 @@ public class VarDict {
                     adjComplex(vref);
                 }
                 System.out.println(join("\t", sample, region.gene, region.chr,
-                            vref.sp, vref.ep, vref.refallele, vref.varallele, vref.tcov, vref.cov, vref.rfc, vref.rrc,
-                            vref.fwd, vref.rev, vref.genotype, format("%.3f", vref.freq), vref.bias, vref.pmean, vref.pstd?1:0, format("%.1f", vref.qual),
-                            vref.qstd?1:0, format("%.1f", vref.mapq), format("%.3f", vref.qratio), format("%.3f", vref.hifreq),
-                            vref.extrafreq == 0? 0 : format("%.3f", vref.extrafreq), vref.shift3, vref.msi == 0? 0 : format("%.3f", vref.msi),
-                            vref.msint, vref.nm, vref.hicnt, vref.hicov, vref.leftseq, vref.rightseq,
-                            region.chr + ":" + region.start + "-" + region.end, vartype
+                        vref.sp, vref.ep, vref.refallele, vref.varallele, vref.tcov, vref.cov, vref.rfc, vref.rrc,
+                        vref.fwd, vref.rev, vref.genotype, format("%.3f", vref.freq), vref.bias, vref.pmean, vref.pstd ? 1 : 0, format("%.1f", vref.qual),
+                        vref.qstd ? 1 : 0, format("%.1f", vref.mapq), format("%.3f", vref.qratio), format("%.3f", vref.hifreq),
+                        vref.extrafreq == 0 ? 0 : format("%.3f", vref.extrafreq), vref.shift3, vref.msi == 0 ? 0 : format("%.3f", vref.msi),
+                        vref.msint, vref.nm, vref.hicnt, vref.hicov, vref.leftseq, vref.rightseq,
+                        region.chr + ":" + region.start + "-" + region.end, vartype
                         ));
                 if (conf.debug) {
                     System.out.println("\t" + vref.DEBUG);
@@ -1692,7 +1692,7 @@ public class VarDict {
                                                 Variation variation = getVariationFromSeq(sclip, idx, ch);
                                                 addCnt(variation, dir, qn -  si, row.queryQual.charAt(n + si) - 33, row.mapq, nm, conf.goodq);
                                             }
-                                            addCnt(sclip, dir, m, q / qn, row.mapq, nm, conf.goodq);
+                                            addCnt(sclip, dir, m, q / (double)qn, row.mapq, nm, conf.goodq);
                                         }
 
                                     }
@@ -1770,7 +1770,7 @@ public class VarDict {
                                     for (int i = 0; i < q.length(); i++) {
                                         tmpq += q.charAt(i) - 33;
                                     }
-                                    tmpq /= q.length();
+                                    tmpq = tmpq / q.length();
                                     if (hv.pstd == false && hv.pp != 0 && tp != hv.pp) {
                                         hv.pstd = true;
                                     }
@@ -1852,17 +1852,6 @@ public class VarDict {
                                     } else {
                                         if (cigar.size() > ci + 3 && cigar.get(ci + 3).contains("M")) {
                                             int ci2 = toInt(cigar.get(ci + 2));
-//                                            for (int vi = 0; vi < conf.vext && vi < ci2; vi++) {
-//                                                if (row.querySeq.charAt(n + vi) == 'N') {
-//                                                    break;
-//                                                }
-//                                                if (row.queryQual.charAt(n + vi) - 33 < conf.goodq) {
-//                                                    break;
-//                                                }
-//                                                if (isNotEquals(row.querySeq.charAt(n + vi), ref.get(start + m + vi))) {
-//                                                    offset = vi + 1;
-//                                                }
-//                                            }
                                             int vsn = 0;
                                             for (int vi = 0; vsn <= conf.vext && vi < ci2; vi++) {
                                                 if (row.querySeq.charAt(n + vi) == 'N') {
@@ -1909,7 +1898,7 @@ public class VarDict {
                                             tmpq += q.charAt(i) - 33;
                                         }
 
-                                        tmpq /= q.length();
+                                        tmpq = tmpq / q.length();
                                         if (hv.pstd == false && hv.pp != 0  && tp != hv.pp) {
                                             hv.pstd = true;
                                         }
@@ -2033,7 +2022,7 @@ public class VarDict {
                                     if(hv.pstd == false && hv.pp != 0 && tp != hv.pp) {
                                         hv.pstd = true;
                                     }
-                                    if(hv.qstd == false && hv.pq != 0 && tp != hv.pq) {
+                                    if(hv.qstd == false && hv.pq != 0 && q != hv.pq) {
                                         hv.qstd = true;
                                     }
                                     hv.pmean += tp;
@@ -2049,18 +2038,12 @@ public class VarDict {
                                     }
                                     for (int qi = 1; qi <= qbases; qi++) {
                                         incCnt(cov, start - qi + 1, 1);
-                                        if (start - qi + 1 == 55210021) {
-//                                            System.out.println(format("%s|%s|%s|1", cov.get(55210021), lineCount, lineTotal));
-                                        }
                                     }
                                     if (s.startsWith("-")) {
                                         increment(dels5, start - qbases + 1, s);
                                         int to = toInt(cigar.get(ci + 2));
                                         for (int qi = 1; qi < to; qi++) {
                                             incCnt(cov, start + qi, 1);
-                                            if (start + qi == 55210021) {
-//                                                System.err.println(format("%s|%s|%s|2", cov.get(55210021), lineCount, lineTotal));
-                                            }
                                         }
                                     }
                                 }
@@ -2728,7 +2711,7 @@ public class VarDict {
                     }
 
                     tmp = ins.length() > p3 - p5 ? joinRef(ref, p5, p3)
-                            : joinRef(ref, p5, p5 + (p3 - p5 - ins.length()) / 2 - 1); // Tandem duplication
+                            : joinRef(ref, p5, p5 + (p3 - p5 - ins.length()) / 2); // Tandem duplication
                     ins = "+" + tmp + ins;
                     bi = p5 - 1;
                     vref = getVariation(iHash, bi, ins);
