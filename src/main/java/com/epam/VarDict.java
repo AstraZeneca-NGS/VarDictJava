@@ -912,6 +912,8 @@ public class VarDict {
     private static final Pattern SOFT_CLIPPED = Pattern.compile("(\\d+)[MIS]");
     private static final Pattern ALIGNED_LENGTH = Pattern.compile("(\\d+)[MD]");
     private static final Pattern CIGAR_PAIR = Pattern.compile("(\\d+)([A-Z])");
+    private static final Pattern BEGIN_D_S = Pattern.compile("^(\\d+)S");
+    private static final Pattern D_S_END = Pattern.compile("(\\d+)S$");
 
 
 
@@ -1226,17 +1228,7 @@ public class VarDict {
         int lineCount = 0;
         int lineTotal = 0;
         for (String bami : bams) {
-            int s_start = region.getStart() - conf.numberNucleotideToExtend - 700 < 1 ? 1 : region.getStart() - conf.numberNucleotideToExtend - 700;
-            int len = chrs.containsKey(region.getChr()) ? chrs.get(region.getChr()) : 0;
-            int s_end = region.getEnd() + conf.numberNucleotideToExtend + 700 > len ?
-                    len : region.getEnd() + conf.numberNucleotideToExtend + 700;
-
-            String[] subSeq = retriveSubSeq(conf.fasta, region.getChr(), s_start, s_end);
-            String header = subSeq[0];
-            String exon = subSeq[1];
-            for(int i = s_start; i < s_start + exon.length(); i++) { //TODO why '<=' ?
-                ref.put(i, Character.toUpperCase(exon.charAt(i - s_start)));
-            }
+            fillRef(region, chrs, conf, ref);
             String chr = region.getChr();
             if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) {
                 chr = region.getChr().substring("chr".length());
@@ -1319,15 +1311,15 @@ public class VarDict {
                         int segstart = row.position;
                         int segend = segstart + rlen3 - 1;
 
-                        if (row.cigar.matches("^(\\d+)S.*")) {
-                            int ts1 = segstart > s_start ? segstart : s_start;
-                            int te1 = segend < s_end ? segend : s_end;
+                        if (BEGIN_D_S.matcher(row.cigar).find()) {
+                            int ts1 = segstart > region.start ? segstart : region.start;
+                            int te1 = segend < region.end ? segend : region.end;
                             if (Math.abs(ts1 - te1) / (double)(segend - segstart) > ovlp == false) {
                                 continue;
                             }
-                        } else if (row.cigar.matches("^.*(\\d+)S$")) {
-                            int ts1 = segstart > s_start ? segstart : s_start;
-                            int te1 = segend < s_end ? segend : s_end;
+                        } else if (D_S_END.matcher(row.cigar).find()) {
+                            int ts1 = segstart > region.start ? segstart : region.start;
+                            int te1 = segend < region.end ? segend : region.end;
                             if (Math.abs(te1 - ts1) / (double)(segend - segstart) > ovlp == false) {
                                 continue;
                             }
@@ -1338,12 +1330,12 @@ public class VarDict {
                                   segend = segstart + row.isize -1;
                               } else {
                                   segstart = row.mpos;
-                                  segend = segstart - row.isize - 1;
+                                  segend = row.mpos - row.isize - 1;
                               }
                           }
                           // No segment overlapping test since samtools should take care of it
-                          int ts1 = segstart > s_start ? segstart : s_start;
-                          int te1 = segend < s_end ? segend : s_end;
+                          int ts1 = segstart > region.start ? segstart : region.start;
+                          int te1 = segend < region.end ? segend : region.end;
                           if ((abs(segstart - region.start) > dis || abs(segend - region.end) > dis)
                                   || abs((ts1-te1)/(double)(segend-segstart)) <= ovlp) {
                               continue;
@@ -1603,7 +1595,7 @@ public class VarDict {
                                 if (ci == 0) { // 5' soft clipped
                                     // align softclipped but matched sequences due to mis-softclipping
                                     while (m - 1 >= 0 && start - 1 > 0 && start - 1 <= chrs.get(chr)
-                                            && isEquals(ref.get(start - 1), row.querySeq.charAt(m - 1))
+                                            && isHasAndEquals(row.querySeq.charAt(m - 1), ref, start - 1)
                                             && row.queryQual.charAt(m - 1) - 33 > 10) {
                                         Variation variation = getVariation(hash, start - 1, ref.get(start - 1).toString());
                                         addCnt(variation, dir, m, row.queryQual.charAt(m - 1) - 33, row.mapq, nm, conf.goodq);
@@ -1644,9 +1636,6 @@ public class VarDict {
                                                 }
                                                 incCnt(cnts, ch, 1);
                                                 Variation seqVariation = getVariationFromSeq(sclip, idx, ch);
-//                                                if (seqVariation.cnt != 0) {
-//                                                    seqVariation.cnt = 0;
-//                                                }
                                                 addCnt(seqVariation, dir, si - (m - qn), row.queryQual.charAt(si) - 33, row.mapq, nm, conf.goodq);
                                             }
                                             addCnt(sclip, dir, m, q / qn, row.mapq, nm, conf.goodq);
@@ -1656,7 +1645,7 @@ public class VarDict {
                                     m = toInt(cigar.get(ci));
                                 } else if (ci == cigar.size() - 2) { // 3' soft clipped
                                     while (n < row.querySeq.length()
-                                            && isEquals(ref.get(start), row.querySeq.charAt(n))
+                                            && isHasAndEquals(row.querySeq.charAt(n), ref, start)
                                             && row.queryQual.charAt(n) - 33 > 10) {
 
                                         Variation variation = getVariation(hash, start, ref.get(start).toString());
@@ -1685,7 +1674,7 @@ public class VarDict {
                                             q += tq;
                                             qn++;
                                         }
-                                        if (qn >= 1 && qn > lowqcnt && start >= s_start - conf.buffer && start <= s_end + conf.buffer) {
+                                        if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
                                             Sclip sclip = sclip3.get(start);
                                             if (sclip == null) {
                                                 sclip = new Sclip();
@@ -1802,7 +1791,7 @@ public class VarDict {
 
                                     // Adjust the reference count for insertion reads
                                     if ( getVariationMaybe(hash, start - 1, ref.get(start - 1)) != null
-                                            && isEquals(row.querySeq.charAt(n-1), ref.get(start - 1))) {
+                                            && isHasAndEquals(row.querySeq.charAt(n-1), ref, start - 1)) {
 
 //                                        subCnt(getVariation(hash, start - 1, ref.get(start - 1 ).toString()), dir, tp, tmpq, Qmean, nm, conf);
                                         Variation tv = getVariation(hash, start - 1, String.valueOf(row.querySeq.charAt(n - 1)));
@@ -2060,12 +2049,18 @@ public class VarDict {
                                     }
                                     for (int qi = 1; qi <= qbases; qi++) {
                                         incCnt(cov, start - qi + 1, 1);
+                                        if (start - qi + 1 == 55210021) {
+//                                            System.out.println(format("%s|%s|%s|1", cov.get(55210021), lineCount, lineTotal));
+                                        }
                                     }
                                     if (s.startsWith("-")) {
                                         increment(dels5, start - qbases + 1, s);
                                         int to = toInt(cigar.get(ci + 2));
                                         for (int qi = 1; qi < to; qi++) {
                                             incCnt(cov, start + qi, 1);
+                                            if (start + qi == 55210021) {
+//                                                System.err.println(format("%s|%s|%s|2", cov.get(55210021), lineCount, lineTotal));
+                                            }
                                         }
                                     }
                                 }
@@ -2505,6 +2500,21 @@ public class VarDict {
     }
 
 
+    private static void fillRef(Region region, Map<String, Integer> chrs, Configuration conf, Map<Integer, Character> ref) throws IOException {
+        int s_start = region.getStart() - conf.numberNucleotideToExtend - 700 < 1 ? 1 : region.getStart() - conf.numberNucleotideToExtend - 700;
+        int len = chrs.containsKey(region.getChr()) ? chrs.get(region.getChr()) : 0;
+        int s_end = region.getEnd() + conf.numberNucleotideToExtend + 700 > len ?
+                len : region.getEnd() + conf.numberNucleotideToExtend + 700;
+
+        String[] subSeq = retriveSubSeq(conf.fasta, region.getChr(), s_start, s_end);
+        String header = subSeq[0];
+        String exon = subSeq[1];
+        for(int i = s_start; i < s_start + exon.length(); i++) { //TODO why '<=' ?
+            ref.put(i, Character.toUpperCase(exon.charAt(i - s_start)));
+        }
+    }
+
+
     private static int extractIndel(String cigar) {
         int idlen = 0;
         for (String s : globalFind(IDLEN, cigar)) {
@@ -2747,7 +2757,7 @@ public class VarDict {
                     Map<String, Integer> map = new HashMap<>();
                     map.put(ins, vref.cnt);
                     tins.put(bi, map);
-                    realigndel(hash, tins, cov, sclip5, sclip3, ref, chr, chrs, rlen, bams, conf);
+                    realignins(hash, iHash, tins, cov, sclip5, sclip3, ref, chr, chrs, conf);
                 } else if (ins.startsWith("-")) {
                     adjCnt(vref, sc3v, getVariationMaybe(hash, bi, ref.get(bi)), conf);
                     adjCnt(vref, sc5v, conf);
@@ -3157,7 +3167,7 @@ public class VarDict {
             if (seq.isEmpty()) {
                 continue;
             }
-            if (B_AAAAAAA.matcher(seq).matches() || B_TTTTTTT.matcher(seq).matches()) {
+            if (B_AAAAAAA.matcher(seq).find() || B_TTTTTTT.matcher(seq).find()) {
                 continue;
             }
             if (seq.length() < 7) {
@@ -3273,7 +3283,7 @@ public class VarDict {
             if (seq.isEmpty()) {
                 continue;
             }
-            if (B_AAAAAAA.matcher(seq).matches() || B_TTTTTTT.matcher(seq).matches()) {
+            if (B_AAAAAAA.matcher(seq).find() || B_TTTTTTT.matcher(seq).find()) {
                 continue;
             }
             if (seq.length() < 7) {
@@ -4235,7 +4245,6 @@ public class VarDict {
             Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
             int j = 0;
             for (Region region : regions) {
-//                System.err.println(region);
                 rg = region;
                 Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, bam1, chrs, splice, ampliconBasedCalling, rlen, conf);
                 rlen = tpl._1();
@@ -4398,6 +4407,7 @@ public class VarDict {
                 }
                 System.out.println();
             }
+            break;
         }
     }
 

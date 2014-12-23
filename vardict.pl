@@ -4,6 +4,7 @@
 use warnings;
 use Getopt::Std;
 use strict;
+use Data::Dumper;
 
 our ($opt_h, $opt_H, $opt_b, $opt_D, $opt_d, $opt_s, $opt_c, $opt_S, $opt_E, $opt_n, $opt_N, $opt_e, $opt_g, $opt_x, $opt_f, $opt_r, $opt_B, $opt_z, $opt_v, $opt_p, $opt_F, $opt_C, $opt_m, $opt_Q, $opt_T, $opt_q, $opt_Z, $opt_X, $opt_P, $opt_3, $opt_k, $opt_R, $opt_G, $opt_a, $opt_o, $opt_O, $opt_V, $opt_t, $opt_y, $opt_I);
 unless( getopts( 'hHvtzypDC3F:d:b:s:e:S:E:n:c:g:x:f:r:B:N:Q:m:T:q:Z:X:P:k:R:G:a:o:O:V:I:' )) {
@@ -268,6 +269,7 @@ sub ampVardict {
 	    }
 	    print "\n";
 	}
+        last;
     }
 }
 
@@ -569,7 +571,10 @@ sub toVars {
 	open(SAM, "samtools view $SAMFILTER $bami $chr:$START-$END |");
 	my %DUP = ();
 	my $DUPP = 0;
+        my $lineTotal = 0;
+        my $line = 0;
 	while( <SAM> ) {
+            $lineTotal++;
 	    if ( $opt_Z ) {
 		next if ( rand() <= $opt_Z );
 	    }
@@ -1137,11 +1142,13 @@ sub toVars {
 			    $q >= $GOODQ ? $hv->{ hicnt }++ : $hv->{ locnt }++;
 			    for(my $qi = 1; $qi <= $qbases; $qi++) {
 				$cov{ $start - $qi + 1 }++;
+                                # print $cov{55210021} . "|$line|$lineTotal|1\n" if($start - $qi + 1 == 55210021);
 			    }
 			    if ( $s =~ /^-/ ) {
 				$dels5{ $start - $qbases + 1 }->{ $s }++;
 				for(my $qi = 1; $qi < $cigar[$ci+2]; $qi++) {
 				    $cov{ $start + $qi }++;
+                                    # print $cov{55210021} . "|$line|$lineTotal|2\n" if($start + $qi == 55210021);
 				}
 			    }
 			}
@@ -1158,6 +1165,7 @@ sub toVars {
 		last if ( $start > $END );
 		$offset = 0;
 	    }
+            $line++;
 	}
 	close( SAM );
     }
