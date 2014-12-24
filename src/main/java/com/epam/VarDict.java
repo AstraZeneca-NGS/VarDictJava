@@ -1325,7 +1325,7 @@ public class VarDict {
                             }
 
                         } else {
-                          if (row.mrnm.equals("=") && row.isDefined(8)) {
+                          if (row.mrnm.equals("=") && row.isDefined(8) && row.isize != 0) {
                               if (row.isize > 0) {
                                   segend = segstart + row.isize -1;
                               } else {
@@ -1411,7 +1411,8 @@ public class VarDict {
                                 int tslen = tmid + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0);
                                 position += tmid + (mm.group(3).equals("D") ? toInt(mm.group(2)) : 0);
                                 int n0 = 0;
-                                while (n0 < mlen && !Character.valueOf(row.querySeq.charAt(tslen + n0)).equals(ref.get(position + n0))) {
+                                while (n0 < mlen
+                                        && isHasAndNotEquals(row.querySeq.charAt(tslen + n0), ref, position + n0)) {
                                     n0++;
                                 }
                                 tslen += n0;
@@ -1444,18 +1445,18 @@ public class VarDict {
                                 int refoff = position + rdoff;
                                 int RDOFF = rdoff;
                                 if (!ov5.isEmpty()) {
-                                    Matcher matcher = D_MIS.matcher(ov5);
+                                    Matcher matcher = D_MIS.matcher(ov5); // read position
                                     while (matcher.find()) {
                                         rdoff += toInt(matcher.group(1));
                                     }
-                                    matcher = D_MD.matcher(ov5);
+                                    matcher = D_MD.matcher(ov5); // reference position
                                     while (matcher.find()) {
                                         refoff += toInt(matcher.group(1));
                                     }
                                 }
                                 int rn = 0;
                                 while (rdoff + rn < row.querySeq.length()
-                                        && Character.valueOf(row.querySeq.charAt(rdoff + rn)).equals(ref.get(refoff + rn))) {
+                                        && isHasAndEquals(row.querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
                                     rn++;
                                 }
                                 RDOFF += rn;
@@ -1512,15 +1513,11 @@ public class VarDict {
                         }
                         int rn = 0;
 
-                        try {
-                            while (rn + 1 < soft && isEquals(ref.get(refoff + rn + 1), row.querySeq.charAt(rdoff + rn + 1))) {
-                                rn++;
-                            }
-                        } catch (StringIndexOutOfBoundsException e) {
-                            // TODO Auto-generated catch block
-                            e.printStackTrace();
+                        while (rn + 1 < soft
+                                && isHasAndEquals(row.querySeq.charAt(rdoff + rn + 1), ref, refoff + rn + 1)) {
+                            rn++;
                         }
-                        if (rn > 3 || isEquals(ref.get(refoff), row.querySeq.charAt(rdoff))) {
+                        if (rn > 3 || isHasAndEquals(row.querySeq.charAt(rdoff), ref, refoff)) {
                             mch += rn + 1;
                             soft -= rn + 1;
                             if (soft > 0) {
@@ -2070,20 +2067,10 @@ public class VarDict {
 
                     }
                     lineCount++;
-
                 }
-            } //TODO abcall
+            }
 
         }
-//        System.err.println("Total line: " + lineCount);
-//        System.err.println("S line: " + lineTotal);
-
-
-//        List<Integer> hkk = new ArrayList<>(iHash.keySet());
-//        Collections.sort(hkk);
-//        for (Integer integer : hkk) {
-//            System.out.println(integer);
-//        }
 //        System.exit(0);
 
         if (conf.performLocalRealignment) {
@@ -4255,7 +4242,7 @@ public class VarDict {
                 Var vref;
                 int nocov = 0;
                 int maxcov = 0;
-                Set<Integer> goodmap = new HashSet<>();
+                Set<String> goodmap = new HashSet<>();
                 List<Integer> vcovs = new ArrayList<>();
                 for (Tuple2<Integer, Region> amps : v) {
                     final int amp = amps._1();
@@ -4280,7 +4267,7 @@ public class VarDict {
                                 nt = tv.n;
                                 vref = tv;
                             }
-                            goodmap.add(amp);
+                            goodmap.add(format("%s-%s-%s", amp, tv.refallele, tv.varallele));
                             if (tv.tcov > maxcov) {
                                 maxcov = tv.tcov;
                             }
@@ -4351,12 +4338,14 @@ public class VarDict {
                 }
 
                 List<Tuple2<Var, String>> badv = new ArrayList<>();
+                int gvscnt = gvs.size();
                 for (Tuple2<Integer, Region> amps : v) {
                     int amp = amps._1();
                     Region reg = amps._2();
-                    if (goodmap.contains(amp)) {
+                    if (goodmap.contains(format("%s-%s-%s", amp, vref.refallele, vref.varallele))) {
                         continue;
                     }
+                    // my $tref = $vars[$amp]->{ $p }->{ VAR }->[0]; ???
                     if (vref.sp >= reg.istart && vref.ep <= reg.iend) {
 
                         String regStr = reg.chr + ":" + reg.start + "-" + reg.end;
@@ -4368,13 +4357,20 @@ public class VarDict {
                         } else {
                             badv.add(Tuple2.newTuple((Var)null, regStr));
                         }
+                    } else if ((vref.sp < reg.iend && reg.iend < vref.ep)
+                            || (vref.sp < reg.istart && reg.istart < vref.ep)) { // the variant overlap with amplicon's primer
+                        if (gvscnt > 1)
+                            gvscnt--;
                     }
+                }
+                if (flag && gvscnt < gvs.size()) {
+                    flag = false;
                 }
                 if (vartype.equals("Complex")) {
                     adjComplex(vref);
                 }
                 System.out.print(join("\t", sample, rg.gene, rg.chr,
-                        joinVar1(vref, "\t"), gvs.get(0)._2(), vartype, gvs.size(), gvs.size() + badv.size(), nocov, flag ? 1 : 0));
+                        joinVar1(vref, "\t"), gvs.get(0)._2(), vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
                 if (conf.debug) {
                     System.out.print("\t" + vref.DEBUG);
                 }
@@ -4390,7 +4386,6 @@ public class VarDict {
                 }
                 System.out.println();
             }
-            break;
         }
     }
 
