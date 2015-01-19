@@ -5,6 +5,7 @@ import static com.epam.VarDict.VarsType.var;
 import static com.epam.VarDict.VarsType.varn;
 import static java.lang.String.format;
 import static java.lang.Math.*;
+import static java.util.Collections.*;
 
 import java.io.*;
 import java.util.*;
@@ -38,8 +39,8 @@ public class VarDict {
         }
 
         if (conf.regionOfInterest != null) {
-            List<List<Region>> regions = buildRegions(conf.regionOfInterest, conf.numberNucleotideToExtend, conf.isZeroBasedDefined() ? conf.zeroBased : false);
-            finalCycle(regions, chrs, conf.ampliconBasedCalling, sample, samplem, conf);
+            Region region = buildRegion(conf.regionOfInterest, conf.numberNucleotideToExtend, conf.isZeroBasedDefined() ? conf.zeroBased : false);
+            finalCycle(singletonList(singletonList(region)), chrs, conf.ampliconBasedCalling, sample, samplem, conf);
         } else {
             Tuple3<String, Boolean, List<String>> tpl = readBedFile(conf);
             String ampliconBasedCalling = tpl._1();
@@ -1363,214 +1364,9 @@ public class VarDict {
                     }
 
                     //Modify the CIGAR for potential mis-alignment for indels at the end of reads to softclipping and let VarDict's algorithm to figure out indels
-                    int position = row.position;
-                    String cigarStr = row.cigar;
-                    int offset = 0;
-                    boolean flag = true;
-                    while (flag) {
-                        flag = false;
-                        jregex.Matcher mm = j_D_S_D_ID.matcher(cigarStr);
-                        if (mm.find()) {
-                            String tslen = toInt(mm.group(1)) + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0) + "S";
-                            position = mm.group(3).equals("D") ? 2 : 0;
-                            Replacer r = j_D_S_D_ID.replacer(tslen);
-                            cigarStr = r.replace(cigarStr);
-                            flag = true;
-                        }
-                        mm = j_D_ID_D_S.matcher(cigarStr);
-                        if (mm.find()) {
-                            String tslen = toInt(mm.group(3)) + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
-                            Replacer r = j_D_ID_D_S.replacer(tslen);
-                            cigarStr = r.replace(cigarStr);
-                            flag = true;
-                        }
-                        mm = j_D_S_D_M_ID.matcher(cigarStr);
-                        if (mm.find()) {
-                            int tmid = toInt(mm.group(2));
-                            if (tmid <= 10 ) {
-                                String tslen = toInt(mm.group(1)) + tmid + (mm.group(4).equals("I") ? toInt(mm.group(3)) : 0) + "S";
-                                position += tmid + (mm.group(4).equals("D") ? toInt(mm.group(3)) : 0);
-                                Replacer r = j_D_S_D_M_ID.replacer(tslen);
-                                cigarStr = r.replace(cigarStr);
-                                flag = true;
-                            }
-                        }
-                        mm = j_D_ID_D_M_S.matcher(cigarStr);
-                        if (mm.find()) {
-                            int tmid = toInt(mm.group(3));
-                            if (tmid <= 10 ) {
-                                String tslen = toInt(mm.group(4)) + tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
-                                Replacer r = j_D_ID_D_M_S.replacer(tslen);
-                                cigarStr = r.replace(cigarStr);
-                                flag = true;
-                            }
-                        }
-
-
-
-                        // The following two clauses to make indels at the end of reads as softly
-                        // clipped reads and let VarDict's algorithm identify indels
-                        mm = j_D_M_D_ID_D_M.matcher(cigarStr);
-                        if (mm.find()) {
-                            int tmid = toInt(mm.group(1));
-                            int mlen = toInt(mm.group(4));
-                            if (tmid <= 8 ) {
-                                int tslen = tmid + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0);
-                                position += tmid + (mm.group(3).equals("D") ? toInt(mm.group(2)) : 0);
-                                int n0 = 0;
-                                while (n0 < mlen
-                                        && isHasAndNotEquals(row.querySeq.charAt(tslen + n0), ref, position + n0)) {
-                                    n0++;
-                                }
-                                tslen += n0;
-                                mlen -= n0;
-                                position += n0;
-                                cigarStr = cigarStr.replaceFirst("^\\dM\\d+[ID]\\d+M", tslen + "S" + mlen + "M");
-                                flag = true;
-                            }
-                        }
-                        mm = j_D_ID_DD_M.matcher(cigarStr);
-                        if (mm.find()) {
-                            int tmid = toInt(mm.group(3));
-                            if (tmid <= 8 ) {
-                                String tslen = tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
-                                Replacer r = j_D_ID_DD_M.replacer(tslen);
-                                cigarStr = r.replace(cigarStr);
-                                flag = true;
-                            }
-                        }
-
-                        //Combine two deletions and insertion into one complex if they are close
-                        Matcher cm = D_M_D_DD_M_D_I_D_M_D_DD.matcher(cigarStr);
-                        if (cm.find()) {
-                            int mid = toInt(cm.group(4)) + toInt(cm.group(6));
-                            if (mid <= 10) {
-                                int tslen = mid + toInt(cm.group(5));
-                                int dlen = toInt(cm.group(3)) + mid + toInt(cm.group(7));
-                                String ov5 = cm.group(1);
-                                int rdoff = toInt(cm.group(2));
-                                int refoff = position + rdoff;
-                                int RDOFF = rdoff;
-                                if (!ov5.isEmpty()) {
-                                    Matcher matcher = D_MIS.matcher(ov5); // read position
-                                    while (matcher.find()) {
-                                        rdoff += toInt(matcher.group(1));
-                                    }
-                                    matcher = D_MD.matcher(ov5); // reference position
-                                    while (matcher.find()) {
-                                        refoff += toInt(matcher.group(1));
-                                    }
-                                }
-                                int rn = 0;
-                                while (rdoff + rn < row.querySeq.length()
-                                        && isHasAndEquals(row.querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
-                                    rn++;
-                                }
-                                RDOFF += rn;
-                                dlen -= rn;
-                                tslen -= rn;
-                                cigarStr = D_M_D_DD_M_D_I_D_M_D_DD_prim.matcher(cigarStr).replaceFirst(RDOFF + "M" + dlen + "D" + tslen + "I");
-                                flag = true;
-                            }
-                        }
-                        // Combine two close deletions (<10bp) into one
-                        cm = DIG_D_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
-                        if (cm.find()) {
-                            int g2 = toInt(cm.group(2));
-                            int g3 = toInt(cm.group(3));
-                            String op = cm.group(4);
-
-                            int dlen = toInt(cm.group(1)) + g2;
-                            int ilen = g2;
-                            if (op.equals("I")) {
-                                ilen += g3;
-                            } else { //op == "D"
-                                dlen += g3;
-                                String istr = cm.group(5);
-                                if (istr != null) {
-                                    ilen += toInt(istr.substring(0, istr.length() - 1));
-                                }
-                            }
-                            cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
-                            flag = true;
-                        }
-
-                        // Combine two close indels (<10bp) into one
-                        cm = DIG_I_dig_M_DIG_DI_DIGI.matcher(cigarStr);
-                        if (cm.find()) {
-                            String op = cm.group(4);
-                            int g2 = toInt(cm.group(2));
-                            int g3 = toInt(cm.group(3));
-
-                            int dlen = g2;
-                            int ilen = toInt(cm.group(1)) + g2;
-                            if (op.equals("I")) {
-                                ilen += g3;
-                            } else { //op == "D"
-                                dlen += g3;
-                                String istr = cm.group(5);
-                                if (istr != null) {
-                                    ilen += toInt(istr.substring(0, istr.length() - 1));
-                                }
-                            }
-                            cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
-                            flag = true;
-                        }
-                    }
-
-                    Matcher mtch = ANY_D_M_D_S.matcher(cigarStr);
-                    if (mtch.find()) {
-                        String ov5 = mtch.group(1);
-                        int mch = toInt(mtch.group(2));
-                        int soft = toInt(mtch.group(3));
-                        int refoff = position + mch;
-                        int rdoff = mch;
-                        if (!ov5.isEmpty()) {
-                            List<String> rdp = globalFind(D_MIS, ov5); // read position
-                            for (String string : rdp) {
-                                rdoff += toInt(string);
-                            }
-                            List<String> rfp = globalFind(D_MD, ov5); // reference position
-                            for (String string : rfp) {
-                                refoff += toInt(string);
-                            }
-                        }
-                        int rn = 0;
-                        while (rn + 1 < soft
-                                && isHasAndEquals(row.querySeq.charAt(rdoff + rn + 1), ref, refoff + rn + 1)) {
-                            rn++;
-                        }
-                        if (rn > 3 || isHasAndEquals(row.querySeq.charAt(rdoff), ref, refoff)) {
-                            mch += rn + 1;
-                            soft -= rn + 1;
-                            if (soft > 0) {
-                                cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M" + soft + "S");
-                            } else {
-                                cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M");
-                            }
-                        }
-
-                    }
-
-                    mtch = D_S_D_M.matcher(cigarStr);
-                    if (mtch.find()) {
-                        int mch = toInt(mtch.group(2));
-                        int soft = toInt(mtch.group(1));
-                        int rn = 0;
-                        while (rn + 1 < soft && isEquals(ref.get(position - rn - 2), row.querySeq.charAt(soft - rn - 2))) {
-                            rn++;
-                        }
-                        if (rn > 3 || isEquals(ref.get(position - 1), row.querySeq.charAt(soft - 1))) {
-                            mch += rn + 1;
-                            soft -= rn + 1;
-                            if (soft > 0) {
-                                cigarStr = mtch.replaceFirst(soft + "S" + mch + "M");
-                            } else {
-                                cigarStr = mtch.replaceFirst(mch + "M");
-                            }
-                            position -= rn + 1;
-                        }
-                    }
+                    Tuple2<Integer, String> mc = modifyCigar(ref, row.position, row.cigar, row.querySeq);
+                    final int position = mc._1();
+                    final String cigarStr = mc._2();
 
                     List<String> cigar = new ArrayList<>();
                     Matcher cigarM = CIGAR_PAIR.matcher(cigarStr);
@@ -1580,7 +1376,7 @@ public class VarDict {
                     }
 
                     int start = position;
-
+                    int offset = 0;
                     List<String> segs = globalFind(MATCH_INSERTION, cigarStr); // Only match and insertion counts toward read length
                     List<String> segs2 = globalFind(SOFT_CLIPPED, cigarStr); // For total length, including soft-clipped bases
                     int rlen = sum(segs); //The read length for matched bases
@@ -3075,12 +2871,12 @@ public class VarDict {
                 }
             }
             sc5v.used = true;
-            Map<Integer, Map<String, Integer>> tins = new HashMap() {{
-                put(bi, new HashMap() {{
-                        put("+" + ins, iref.cnt);
-                    }});
-            }};
-
+//            Map<Integer, Map<String, Integer>> tins = new HashMap() {{
+//                put(bi, new HashMap() {{
+//                    put("+" + ins, iref.cnt);
+//                }});
+//            }};
+            Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.cnt));
             realignins(hash, iHash, tins, cov, sclip5, sclip3, ref, chr, chrs, conf);
             Variation mref = getVariationMaybe(hash, bi,  ref.get(bi));
             if (rpflag && bams.length > 0 && ins.length() >= 5
@@ -3161,11 +2957,7 @@ public class VarDict {
                 }
             }
             sc3v.used = true;
-            Map<Integer, Map<String, Integer>> tins = new HashMap() {{
-                put(bi, new HashMap() {{
-                        put("+" + ins, iref.cnt);
-                }});
-            }};
+            Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.cnt));
             realignins(hash, iHash, tins, cov, sclip5, sclip3, ref, chr, chrs, conf);
             Variation mref = getVariationMaybe(hash, bi, ref.get(bi));
             if (rpflag && bams.length > 0 && ins.length() >= 5 && ins.length() < rlen - 10
@@ -3454,13 +3246,14 @@ public class VarDict {
                 }
                 sclip.used = true;
             }
-            final int fbp = bp;
-            Map<Integer, Map<String, Integer>> dels5 = new HashMap() {{
-                    put(fbp, new HashMap() {{
-                            put(gt, tv.cnt);
-                        }});
-                }};
+//            final int fbp = bp;
+//            Map<Integer, Map<String, Integer>> dels5 = new HashMap() {{
+//                    put(fbp, new HashMap() {{
+//                            put(gt, tv.cnt);
+//                        }});
+//                }};
 
+            Map<Integer, Map<String, Integer>> dels5 = singletonMap(bp, singletonMap(gt, tv.cnt));
             realigndel(hash, dels5, cov, sclip5, sclip3, ref, chr, chrs, rlen, bams, conf);
             if (conf.y) {
                 System.err.printf("  Found lgdel done: %s %s %s 5' %s %s\n\n", bp, gt, p, seq, tv.cnt);
@@ -4591,10 +4384,11 @@ public class VarDict {
         int rlen = 0;
         for (List<Region> regions : segs) {
             List<Map<Integer, Vars>> vars = new ArrayList<>();
-            Region rg = null;
             Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
             int j = 0;
+            Region rg = null;
             for (Region region : regions) {
+                rg = region; //??
                 Map<Integer, Character> ref = getREF(region, chrs, conf);
                 Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, bam1, ref, chrs, splice, ampliconBasedCalling, rlen, conf);
                 rlen = tpl._1();
@@ -5144,8 +4938,7 @@ public class VarDict {
     }
 
     // TODO validate region format chr:start[-end][:gene]
-    public static List<List<Region>> buildRegions(String region, final int numberNucleotideToExtend, final boolean zeroBased) {
-        List<List<Region>> segs = new ArrayList<>();
+    public static Region buildRegion(String region, final int numberNucleotideToExtend, final boolean zeroBased) {
         String[] split = region.split(":");
         String chr = split[0];
         String gene = split.length < 3 ? chr : split[2];
@@ -5159,8 +4952,219 @@ public class VarDict {
         }
         if (start > end)
             start = end;
-        segs.add(Collections.singletonList(new Region(chr, start, end, gene)));
 
-        return segs;
+        return new Region(chr, start, end, gene);
+
+    }
+
+
+    private static Tuple2<Integer, String> modifyCigar(Map<Integer, Character> ref,  final int oPosition, final String oCigar, final String querySeq) {
+        int position = oPosition;
+        String cigarStr = oCigar;
+        boolean flag = true;
+        while (flag) {
+            flag = false;
+            jregex.Matcher mm = j_D_S_D_ID.matcher(cigarStr);
+            if (mm.find()) {
+                String tslen = toInt(mm.group(1)) + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0) + "S";
+                position = mm.group(3).equals("D") ? 2 : 0;
+                Replacer r = j_D_S_D_ID.replacer(tslen);
+                cigarStr = r.replace(cigarStr);
+                flag = true;
+            }
+            mm = j_D_ID_D_S.matcher(cigarStr);
+            if (mm.find()) {
+                String tslen = toInt(mm.group(3)) + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+                Replacer r = j_D_ID_D_S.replacer(tslen);
+                cigarStr = r.replace(cigarStr);
+                flag = true;
+            }
+            mm = j_D_S_D_M_ID.matcher(cigarStr);
+            if (mm.find()) {
+                int tmid = toInt(mm.group(2));
+                if (tmid <= 10 ) {
+                    String tslen = toInt(mm.group(1)) + tmid + (mm.group(4).equals("I") ? toInt(mm.group(3)) : 0) + "S";
+                    position += tmid + (mm.group(4).equals("D") ? toInt(mm.group(3)) : 0);
+                    Replacer r = j_D_S_D_M_ID.replacer(tslen);
+                    cigarStr = r.replace(cigarStr);
+                    flag = true;
+                }
+            }
+            mm = j_D_ID_D_M_S.matcher(cigarStr);
+            if (mm.find()) {
+                int tmid = toInt(mm.group(3));
+                if (tmid <= 10 ) {
+                    String tslen = toInt(mm.group(4)) + tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+                    Replacer r = j_D_ID_D_M_S.replacer(tslen);
+                    cigarStr = r.replace(cigarStr);
+                    flag = true;
+                }
+            }
+
+
+            // The following two clauses to make indels at the end of reads as softly
+            // clipped reads and let VarDict's algorithm identify indels
+            mm = j_D_M_D_ID_D_M.matcher(cigarStr);
+            if (mm.find()) {
+                int tmid = toInt(mm.group(1));
+                int mlen = toInt(mm.group(4));
+                if (tmid <= 8 ) {
+                    int tslen = tmid + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0);
+                    position += tmid + (mm.group(3).equals("D") ? toInt(mm.group(2)) : 0);
+                    int n0 = 0;
+                    while (n0 < mlen
+                            && isHasAndNotEquals(querySeq.charAt(tslen + n0), ref, position + n0)) {
+                        n0++;
+                    }
+                    tslen += n0;
+                    mlen -= n0;
+                    position += n0;
+                    cigarStr = cigarStr.replaceFirst("^\\dM\\d+[ID]\\d+M", tslen + "S" + mlen + "M");
+                    flag = true;
+                }
+            }
+            mm = j_D_ID_DD_M.matcher(cigarStr);
+            if (mm.find()) {
+                int tmid = toInt(mm.group(3));
+                if (tmid <= 8 ) {
+                    String tslen = tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+                    Replacer r = j_D_ID_DD_M.replacer(tslen);
+                    cigarStr = r.replace(cigarStr);
+                    flag = true;
+                }
+            }
+
+            //Combine two deletions and insertion into one complex if they are close
+            Matcher cm = D_M_D_DD_M_D_I_D_M_D_DD.matcher(cigarStr);
+            if (cm.find()) {
+                int mid = toInt(cm.group(4)) + toInt(cm.group(6));
+                if (mid <= 10) {
+                    int tslen = mid + toInt(cm.group(5));
+                    int dlen = toInt(cm.group(3)) + mid + toInt(cm.group(7));
+                    String ov5 = cm.group(1);
+                    int rdoff = toInt(cm.group(2));
+                    int refoff = position + rdoff;
+                    int RDOFF = rdoff;
+                    if (!ov5.isEmpty()) {
+                        Matcher matcher = D_MIS.matcher(ov5); // read position
+                        while (matcher.find()) {
+                            rdoff += toInt(matcher.group(1));
+                        }
+                        matcher = D_MD.matcher(ov5); // reference position
+                        while (matcher.find()) {
+                            refoff += toInt(matcher.group(1));
+                        }
+                    }
+                    int rn = 0;
+                    while (rdoff + rn < querySeq.length()
+                            && isHasAndEquals(querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
+                        rn++;
+                    }
+                    RDOFF += rn;
+                    dlen -= rn;
+                    tslen -= rn;
+                    cigarStr = D_M_D_DD_M_D_I_D_M_D_DD_prim.matcher(cigarStr).replaceFirst(RDOFF + "M" + dlen + "D" + tslen + "I");
+                    flag = true;
+                }
+            }
+            // Combine two close deletions (<10bp) into one
+            cm = DIG_D_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
+            if (cm.find()) {
+                int g2 = toInt(cm.group(2));
+                int g3 = toInt(cm.group(3));
+                String op = cm.group(4);
+
+                int dlen = toInt(cm.group(1)) + g2;
+                int ilen = g2;
+                if (op.equals("I")) {
+                    ilen += g3;
+                } else { //op == "D"
+                    dlen += g3;
+                    String istr = cm.group(5);
+                    if (istr != null) {
+                        ilen += toInt(istr.substring(0, istr.length() - 1));
+                    }
+                }
+                cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
+                flag = true;
+            }
+
+            // Combine two close indels (<10bp) into one
+            cm = DIG_I_dig_M_DIG_DI_DIGI.matcher(cigarStr);
+            if (cm.find()) {
+                String op = cm.group(4);
+                int g2 = toInt(cm.group(2));
+                int g3 = toInt(cm.group(3));
+
+                int dlen = g2;
+                int ilen = toInt(cm.group(1)) + g2;
+                if (op.equals("I")) {
+                    ilen += g3;
+                } else { //op == "D"
+                    dlen += g3;
+                    String istr = cm.group(5);
+                    if (istr != null) {
+                        ilen += toInt(istr.substring(0, istr.length() - 1));
+                    }
+                }
+                cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
+                flag = true;
+            }
+        }
+
+        Matcher mtch = ANY_D_M_D_S.matcher(cigarStr);
+        if (mtch.find()) {
+            String ov5 = mtch.group(1);
+            int mch = toInt(mtch.group(2));
+            int soft = toInt(mtch.group(3));
+            int refoff = position + mch;
+            int rdoff = mch;
+            if (!ov5.isEmpty()) {
+                List<String> rdp = globalFind(D_MIS, ov5); // read position
+                for (String string : rdp) {
+                    rdoff += toInt(string);
+                }
+                List<String> rfp = globalFind(D_MD, ov5); // reference position
+                for (String string : rfp) {
+                    refoff += toInt(string);
+                }
+            }
+            int rn = 0;
+            while (rn + 1 < soft
+                    && isHasAndEquals(querySeq.charAt(rdoff + rn + 1), ref, refoff + rn + 1)) {
+                rn++;
+            }
+            if (rn > 3 || isHasAndEquals(querySeq.charAt(rdoff), ref, refoff)) {
+                mch += rn + 1;
+                soft -= rn + 1;
+                if (soft > 0) {
+                    cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M" + soft + "S");
+                } else {
+                    cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M");
+                }
+            }
+
+        }
+
+        mtch = D_S_D_M.matcher(cigarStr);
+        if (mtch.find()) {
+            int mch = toInt(mtch.group(2));
+            int soft = toInt(mtch.group(1));
+            int rn = 0;
+            while (rn + 1 < soft && isEquals(ref.get(position - rn - 2), querySeq.charAt(soft - rn - 2))) {
+                rn++;
+            }
+            if (rn > 3 || isEquals(ref.get(position - 1), querySeq.charAt(soft - 1))) {
+                mch += rn + 1;
+                soft -= rn + 1;
+                if (soft > 0) {
+                    cigarStr = mtch.replaceFirst(soft + "S" + mch + "M");
+                } else {
+                    cigarStr = mtch.replaceFirst(mch + "M");
+                }
+                position -= rn + 1;
+            }
+        }
+        return Tuple2.newTuple(position, cigarStr);
     }
 }
