@@ -10,6 +10,10 @@ import static java.util.Collections.*;
 import java.io.*;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -4374,20 +4378,58 @@ public class VarDict {
 
     }
 
+    private static class ToVarsWorker implements Callable<Tuple2<Integer, Map<Integer, Vars>>> {
+        final Region region;
+        final String bam;
+        final Map<String, Integer> chrs;
+        final Set<String> splice;
+        final String ampliconBasedCalling;
+        final Configuration conf;
+
+        public ToVarsWorker(Region region, String bam, Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, Configuration conf) {
+            super();
+            this.region = region;
+            this.bam = bam;
+            this.chrs = chrs;
+            this.splice = splice;
+            this.ampliconBasedCalling = ampliconBasedCalling;
+            this.conf = conf;
+        }
+
+        @Override
+        public Tuple2<Integer, Map<Integer, Vars>> call() throws Exception {
+            Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
+            return toVars(region, bam, ref, chrs, splice, ampliconBasedCalling, 0, conf);
+        }
+
+    }
+
     private static void ampVardict(List<List<Region>> segs, Map<String, Integer> chrs, String ampliconBasedCalling, String bam1, String sample, Configuration conf) throws IOException {
-        Set<String> splice = new HashSet<>();
-        int rlen = 0;
+        Set<String> splice = new ConcurrentHashSet<>();
+        ExecutorService executor = Executors.newFixedThreadPool(6);
+//        int rlen = 0;
         for (List<Region> regions : segs) {
             List<Map<Integer, Vars>> vars = new ArrayList<>();
             Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
             int j = 0;
             Region rg = null;
+            ToVarsWorker firstWorker = null;
+            List<Future<Tuple2<Integer, Map<Integer, Vars>>>> workers = null;
             for (Region region : regions) {
                 rg = region; //??
-                Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
-                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, bam1, ref, chrs, splice, ampliconBasedCalling, rlen, conf);
-                rlen = tpl._1();
-                vars.add(tpl._2());
+                if (firstWorker == null) {
+                    firstWorker = new ToVarsWorker(region, bam1, chrs, splice, ampliconBasedCalling, conf);
+                    if (regions.size() > 1) {
+                        workers = new ArrayList<>();
+                    } else {
+                        workers = Collections.emptyList();
+                    }
+                } else {
+                    workers.add(executor.submit(new ToVarsWorker(region, bam1, chrs, splice, ampliconBasedCalling, conf)));
+                }
+//                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, bam1, ref, chrs, splice, ampliconBasedCalling, rlen, conf);
+//                rlen = tpl._1();
+//                vars.add(tpl._2());
                 for (int p = region.istart; p <= region.iend; p++) {
                     List<Tuple2<Integer, Region>> list = pos.get(p);
                     if (list == null) {
@@ -4398,6 +4440,18 @@ public class VarDict {
                 }
                 j++;
             }
+
+            if (firstWorker != null) {
+                try {
+                    vars.add(firstWorker.call()._2());
+                    for (Future<Tuple2<Integer, Map<Integer, Vars>>> future : workers) {
+                        vars.add(future.get()._2());
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
             for (Entry<Integer, List<Tuple2<Integer, Region>>> entry : pos.entrySet()) {
                 final int p = entry.getKey();
                 final List<Tuple2<Integer, Region>> v = entry.getValue();
@@ -4556,6 +4610,7 @@ public class VarDict {
                 System.out.println();
             }
         }
+        executor.shutdown();
     }
 
     private static String joinVar2(Var var, String delm) {
