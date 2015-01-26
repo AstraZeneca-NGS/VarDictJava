@@ -129,9 +129,6 @@ public class VarDict {
         public boolean isZeroBasedDefined() {
             return zeroBased != null;
         }
-
-
-
     }
 
     public static class Region {
@@ -366,11 +363,11 @@ public class VarDict {
             sample = stpl._1();
             samplem = stpl._2();
         }
-        Map<String, Integer> splice = new HashMap<>();
+        Set<String> splice = new HashSet<>();
         int rlen = 0;
         for (List<Region> list : segs) {
             for (Region region : list) {
-                Map<Integer, Character> ref = getREF(region, chrs, conf);
+                Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
                 if (conf.bam.hasBam2()) {
                     Tuple2<Integer, Map<Integer, Vars>> tpl1 = toVars(region, conf.bam.getBam1(), ref, chrs, splice, ampliconBasedCalling, rlen, conf);
                     Tuple2<Integer, Map<Integer, Vars>> tpl2 = toVars(region, conf.bam.getBam2(), ref, chrs, splice, ampliconBasedCalling, tpl1._1(), conf);
@@ -446,7 +443,7 @@ public class VarDict {
     private static int somdict(Region segs, Map<Integer, Vars> vars1, Map<Integer, Vars> vars2,
             String sample,
             Map<String, Integer> chrs,
-            Map<String, Integer> splice,
+            Set<String> splice,
             String ampliconBasedCalling,
             int rlen,
             Configuration conf) throws IOException {
@@ -745,12 +742,12 @@ public class VarDict {
     // Taken a likely somatic indels and see whether combine two bam files still support somatic status.  This is mainly
     // for Indels that softclipping overhang is too short to positively being called in one bam file, but can be called
     // in the other bam file, thus creating false positives
-    private static Tuple2<Integer, String> combineAnalysis(Var var1, Var var2, String chr, int p, String nt, Map<String, Integer> chrs, Map<String, Integer> splice, String ampliconBasedCalling, int rlen, Configuration conf) throws IOException {
+    private static Tuple2<Integer, String> combineAnalysis(Var var1, Var var2, String chr, int p, String nt, Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, int rlen, Configuration conf) throws IOException {
         if (conf.y) {
             System.err.printf("Start Combine %s %s\n", p, nt);
         }
         Region region = new Region(chr, var1.sp - rlen, var1.ep + rlen, "");
-        Map<Integer, Character> ref = getREF(region, chrs, conf);
+        Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
         Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam1(), ref,
                 chrs, splice, ampliconBasedCalling, rlen, conf);
         rlen = tpl._1();
@@ -831,7 +828,7 @@ public class VarDict {
     }
 
 
-    private static void vardict(Region region, Map<Integer, Vars> vars, String bam1, String sample, Map<String, Integer> splice, Configuration conf) {
+    private static void vardict(Region region, Map<Integer, Vars> vars, String bam1, String sample, Set<String> splice, Configuration conf) {
         for(int p = region.start; p <= region.end; p++) {
             List<String> vts = new ArrayList<>();
             List<Var> vrefs = new ArrayList<>();
@@ -1220,7 +1217,7 @@ public class VarDict {
     }
 
     private static Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer> parseSAM(Region region, String bam,
-            Map<String, Integer> chrs, Map<String, Integer> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
+            Map<String, Integer> chrs, Set<String> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
 
         String[] bams = bam.split(":");
 
@@ -1237,14 +1234,15 @@ public class VarDict {
         if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) {
             chr = region.getChr().substring("chr".length());
         }
-        Map<Integer, Character> ref = getREF(region, chrs, conf);
+        Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
         int lineCount = 0;
         int lineTotal = 0;
         for (String bami : bams) {
             String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : "-F " + conf.samfilter;
-            try (SamtoolsReader reader = "".equals(samfilter) ? new SamtoolsReader("view", bami, chr + ":" + region.start + "-" + region.end)
+            try (SamtoolsReader reader = "".equals(samfilter) ?
+                              new SamtoolsReader("view",            bami, chr + ":" + region.start + "-" + region.end)
                             : new SamtoolsReader("view", samfilter, bami, chr + ":" + region.start + "-" + region.end)) {
-                Map<String, Boolean> dup = new HashMap<>();
+                Set<String> dup = new HashSet<>();
                 int dupp = -1;
                 String line;
                 while ((line = reader.read()) != null) {
@@ -1273,16 +1271,18 @@ public class VarDict {
                             dup.clear();
                         }
                         if (row.isDefined(7) && row.mpos < 10) {
-                            if (dup.containsKey(row.position + "-" + row.mrnm + "-" + row.mpos)) {
+                            String dupKey = row.position + "-" + row.mrnm + "-" + row.mpos;
+                            if (dup.contains(dupKey)) {
                                 continue;
                             }
-                            dup.put(row.position + "-" + row.mrnm + "-" + row.mpos, Boolean.TRUE);
+                            dup.add(dupKey);
                             dupp = row.position;
                         } else if (row.flag.isUnmappedMate()) {
-                            if (dup.containsKey(row.position + "-" + row.cigar)) {
+                            String dupKey = row.position + "-" + row.cigar;
+                            if (dup.contains(dupKey)) {
                                 continue;
                             }
-                            dup.put(row.position + "-" + row.cigar, Boolean.TRUE);
+                            dup.add(dupKey);
                             dupp = row.position;
                         }
                     }
@@ -1396,12 +1396,7 @@ public class VarDict {
                         switch (operation) {
                             case "N":
                                 String key = (start - 1) + "-" + (start + m - 1);
-                                Integer splice = SPLICE.get(key);
-                                if (splice == null) {
-                                    SPLICE.put(key, 1);
-                                } else {
-                                    SPLICE.put(key, splice + 1);
-                                }
+                                SPLICE.add(key);
 
                                 start += m;
                                 offset = 0;
@@ -1454,7 +1449,7 @@ public class VarDict {
                                                 Variation seqVariation = getVariationFromSeq(sclip, idx, ch);
                                                 addCnt(seqVariation, dir, si - (m - qn), row.queryQual.charAt(si) - 33, row.mapq, nm, conf.goodq);
                                             }
-                                            addCnt(sclip, dir, m, q / qn, row.mapq, nm, conf.goodq);
+                                            addCnt(sclip, dir, m, q /(double)qn, row.mapq, nm, conf.goodq);
                                         }
 
                                     }
@@ -2014,7 +2009,7 @@ public class VarDict {
     }
 
     private static Tuple2<Integer, Map<Integer, Vars>> toVars(Region region, String bam, Map<Integer, Character> ref,
-            Map<String, Integer> chrs, Map<String, Integer> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
+            Map<String, Integer> chrs, Set<String> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
 
         Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer> parseTpl =
                 parseSAM(region, bam, chrs, SPLICE, ampliconBasedCalling, Rlen, conf);
@@ -2448,15 +2443,15 @@ public class VarDict {
     }
 
 
-    private static Map<Integer, Character> getREF(Region region, Map<String, Integer> chrs, Configuration conf) throws IOException {
+    private static Map<Integer, Character> getREF(Region region, Map<String, Integer> chrs, String fasta, int numberNucleotideToExtend) throws IOException {
         Map<Integer, Character> ref = new HashMap<Integer, Character>();
 
-        int s_start = region.start - conf.numberNucleotideToExtend - 700 < 1 ? 1 : region.start - conf.numberNucleotideToExtend - 700;
+        int s_start = region.start - numberNucleotideToExtend - 700 < 1 ? 1 : region.start - numberNucleotideToExtend - 700;
         int len = chrs.containsKey(region.chr) ? chrs.get(region.chr) : 0;
-        int s_end = region.end + conf.numberNucleotideToExtend + 700 > len ?
-                len : region.end + conf.numberNucleotideToExtend + 700;
+        int s_end = region.end + numberNucleotideToExtend + 700 > len ?
+                len : region.end + numberNucleotideToExtend + 700;
 
-        String[] subSeq = retriveSubSeq(conf.fasta, region.getChr(), s_start, s_end);
+        String[] subSeq = retriveSubSeq(fasta, region.getChr(), s_start, s_end);
         String header = subSeq[0];
         String exon = subSeq[1];
         for(int i = s_start; i < s_start + exon.length(); i++) { //TODO why '<=' ?
@@ -3732,7 +3727,7 @@ public class VarDict {
             if (conf.y) {
                 System.err.printf("  Realigndel for: %s %s %s cov: %s\n", p, vn, dcnt, cov.get(p));
             }
-            Variation vref = getVariation(hash, p, vn);
+            final Variation vref = getVariation(hash, p, vn);
             int dellen = 0;
             Matcher mtch = B_MIN_DIG.matcher(vn);
             if (mtch.find()) {
@@ -4380,7 +4375,7 @@ public class VarDict {
     }
 
     private static void ampVardict(List<List<Region>> segs, Map<String, Integer> chrs, String ampliconBasedCalling, String bam1, String sample, Configuration conf) throws IOException {
-        Map<String, Integer> splice = new HashMap<>();
+        Set<String> splice = new HashSet<>();
         int rlen = 0;
         for (List<Region> regions : segs) {
             List<Map<Integer, Vars>> vars = new ArrayList<>();
@@ -4389,7 +4384,7 @@ public class VarDict {
             Region rg = null;
             for (Region region : regions) {
                 rg = region; //??
-                Map<Integer, Character> ref = getREF(region, chrs, conf);
+                Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
                 Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, bam1, ref, chrs, splice, ampliconBasedCalling, rlen, conf);
                 rlen = tpl._1();
                 vars.add(tpl._2());
@@ -4695,7 +4690,7 @@ public class VarDict {
 
 
     private static boolean isGoodVar(Var vref, Var rref, String type,
-            Map<String, Integer> splice,
+            Set<String> splice,
             Configuration conf) {
         if (vref == null || vref.refallele.isEmpty())
             return false;
@@ -4719,9 +4714,7 @@ public class VarDict {
             }
         }
 
-        int spl = splice.containsKey(vref.sp + "-" + vref.ep) ? splice.get(vref.sp + "-" + vref.ep) : 0;
-
-        if (type.equals("Deletion") && spl != 0) {
+        if (type.equals("Deletion") && splice.contains(vref.sp + "-" + vref.ep)) {
             return false;
         }
         if(vref.qratio < conf.qratio) {
