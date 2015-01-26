@@ -10,10 +10,7 @@ import static java.util.Collections.*;
 import java.io.*;
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -4404,212 +4401,242 @@ public class VarDict {
 
     }
 
-    private static void ampVardict(List<List<Region>> segs, Map<String, Integer> chrs, String ampliconBasedCalling, String bam1, String sample, Configuration conf) throws IOException {
-        Set<String> splice = new ConcurrentHashSet<>();
-        ExecutorService executor = Executors.newFixedThreadPool(6);
-//        int rlen = 0;
-        for (List<Region> regions : segs) {
-            List<Map<Integer, Vars>> vars = new ArrayList<>();
-            Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
-            int j = 0;
-            Region rg = null;
-            ToVarsWorker firstWorker = null;
-            List<Future<Tuple2<Integer, Map<Integer, Vars>>>> workers = null;
-            for (Region region : regions) {
-                rg = region; //??
-                if (firstWorker == null) {
-                    firstWorker = new ToVarsWorker(region, bam1, chrs, splice, ampliconBasedCalling, conf);
-                    if (regions.size() > 1) {
-                        workers = new ArrayList<>();
-                    } else {
-                        workers = Collections.emptyList();
-                    }
-                } else {
-                    workers.add(executor.submit(new ToVarsWorker(region, bam1, chrs, splice, ampliconBasedCalling, conf)));
-                }
-//                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, bam1, ref, chrs, splice, ampliconBasedCalling, rlen, conf);
-//                rlen = tpl._1();
-//                vars.add(tpl._2());
-                for (int p = region.istart; p <= region.iend; p++) {
-                    List<Tuple2<Integer, Region>> list = pos.get(p);
-                    if (list == null) {
-                        list = new ArrayList<>();
-                        pos.put(p, list);
-                    }
-                    list.add(Tuple2.newTuple(j, region));
-                }
-                j++;
-            }
+    private static class SegsWorker {
+        Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
+        Region rg;
+        List<Future<Tuple2<Integer, Map<Integer, Vars>>>> workers;
+        public SegsWorker(Map<Integer, List<Tuple2<Integer, Region>>> pos, Region rg, List<Future<Tuple2<Integer, Map<Integer, Vars>>>> workers) {
+            super();
+            this.pos = pos;
+            this.rg = rg;
+            this.workers = workers;
+        }
+        public SegsWorker() {
+            this.workers = Collections.emptyList();
+        }
+    }
 
-            if (firstWorker != null) {
+    private static void ampVardict(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
+            final String bam1, final String sample, final Configuration conf) throws IOException {
+
+        final Set<String> splice = new ConcurrentHashSet<>();
+        ExecutorService segsParser = Executors.newSingleThreadExecutor();
+        final ExecutorService executor = new ThreadPoolExecutor(6, 6, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(24));
+//        final ExecutorService executor = Executors.newFixedThreadPool(6);
+        final BlockingQueue<SegsWorker> toPrint = new LinkedBlockingQueue<>(5);
+
+        segsParser.submit(new Runnable() {
+
+            @Override
+            public void run() {
                 try {
-                    vars.add(firstWorker.call()._2());
-                    for (Future<Tuple2<Integer, Map<Integer, Vars>>> future : workers) {
+                    for (List<Region> regions : segs) {
+                        Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
+                        int j = 0;
+                        Region rg = null;
+                        List<Future<Tuple2<Integer, Map<Integer, Vars>>>> workers = new ArrayList<>(regions.size());
+                        for (Region region : regions) {
+                            rg = region; // ??
+                            workers.add(executor.submit(new ToVarsWorker(region, bam1, chrs, splice, ampliconBasedCalling, conf)));
+                            for (int p = region.istart; p <= region.iend; p++) {
+                                List<Tuple2<Integer, Region>> list = pos.get(p);
+                                if (list == null) {
+                                    list = new ArrayList<>();
+                                    pos.put(p, list);
+                                }
+                                list.add(Tuple2.newTuple(j, region));
+                            }
+                            j++;
+                        }
+                        toPrint.put(new SegsWorker(pos, rg, workers));
+                    }
+                    toPrint.put(new SegsWorker());
+                } catch (InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        while (true) {
+            try {
+                SegsWorker seg = toPrint.take();
+                if (seg.workers.isEmpty()) {
+                    break;
+                }
+                try {
+                    List<Map<Integer, Vars>> vars = new ArrayList<>();
+                    Map<Integer, List<Tuple2<Integer, Region>>> pos = seg.pos;
+                    Region rg = seg.rg;
+                    for (Future<Tuple2<Integer, Map<Integer, Vars>>> future : seg.workers) {
                         vars.add(future.get()._2());
+                    }
+                    for (Entry<Integer, List<Tuple2<Integer, Region>>> entry : pos.entrySet()) {
+                        final int p = entry.getKey();
+                        final List<Tuple2<Integer, Region>> v = entry.getValue();
+
+                        List<Tuple2<Var, String>> gvs = new ArrayList<>();
+                        List<Var> ref = new ArrayList<>();
+                        String nt = null;
+                        double maxaf = 0;
+                        String vartype = "SNV";
+                        boolean flag = false;
+                        Var vref;
+                        int nocov = 0;
+                        int maxcov = 0;
+                        Set<String> goodmap = new HashSet<>();
+                        List<Integer> vcovs = new ArrayList<>();
+                        for (Tuple2<Integer, Region> amps : v) {
+                            final int amp = amps._1();
+                            final String chr = amps._2().chr;
+                            final int S = amps._2().start;
+                            final int E = amps._2().end;
+
+                            Vars vtmp = vars.get(amp).get(p);
+                            List<Var> l = vtmp == null ? null : vtmp.var;
+                            Var refAmpP = vtmp == null ? null : vtmp.ref;
+                            if (l != null && !l.isEmpty()) {
+                                Var tv = l.get(0);
+                                vcovs.add(tv.tcov);
+                                vartype = varType(tv.refallele, tv.varallele);
+                                if (isGoodVar(tv, refAmpP, vartype, splice, conf)) {
+                                    gvs.add(Tuple2.newTuple(tv, chr + ":" + S + "-" + E));
+                                    if (nt != null && !tv.n.equals(nt)) {
+                                        flag = true;
+                                    }
+                                    if (tv.freq > maxaf) {
+                                        maxaf = tv.freq;
+                                        nt = tv.n;
+                                        vref = tv;
+                                    }
+                                    goodmap.add(format("%s-%s-%s", amp, tv.refallele, tv.varallele));
+                                    if (tv.tcov > maxcov) {
+                                        maxcov = tv.tcov;
+                                    }
+
+                                }
+                            } else if (refAmpP != null) {
+                                vcovs.add(refAmpP.tcov);
+                            } else {
+                                vcovs.add(0);
+                            }
+                            if (refAmpP != null) {
+                                ref.add(refAmpP);
+                            }
+                        }
+
+                        for (int t : vcovs) {
+                            if (t < maxcov / 50) {
+                                nocov++;
+                            }
+                        }
+
+                        if (gvs.size() > 1) {
+                            Collections.sort(gvs, new Comparator<Tuple2<Var, String>>() {
+                                @Override
+                                public int compare(Tuple2<Var, String> o1, Tuple2<Var, String> o2) {
+                                    return Double.compare(o2._1().freq, o1._1().freq);
+                                }
+                            });
+                        }
+                        if (ref.size() > 1) {
+                            Collections.sort(ref, new Comparator<Var>() {
+                                @Override
+                                public int compare(Var o1, Var o2) {
+                                    return Integer.compare(o2.tcov, o1.tcov);
+                                }
+                            });
+                        }
+
+                        if (gvs.isEmpty()) { // Only referenece
+                            if (conf.doPileup) {
+                                if (!ref.isEmpty()) {
+                                    vref = ref.get(0);
+                                } else {
+                                    System.err.println(join("\t", sample, rg.gene, rg.chr, p, p, "", "", 0, 0, 0, 0, 0, 0, "", 0,
+                                            "0;0", 0, 0, 0, 0, 0, "", 0, 0, 0, 0, 0, 0, "", "", 0, 0,
+                                            rg.chr + ":", +p + "-" + p, "", 0, 0, 0, 0));
+                                    continue;
+                                }
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            vref = gvs.get(0)._1();
+                        }
+                        if (flag) { // different good variants detected in different amplicons
+                            String gdnt = gvs.get(0)._1().n;
+                            int gcnt = 0;
+                            for (Tuple2<Integer, Region> amps : v) {
+                                int amp = amps._1();
+                                Var var = getVarMaybe(vars.get(amp), p, varn, gdnt);
+                                if (var != null && isGoodVar(var, getVarMaybe(vars.get(amp), p, VarsType.ref), vartype, splice, conf)) {
+                                    gcnt++;
+                                }
+                            }
+                            if (gcnt == gvs.size()) {
+                                flag = false;
+                            }
+                        }
+
+                        List<Tuple2<Var, String>> badv = new ArrayList<>();
+                        int gvscnt = gvs.size();
+                        for (Tuple2<Integer, Region> amps : v) {
+                            int amp = amps._1();
+                            Region reg = amps._2();
+                            if (goodmap.contains(format("%s-%s-%s", amp, vref.refallele, vref.varallele))) {
+                                continue;
+                            }
+                            // my $tref = $vars[$amp]->{ $p }->{ VAR }->[0]; ???
+                            if (vref.sp >= reg.istart && vref.ep <= reg.iend) {
+
+                                String regStr = reg.chr + ":" + reg.start + "-" + reg.end;
+
+                                if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).var.size() > 0) {
+                                    badv.add(Tuple2.newTuple(vars.get(amp).get(p).var.get(0), regStr));
+                                } else if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).ref != null) {
+                                    badv.add(Tuple2.newTuple(vars.get(amp).get(p).ref, regStr));
+                                } else {
+                                    badv.add(Tuple2.newTuple((Var)null, regStr));
+                                }
+                            } else if ((vref.sp < reg.iend && reg.iend < vref.ep)
+                                    || (vref.sp < reg.istart && reg.istart < vref.ep)) { // the variant overlap with amplicon's primer
+                                if (gvscnt > 1)
+                                    gvscnt--;
+                            }
+                        }
+                        if (flag && gvscnt < gvs.size()) {
+                            flag = false;
+                        }
+                        if (vartype.equals("Complex")) {
+                            adjComplex(vref);
+                        }
+                        System.out.print(join("\t", sample, rg.gene, rg.chr,
+                                joinVar1(vref, "\t"), gvs.get(0)._2(), vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
+                        if (conf.debug) {
+                            System.out.print("\t" + vref.DEBUG);
+                        }
+                        if (conf.y) {
+                            for (int gvi = 0; gvi < gvs.size(); gvi++) {
+                                Tuple2<Var, String> tp = gvs.get(gvi);
+                                System.out.print("\tGood" + gvi + " " + join(" ", joinVar2(tp._1(), " "), tp._2()));
+                            }
+                            for (int bvi = 0; bvi < badv.size(); bvi++) {
+                                Tuple2<Var, String> tp = badv.get(bvi);
+                                System.out.print("\tBad" + bvi + " " + join(" ", joinVar2(tp._1(), " "), tp._2()));
+                            }
+                        }
+                        System.out.println();
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-            }
-
-            for (Entry<Integer, List<Tuple2<Integer, Region>>> entry : pos.entrySet()) {
-                final int p = entry.getKey();
-                final List<Tuple2<Integer, Region>> v = entry.getValue();
-
-                List<Tuple2<Var, String>> gvs = new ArrayList<>();
-                List<Var> ref = new ArrayList<>();
-                String nt = null;
-                double maxaf = 0;
-                String vartype = "SNV";
-                boolean flag = false;
-                Var vref;
-                int nocov = 0;
-                int maxcov = 0;
-                Set<String> goodmap = new HashSet<>();
-                List<Integer> vcovs = new ArrayList<>();
-                for (Tuple2<Integer, Region> amps : v) {
-                    final int amp = amps._1();
-                    final String chr = amps._2().chr;
-                    final int S = amps._2().start;
-                    final int E = amps._2().end;
-
-                    Vars vtmp = vars.get(amp).get(p);
-                    List<Var> l = vtmp == null ? null : vtmp.var;
-                    Var refAmpP = vtmp == null ? null : vtmp.ref;
-                    if (l != null && !l.isEmpty()) {
-                        Var tv = l.get(0);
-                        vcovs.add(tv.tcov);
-                        vartype = varType(tv.refallele, tv.varallele);
-                        if (isGoodVar(tv, refAmpP, vartype, splice, conf)) {
-                            gvs.add(Tuple2.newTuple(tv, chr + ":" + S + "-" + E));
-                            if (nt != null && !tv.n.equals(nt)) {
-                                flag = true;
-                            }
-                            if (tv.freq > maxaf) {
-                                maxaf = tv.freq;
-                                nt = tv.n;
-                                vref = tv;
-                            }
-                            goodmap.add(format("%s-%s-%s", amp, tv.refallele, tv.varallele));
-                            if (tv.tcov > maxcov) {
-                                maxcov = tv.tcov;
-                            }
-
-                        }
-                    } else if (refAmpP != null) {
-                        vcovs.add(refAmpP.tcov);
-                    } else {
-                        vcovs.add(0);
-                    }
-                    if (refAmpP != null) {
-                        ref.add(refAmpP);
-                    }
-                }
-
-                for (int t : vcovs) {
-                    if (t < maxcov / 50) {
-                        nocov++;
-                    }
-                }
-
-                if (gvs.size() > 1) {
-                    Collections.sort(gvs, new Comparator<Tuple2<Var, String>>() {
-                        @Override
-                        public int compare(Tuple2<Var, String> o1, Tuple2<Var, String> o2) {
-                            return Double.compare(o2._1().freq, o1._1().freq);
-                        }
-                    });
-                }
-                if (ref.size() > 1) {
-                    Collections.sort(ref, new Comparator<Var>() {
-                        @Override
-                        public int compare(Var o1, Var o2) {
-                            return Integer.compare(o2.tcov, o1.tcov);
-                        }
-                    });
-                }
-
-                if (gvs.isEmpty()) { // Only referenece
-                    if (conf.doPileup) {
-                        if (!ref.isEmpty()) {
-                            vref = ref.get(0);
-                        } else {
-                            System.err.println(join("\t", sample, rg.gene, rg.chr, p, p, "", "", 0, 0, 0, 0, 0, 0, "", 0,
-                                    "0;0", 0, 0, 0, 0, 0, "", 0, 0, 0, 0, 0, 0, "", "", 0, 0,
-                                    rg.chr + ":", +p + "-" + p, "", 0, 0, 0, 0));
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-                } else {
-                    vref = gvs.get(0)._1();
-                }
-                if (flag) { // different good variants detected in different amplicons
-                    String gdnt = gvs.get(0)._1().n;
-                    int gcnt = 0;
-                    for (Tuple2<Integer, Region> amps : v) {
-                        int amp = amps._1();
-                        Var var = getVarMaybe(vars.get(amp), p, varn, gdnt);
-                        if (var != null && isGoodVar(var, getVarMaybe(vars.get(amp), p, VarsType.ref), vartype, splice, conf)) {
-                            gcnt++;
-                        }
-                    }
-                    if (gcnt == gvs.size()) {
-                        flag = false;
-                    }
-                }
-
-                List<Tuple2<Var, String>> badv = new ArrayList<>();
-                int gvscnt = gvs.size();
-                for (Tuple2<Integer, Region> amps : v) {
-                    int amp = amps._1();
-                    Region reg = amps._2();
-                    if (goodmap.contains(format("%s-%s-%s", amp, vref.refallele, vref.varallele))) {
-                        continue;
-                    }
-                    // my $tref = $vars[$amp]->{ $p }->{ VAR }->[0]; ???
-                    if (vref.sp >= reg.istart && vref.ep <= reg.iend) {
-
-                        String regStr = reg.chr + ":" + reg.start + "-" + reg.end;
-
-                        if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).var.size() > 0) {
-                            badv.add(Tuple2.newTuple(vars.get(amp).get(p).var.get(0), regStr));
-                        } else if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).ref != null) {
-                            badv.add(Tuple2.newTuple(vars.get(amp).get(p).ref, regStr));
-                        } else {
-                            badv.add(Tuple2.newTuple((Var)null, regStr));
-                        }
-                    } else if ((vref.sp < reg.iend && reg.iend < vref.ep)
-                            || (vref.sp < reg.istart && reg.istart < vref.ep)) { // the variant overlap with amplicon's primer
-                        if (gvscnt > 1)
-                            gvscnt--;
-                    }
-                }
-                if (flag && gvscnt < gvs.size()) {
-                    flag = false;
-                }
-                if (vartype.equals("Complex")) {
-                    adjComplex(vref);
-                }
-                System.out.print(join("\t", sample, rg.gene, rg.chr,
-                        joinVar1(vref, "\t"), gvs.get(0)._2(), vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
-                if (conf.debug) {
-                    System.out.print("\t" + vref.DEBUG);
-                }
-                if (conf.y) {
-                    for (int gvi = 0; gvi < gvs.size(); gvi++) {
-                        Tuple2<Var, String> tp = gvs.get(gvi);
-                        System.out.print("\tGood" + gvi + " " + join(" ", joinVar2(tp._1(), " "), tp._2()));
-                    }
-                    for (int bvi = 0; bvi < badv.size(); bvi++) {
-                        Tuple2<Var, String> tp = badv.get(bvi);
-                        System.out.print("\tBad" + bvi + " " + join(" ", joinVar2(tp._1(), " "), tp._2()));
-                    }
-                }
-                System.out.println();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                break;
             }
         }
+        segsParser.shutdown();
         executor.shutdown();
     }
 
