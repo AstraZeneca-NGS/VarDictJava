@@ -4420,12 +4420,11 @@ public class VarDict {
             final String bam1, final String sample, final Configuration conf) throws IOException {
 
         final Set<String> splice = new ConcurrentHashSet<>();
-        ExecutorService segsParser = Executors.newSingleThreadExecutor();
-        final ExecutorService executor = new ThreadPoolExecutor(6, 6, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(24));
-//        final ExecutorService executor = Executors.newFixedThreadPool(6);
+//        final ExecutorService executor = new ThreadPoolExecutor(6, 6, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(24));
+        final ExecutorService executor = Executors.newFixedThreadPool(7);
         final BlockingQueue<SegsWorker> toPrint = new LinkedBlockingQueue<>(5);
 
-        segsParser.submit(new Runnable() {
+        executor.submit(new Runnable() {
 
             @Override
             public void run() {
@@ -4636,7 +4635,7 @@ public class VarDict {
                 break;
             }
         }
-        segsParser.shutdown();
+//        segsParser.shutdown();
         executor.shutdown();
     }
 
