@@ -82,6 +82,14 @@ public class Main {
         int s_col = getColumnValue(cmd, "s", DEFAULT_BED_ROW_FORMAT.thickStartColumn);
         int e_col = getColumnValue(cmd, "e", DEFAULT_BED_ROW_FORMAT.thickEndColumn);
         int g_col = getColumnValue(cmd, "g", DEFAULT_BED_ROW_FORMAT.geneColumn);
+
+        if (cmd.hasOption("S") && !cmd.hasOption("s")) {
+            s_col = S_col;
+        }
+        if (cmd.hasOption("E") && !cmd.hasOption("e")) {
+            e_col = E_col;
+        }
+
         conf.badRowFormat = new BedRowFormat(c_col, S_col, E_col, s_col, e_col, g_col);
         conf.columnForChromosome = getColumnValue(cmd, "c", -1);
 
