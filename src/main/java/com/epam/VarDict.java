@@ -4118,9 +4118,9 @@ public class VarDict {
         int mcnt = 0;
         StringBuilder str = new StringBuilder();
         List<Integer> sc5p = new ArrayList<>();
-        while (ref.containsKey(p - n) && !ref.get(p - n).toString().equals(substr(seq, -1 - n, 1)) && mcnt < longmm) {
-            str.insert(0, substr(seq, -1 - n, 1));
-            mm.add(Tuple3.newTuple(str.toString(), p - n, 5 ));
+        while (isHasAndNotEquals(charAt(seq, -1 - n), ref, p - n) && mcnt < longmm) {
+            str.insert(0, charAt(seq, -1 - n));
+            mm.add(Tuple3.newTuple(str.toString(), p - n, 5));
             n++;
             mcnt++;
         }
@@ -4129,13 +4129,13 @@ public class VarDict {
         int misp = 0;
         Character misnt = null;
         if ( str.length() == 1 ) {
-            while( ref.containsKey(p-n) && ref.get(p-n).toString().equals(substr(seq, -1-n, 1) )) {
+            while (isHasAndEquals(charAt(seq, -1 - n), ref, p - n)) {
                 n++;
                 mn++;
             }
             if (mn > 1) {
                 int n2 = 0;
-                while (-1 - n - 1 - n2 >= 0 && isHasAndEquals(seq.charAt(-1 - n - 1 - n2), ref, p - n - 1 - n2)) {
+                while (-1 - n - 1 - n2 >= 0 && isHasAndEquals(charAt(seq, -1 - n - 1 - n2), ref, p - n - 1 - n2)) {
                     n2++;
                 }
                 if (n2 > 2) {
