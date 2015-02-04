@@ -179,7 +179,12 @@ sub ampVardict {
 		push(@{ $pos{ $p } }, [$j, $chr, $start, $end, $istart, $iend]);
 	    }
 	}
-	while(my ($p, $v) = each %pos) {
+        my @pp = keys %pos;
+
+	@pp = sort { $a <=> $b; } @pp;
+        foreach my $p (@pp) {
+            my $v = $pos{$p};
+            #while(my ($p, $v) = each %pos) {
 	    my @gvs = (); # Good variants
 	    my @ref = (); # reference
 	    my $nt;
