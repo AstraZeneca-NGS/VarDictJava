@@ -114,6 +114,7 @@ public class VarDict {
         double mapq = 0; // -O The minimun mean mapping quality to be considered, default 0
         boolean doPileup = false; // -p Do pileup regarless the frequency
         double lofreq = 0.05d; // -V The lowest frequency in normal sample allowed for a putative somatic mutations, default to 0.05
+        int threads;
 
         public boolean isColumnForChromosomeSet() {
             return columnForChromosome >= 0;
@@ -322,7 +323,7 @@ public class VarDict {
     }
 
     private static void vardictAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, final Configuration conf) throws IOException {
-        final ExecutorService executor = Executors.newFixedThreadPool(8);
+        final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(10);
         executor.submit(new Runnable() {
 
@@ -361,8 +362,7 @@ public class VarDict {
     }
 
     private static void somaticAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, String samplem, final Configuration conf) throws IOException {
-        int processors = Math.max(Runtime.getRuntime().availableProcessors(), 2);
-        final ExecutorService executor = Executors.newFixedThreadPool(processors);
+        final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toSamdict = new LinkedBlockingQueue<>(10);
 
         executor.submit(new Runnable() {
@@ -4141,7 +4141,7 @@ public class VarDict {
                 if (n2 > 2) {
                     sc5p.add(p - n - n2);
                     misp = p - n;
-                    misnt = Character.valueOf(charAt(seq, -1 - n));
+                    misnt = charAt(seq, -1 - n);
                     if (sclip5.containsKey(p - n - n2)) {
                         sclip5.get(p - n - n2).used = true;
                     }
@@ -4587,7 +4587,7 @@ public class VarDict {
     private static void ampVardictAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
             final String bam1, final String sample, final Configuration conf) throws IOException {
 
-        final ExecutorService executor = Executors.newFixedThreadPool(Math.max(Runtime.getRuntime().availableProcessors(), 2));
+        final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(21);
 
         executor.submit(new Runnable() {
