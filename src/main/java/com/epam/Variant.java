@@ -5,7 +5,7 @@ public class Variant {
     int cov;
     int fwd;
     int rev;
-    String bias;
+    String bias = "0";
     double freq;
     double pmean;
     boolean pstd;

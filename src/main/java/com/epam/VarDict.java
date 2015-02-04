@@ -232,7 +232,8 @@ public class VarDict {
             }
         }
 
-        ampVardict(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
+//        ampVardictAsync(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
+        ampVardictAsync(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
     }
 
 
@@ -323,7 +324,6 @@ public class VarDict {
     private static void vardictAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, final Configuration conf) throws IOException {
         final ExecutorService executor = Executors.newFixedThreadPool(8);
         final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(10);
-        final Set<String> splice = new ConcurrentHashSet<>();
         executor.submit(new Runnable() {
 
             @Override
@@ -331,6 +331,7 @@ public class VarDict {
                 try {
                     for (List<Region> list : segs) {
                         for (Region region : list) {
+                            final Set<String> splice = new ConcurrentHashSet<>();
                             toPrint.put(executor.submit(new VardictWorker(region, chrs, splice, ampliconBasedCalling, sample, conf)));
                         }
                     }
@@ -360,9 +361,9 @@ public class VarDict {
     }
 
     private static void somaticAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, String samplem, final Configuration conf) throws IOException {
-        final ExecutorService executor = Executors.newFixedThreadPool(21);
+        int processors = Math.max(Runtime.getRuntime().availableProcessors(), 2);
+        final ExecutorService executor = Executors.newFixedThreadPool(processors);
         final BlockingQueue<Future<OutputStream>> toSamdict = new LinkedBlockingQueue<>(10);
-        final Set<String> splice = new ConcurrentHashSet<>();
 
         executor.submit(new Runnable() {
 
@@ -371,6 +372,7 @@ public class VarDict {
                 try {
                     for (List<Region> list : segs) {
                         for (Region region : list) {
+                            final Set<String> splice = new ConcurrentHashSet<>();
                             Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
                             Future<Tuple2<Integer, Map<Integer, Vars>>> f1 = executor.submit(new ToVarsWorker(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, ref, conf));
                             Future<OutputStream> f2 = executor.submit(new SomWorker(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, ref, conf, f1, sample));
@@ -399,6 +401,19 @@ public class VarDict {
             }
         }
         executor.shutdown();
+    }
+    private static void somaticAsync1(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, String samplem, final Configuration conf) throws IOException {
+        for (List<Region> list : segs) {
+            for (Region region : list) {
+                final Set<String> splice = new ConcurrentHashSet<>();
+                Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
+                Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region,  conf.bam.getBam1(), ref, chrs, splice, ampliconBasedCalling, 0, conf);
+                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region,  conf.bam.getBam2(), ref, chrs, splice, ampliconBasedCalling, t1._1(), conf);
+                somdict(region, t1._2(), t2._2(), sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1(), t2._1()), conf, System.out);
+
+            }
+        }
+
     }
 
     final static Pattern SAMPLE_PATTERN = Pattern.compile("([^\\/\\._]+).sorted[^\\/]*.bam");
@@ -470,19 +485,28 @@ public class VarDict {
             Configuration conf, PrintStream out) throws IOException {
 
         double fisherp = 0.01d;
-        for (int p = 0; p <= segs.end; p++) {
-            if (!vars1.containsKey(p) && !vars2.containsKey(p)) { // both samples have no coverag
+
+        Set<Integer> ps = new HashSet<>(vars1.keySet());
+        ps.addAll(vars2.keySet());
+        List<Integer> pp = new ArrayList<>(ps);
+        Collections.sort(pp);
+
+        for (Integer p : pp) {
+//        for (int p = 0; p <= segs.end; p++) {
+            Vars v1 = vars1.get(p);
+            Vars v2 = vars2.get(p);
+            if (v1 == null && v2 == null) { // both samples have no coverag
                 continue;
             }
 
             String vartype = "";
 
-            if (!vars1.containsKey(p)) { // no coverage for sample 1
+            if (v1 == null) { // no coverage for sample 1
 
-                if (vars2.get(p).var.size() > 0) {
-                    Variant var = vars2.get(p).var.get(0);
+                if (v2.var.size() > 0) {
+                    Variant var = v2.var.get(0);
                     vartype = varType(var.refallele, var.varallele);
-                    if (!isGoodVar(var, getVarMaybe(vars2, p, VarsType.ref), vartype, splice, conf)) {
+                    if (!isGoodVar(var, v2.ref, vartype, splice, conf)) {
                         continue;
                     }
                     if (vartype.equals("Complex")) {
@@ -498,11 +522,11 @@ public class VarDict {
                             segs.chr + ":" + segs.start + "-" + segs.end,
                             "Deletion", vartype));
                 }
-            } else if (!vars2.containsKey(p)) { // no coverage for sample 2
-                if (vars1.get(p).var.size() > 0) {
-                    Variant var = vars1.get(p).var.get(0);
+            } else if (v2 == null) { // no coverage for sample 2
+                if (v1.var.size() > 0) {
+                    Variant var = v1.var.get(0);
                     vartype = varType(var.refallele, var.varallele);
-                    if (!isGoodVar(var, getVarMaybe(vars1, p, VarsType.ref), vartype, splice, conf)) {
+                    if (!isGoodVar(var, v1.ref, vartype, splice, conf)) {
                         continue;
                     }
                     if (vartype.equals("Complex")) {
@@ -516,8 +540,7 @@ public class VarDict {
                             var.varallele,
 
                             joinVar2(var, "\t"),
-
-                            var.nm,
+                            format("%.1f", var.nm),
 
                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                             var.shift3,
@@ -531,8 +554,6 @@ public class VarDict {
                 }
 
             } else { // both samples have coverage
-                Vars v1 = vars1.get(p);
-                Vars v2 = vars2.get(p);
                 if (v1.var.isEmpty() && v2.var.isEmpty()) {
                     continue;
                 }
@@ -540,8 +561,8 @@ public class VarDict {
                     int n = 0;
                     while(n < v1.var.size()
                             && isGoodVar(v1.var.get(n), v1.ref, varType(v1.var.get(n).refallele, v1.var.get(n).varallele), splice, conf) ) {
-                        Variant vref = v1.var.get(n);
-                        String nt = vref.n;
+                        final Variant vref = v1.var.get(n);
+                        final String nt = vref.n;
                         if ( nt.length() > 1
                                 && vref.refallele.length() == vref.varallele.length()
                                 &&(!isGoodVar(getVarMaybe(vars2, p, varn, nt), null, null, splice, conf))
@@ -554,9 +575,9 @@ public class VarDict {
                             if (lnt.length() > 1) {
                                 lnt = lnt.charAt(0) + "&" + lnt.substring(1);
                             }
-                            Variant vf = getVarMaybe(vars2, p, varn, fnt);
+                            Variant vf = getVarMaybe(v2, varn, fnt);
                             Variant vl = getVarMaybe(vars2, p + nt.length() - 2, varn, lnt);
-                            if (vf != null && isGoodVar(vf, getVarMaybe(vars2, p, VarsType.ref), null, splice, conf)) {
+                            if (vf != null && isGoodVar(vf, v2.ref, null, splice, conf)) {
                                 vref.sp += vref.refallele.length() - 1;
                                 vref.refallele = substr(vref.refallele, -1);
                                 vref.varallele = substr(vref.varallele, -1);
@@ -571,10 +592,10 @@ public class VarDict {
                         if (vartype.equals("Complex")) {
                             adjComplex(vref);
                         }
-                        Variant v2nt = getVarMaybe(vars2, p, varn, nt);
+                        Variant v2nt = getVarMaybe(v2, varn, nt);
                         if (v2nt != null) {
                             String type;
-                            if (isGoodVar(v2nt, getVarMaybe(vars2, p, VarsType.ref), vartype, splice, conf)) {
+                            if (isGoodVar(v2nt, v2.ref, vartype, splice, conf)) {
                                 if (vref.freq > (1 - conf.lofreq) && v2nt.freq < 0.8d && v2nt.freq > 0.2d) {
                                     type = "LikelyLOH";
                                 } else {
@@ -597,10 +618,10 @@ public class VarDict {
                                     vref.varallele,
 
                                     joinVar2(vref, "\t"),
-                                    vref.nm,
+                                    format("%.1f", vref.nm),
 
                                     joinVar2(v2nt, "\t"),
-                                    v2nt.nm,
+                                    format("%.1f", v2nt.nm),
 
                                     v2nt.shift3,
                                     v2nt.msi== 0? 0 : format("%.3f", v2nt.msi),
@@ -613,7 +634,7 @@ public class VarDict {
                         } else { // sample 1 only, should be strong somatic
                             String type = "StrongSomatic";
                             v2nt = new Variant();
-                            getOrPutVars(vars2, p).varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
+                            v2.varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
                             Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
                             rlen = tpl._1();
                             String newtype = tpl._2();
@@ -626,13 +647,13 @@ public class VarDict {
                             }
                             if (type.equals("StrongSomatic")) {
                                 String tvf;
-                                if (vars2.get(p).ref == null) {
-                                    Variant v2m = getVarMaybe(vars2, p, var, 0);
+                                if (v2.ref == null) {
+                                    Variant v2m = getVarMaybe(v2, var, 0);
                                     int tcov = v2m != null && v2m.tcov != 0 ? v2m.tcov : 0;
-                                    tvf = join("\t", tcov, 0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0);
+                                    tvf = join("\t", tcov, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
                                 } else {
                                     Variant v2ref = vars2.get(p).ref;
-                                    tvf = join("\t", joinVar2(v2ref, "\t"), v2ref.nm);
+                                    tvf = join("\t", joinVar2(v2ref, "\t"), format("%.1f", v2ref.nm));
                                 }
                                 out.println(join("\t", sample, segs.gene, segs.chr,
                                         vref.sp,
@@ -641,8 +662,7 @@ public class VarDict {
                                         vref.varallele,
 
                                         joinVar2(vref, "\t"),
-
-                                        vref.nm,
+                                        format("%.1f", vref.nm),
 
                                         tvf,
                                         vref.shift3,
@@ -661,10 +681,10 @@ public class VarDict {
                                         vref.varallele,
 
                                         joinVar2(vref, "\t"),
-                                        vref.nm,
+                                        format("%.1f", vref.nm),
 
                                         joinVar2(v2nt, "\t"),
-                                        v2nt.nm,
+                                        format("%.1f", v2nt.nm),
 
                                         vref.shift3,
                                         vref.msi== 0? 0 : format("%.3f", vref.msi),
@@ -689,7 +709,7 @@ public class VarDict {
                         }
                         // potentail LOH
                         String nt = v2var.n;
-                        Variant v1nt = getVarMaybe(vars1, p, varn, nt);
+                        Variant v1nt = getVarMaybe(v1, varn, nt);
                         if (v1nt != null) {
                             String type = v1nt.freq < conf.lofreq ? "LikelyLOH" : "Germline";
                             if ("Complex".equals(vartype)) {
@@ -698,10 +718,10 @@ public class VarDict {
                             out.println(join("\t", sample, segs.gene, segs.chr,
                                     v1nt.sp, v1nt.ep, v1nt.refallele, v1nt.varallele,
                                     joinVar2(v1nt, "\t"),
-                                    v1nt.nm,
+                                    format("%.1f", v1nt.nm),
 
                                     joinVar2(v2var, "\t"),
-                                    v2var.nm,
+                                    format("%.1f", v2var.nm),
 
                                     v2var.shift3,
                                     v2var.msi == 0? 0 : format("%.3f", v2var.msi),
@@ -717,7 +737,7 @@ public class VarDict {
                             if(v1ref != null) {
                                 th1 = join("\t",
                                         joinVar2(v1ref, "\t"),
-                                        v1ref.nm
+                                        format("%.1f", v1ref.nm)
                                         );
                             } else {
                                 th1 = join("\t", v1.var.get(0).tcov,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0);
@@ -733,7 +753,7 @@ public class VarDict {
                                     th1,
 
                                     joinVar2(v2var, "\t"),
-                                    v2var.nm,
+                                    format("%.1f", v2var.nm),
 
                                     v2var.shift3,
                                     v2var.msi == 0? 0 : format("%.3f", v2var.msi),
@@ -748,20 +768,19 @@ public class VarDict {
                 } else if (v2.var.size() > 0) { // sample 1 has only reference
                     Variant v2var = v2.var.get(0);
                     vartype = varType(v2var.refallele, v2var.varallele);
-                    Variant v2ref = getVarMaybe(vars2, p, ref);
-                    if (!isGoodVar(v2var, v2ref, vartype, splice, conf)) {
+                    if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
                         continue;
                     }
                     // potential LOH
                     String nt = v2var.n;
                     String type = "StrongLOH";
-                    Variant v1nt = getOrPutVars(vars1, p).varn.get(nt);
+                    Variant v1nt = v1.varn.get(nt);
                     if (v1nt == null) {
                         v1nt = new Variant();
-                        vars1.get(p).varn.put(nt, v1nt);
+                        v1.varn.put(nt, v1nt);
                     }
                     v1nt.cov = 0;
-                    Tuple2<Integer, String> tpl = combineAnalysis(vars2.get(p).varn.get(nt), v1nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
+                    Tuple2<Integer, String> tpl = combineAnalysis(v2.varn.get(nt), v1nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
                     rlen = tpl._1();
                     String newtype = tpl._2();
                     if ("FALSE".equals(newtype)) {
@@ -772,13 +791,13 @@ public class VarDict {
                         type = newtype;
                         th1 = join("\t",
                                 joinVar2(v1nt, "\t"),
-                                v1nt.nm
+                                format("%.1f", v1nt.nm)
                                 );
                     } else {
-                        Variant v1ref = vars1.get(p).ref;
+                        Variant v1ref = v1.ref;
                         th1 = join("\t",
                                 joinVar2(v1ref, "\t"),
-                                v1ref.nm
+                                format("%.1f", v1ref.nm)
                                 );
                     }
 
@@ -794,8 +813,8 @@ public class VarDict {
                             th1,
 
                             joinVar2(v2var, "\t"),
+                            format("%.1f", v2var.nm),
 
-                            v2var.nm,
                             v2var.shift3,
                             v2var.msi == 0? 0 : format("%.3f", v2var.msi) ,
                             v2var.msint,
@@ -823,7 +842,7 @@ public class VarDict {
         }
         Region region = new Region(chr, var1.sp - rlen, var1.ep + rlen, "");
         Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
-        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam1(), ref,
+        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(), ref,
                 chrs, splice, ampliconBasedCalling, rlen, conf);
         rlen = tpl._1();
         Map<Integer, Vars> vars = tpl._2();
@@ -851,12 +870,12 @@ public class VarDict {
                 var2.rev = vref.rev - var1.rev;
                 if(var2.rev < 0) var2.rev = 0;
 
-                var2.pmean = round((vref.pmean * vref.cov - var1.pmean * var1.cov) / var2.cov, 3);
-                var2.qual = round((vref.qual * vref.cov - var1.qual * var1.cov) / var2.cov, 3);
-                var2.mapq = round((vref.mapq * vref.cov - var1.mapq * var1.cov) / var2.cov, 3);
-                var2.hifreq = round((vref.hifreq * vref.cov - var1.hifreq * var1.cov) / var2.cov, 3);
-                var2.extrafreq = round((vref.extrafreq * vref.cov - var1.extrafreq * var1.cov) / var2.cov, 3);
-                var2.nm = round((vref.nm * vref.cov - var1.nm * var1.cov) / var2.cov, 3);
+                var2.pmean = (vref.pmean * vref.cov - var1.pmean * var1.cov) / var2.cov;
+                var2.qual = (vref.qual * vref.cov - var1.qual * var1.cov) / var2.cov;
+                var2.mapq = (vref.mapq * vref.cov - var1.mapq * var1.cov) / var2.cov;
+                var2.hifreq = (vref.hifreq * vref.cov - var1.hifreq * var1.cov) / var2.cov;
+                var2.extrafreq = (vref.extrafreq * vref.cov - var1.extrafreq * var1.cov) / var2.cov;
+                var2.nm = (vref.nm * vref.cov - var1.nm * var1.cov) / var2.cov;
 
                 var2.pstd = true;
                 var2.qstd = true;
@@ -865,8 +884,7 @@ public class VarDict {
                     return Tuple2.newTuple(rlen, "FALSE");
                 }
 
-                double freq2 = round(var2.cov / (double)var2.tcov, 3);
-                var2.freq = freq2;
+                var2.freq = round(var2.cov / (double)var2.tcov, 3);
                 var2.qratio = var1.qratio; // Can't back calculate and should be inaccurate
                 var2.genotype = vref.genotype;
                 var2.bias = strandBias(var2.rfc, var2.rrc, conf) + ";" + strandBias(var2.fwd, var2.rev, conf);
@@ -947,11 +965,32 @@ public class VarDict {
                     adjComplex(vref);
                 }
                 out.println(join("\t", sample, region.gene, region.chr,
-                        vref.sp, vref.ep, vref.refallele, vref.varallele, vref.tcov, vref.cov, vref.rfc, vref.rrc,
-                        vref.fwd, vref.rev, vref.genotype, format("%.3f", vref.freq), vref.bias, vref.pmean, vref.pstd ? 1 : 0, format("%.1f", vref.qual),
-                        vref.qstd ? 1 : 0, format("%.1f", vref.mapq), format("%.3f", vref.qratio), format("%.3f", vref.hifreq),
-                        vref.extrafreq == 0 ? 0 : format("%.3f", vref.extrafreq), vref.shift3, vref.msi == 0 ? 0 : format("%.3f", vref.msi),
-                        vref.msint, vref.nm, vref.hicnt, vref.hicov, vref.leftseq, vref.rightseq,
+                        vref.sp, vref.ep, vref.refallele, vref.varallele,
+                        vref.tcov,
+                        vref.cov,
+                        vref.rfc,
+                        vref.rrc,
+                        vref.fwd,
+                        vref.rev,
+                        vref.genotype,
+                        format("%.3f", vref.freq),
+                        vref.bias,
+                        vref.pmean,
+                        vref.pstd ? 1 : 0,
+                        format("%.1f", vref.qual),
+                        vref.qstd ? 1 : 0,
+                        format("%.1f", vref.mapq),
+                        format("%.3f", vref.qratio),
+                        format("%.3f", vref.hifreq),
+                        vref.extrafreq == 0 ? 0 : format("%.3f", vref.extrafreq),
+                        vref.shift3,
+                        vref.msi == 0 ? 0 : format("%.3f", vref.msi),
+                        vref.msint,
+                        vref.nm,
+                        vref.hicnt,
+                        vref.hicov,
+                        vref.leftseq,
+                        vref.rightseq,
                         region.chr + ":" + region.start + "-" + region.end, vartype
                         ));
                 if (conf.debug) {
@@ -2152,7 +2191,7 @@ public class VarDict {
                 tvref.rev = rev;
                 tvref.bias = String.valueOf(bias);
                 tvref.freq = cnt.cnt / (double)tcov;
-                tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
+                tvref.pmean = cnt.pmean / (double)cnt.cnt;
                 tvref.pstd = cnt.pstd;
                 tvref.qual = vqual;
                 tvref.qstd = cnt.qstd;
@@ -2162,7 +2201,7 @@ public class VarDict {
                 tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)tcov : 0;
                 tvref.shift3 = 0;
                 tvref.msi = 0;
-                tvref.nm = round(cnt.nm / (double)cnt.cnt, 1);
+                tvref.nm = cnt.nm / (double)cnt.cnt;
                 tvref.hicnt = hicnt;
                 tvref.hicov = hicov;
                 var.add(tvref);
@@ -2211,7 +2250,7 @@ public class VarDict {
                     tvref.rev = rev;
                     tvref.bias = String.valueOf(bias);
                     tvref.freq = cnt.cnt / (double)tcov;
-                    tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
+                    tvref.pmean = cnt.pmean / (double)cnt.cnt;
                     tvref.pstd = cnt.pstd;
                     tvref.qual = vqual;
                     tvref.qstd = cnt.qstd;
@@ -2221,7 +2260,7 @@ public class VarDict {
                     tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)tcov : 0;
                     tvref.shift3 = 0;
                     tvref.msi = 0;
-                    tvref.nm = round(cnt.nm / (double)cnt.cnt, 1);
+                    tvref.nm = cnt.nm / (double)cnt.cnt;
                     tvref.hicnt = hicnt;
                     tvref.hicov = hicov;
 
@@ -2275,7 +2314,8 @@ public class VarDict {
             int rfc = 0;
             int rrc = 0;
             String genotype1 = "";
-            Vars varsAtp = vars.containsKey(p) ? vars.get(p) : new Vars();
+
+            Vars varsAtp = getOrPutVars(vars, p);
             if (varsAtp.ref != null) {
                 if (varsAtp.ref.freq >= conf.freq) {
                     genotype1 = varsAtp.ref.n;
@@ -2442,10 +2482,10 @@ public class VarDict {
                     vref.rightseq = joinRef(ref, ep + 1, ep + 20 > chr0 ? chr0 : ep + 20); // right 20 nt
                     String genotype = genotype1 + "/" + genotype2;
                     genotype = genotype.replace("&", "").replace("#", "").replace("^", "i");
-                    vref.extrafreq = round(vref.extrafreq, 3);
+                    vref.extrafreq = vref.extrafreq;
                     vref.freq = round(vref.freq, 3);
                     vref.hifreq = round(vref.hifreq, 3);
-                    vref.msi = round(msi, 3);
+                    vref.msi = msi;
                     vref.msint = msint.length();
                     vref.shift3 = shift3;
                     vref.sp = sp;
@@ -2473,7 +2513,8 @@ public class VarDict {
                     }
                 }
             } else {
-                varsAtp.ref = new Variant();
+                if (varsAtp.ref == null)
+                    varsAtp.ref = new Variant();
             }
             if (varsAtp.ref != null) {
                 Variant vref = varsAtp.ref;
@@ -2490,7 +2531,7 @@ public class VarDict {
                 vref.shift3 = 0;
                 vref.sp = p;
                 vref.ep = p;
-                vref.hifreq = round(vref.hifreq, 3);
+                vref.hifreq = vref.hifreq;
                 String r = ref.containsKey(p) ? ref.get(p).toString() : "";
                 vref.refallele = r;
                 vref.varallele = r;
@@ -4543,12 +4584,11 @@ public class VarDict {
     });
 
 
-    private static void ampVardict(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
+    private static void ampVardictAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
             final String bam1, final String sample, final Configuration conf) throws IOException {
 
-        final Set<String> splice = new ConcurrentHashSet<>();
-        final ExecutorService executor = Executors.newFixedThreadPool(8);
-        final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(6);
+        final ExecutorService executor = Executors.newFixedThreadPool(Math.max(Runtime.getRuntime().availableProcessors(), 2));
+        final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(21);
 
         executor.submit(new Runnable() {
             @Override
@@ -4559,6 +4599,7 @@ public class VarDict {
                         int j = 0;
                         Region rg = null;
                         List<Future<Tuple2<Integer, Map<Integer, Vars>>>> workers = new ArrayList<>(regions.size() - 1);
+                        final Set<String> splice = new ConcurrentHashSet<>();
                         for (Region region : regions) {
                             rg = region; // ??
                             for (int p = region.istart; p <= region.iend; p++) {
@@ -4601,12 +4642,42 @@ public class VarDict {
         executor.shutdown();
     }
 
+    private static void ampVardictAsync1(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
+            final String bam1, final String sample, final Configuration conf) throws IOException {
+
+        for (List<Region> regions : segs) {
+            Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
+            int j = 0;
+            Region rg = null;
+            final Set<String> splice = new ConcurrentHashSet<>();
+            List<Map<Integer, Vars>> vars = new ArrayList<>();
+            for (Region region : regions) {
+                rg = region; // ??
+                for (int p = region.istart; p <= region.iend; p++) {
+                    List<Tuple2<Integer, Region>> list = pos.get(p);
+                    if (list == null) {
+                        list = new ArrayList<>();
+                        pos.put(p, list);
+                    }
+                    list.add(Tuple2.newTuple(j, region));
+                }
+                vars.add(toVars(region, bam1, getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend), chrs, splice, ampliconBasedCalling, 0, conf)._2());
+                j++;
+            }
+            ampVardict(rg, vars, pos, sample, splice, conf, System.out);
+        }
+    }
 
     private static void ampVardict(Region rg, List<Map<Integer, Vars>> vars, Map<Integer, List<Tuple2<Integer, Region>>> pos, final String sample, final Set<String> splice, final Configuration conf,
             PrintStream out) {
-        for (Entry<Integer, List<Tuple2<Integer, Region>>> entry : pos.entrySet()) {
-            final int p = entry.getKey();
-            final List<Tuple2<Integer, Region>> v = entry.getValue();
+        List<Integer> pp = new ArrayList<>(pos.keySet());
+        Collections.sort(pp);
+        for (Integer p : pp) {
+            final List<Tuple2<Integer, Region>> v = pos.get(p);
+
+//        for (Entry<Integer, List<Tuple2<Integer, Region>>> entry : pos.entrySet()) {
+//            final int p = entry.getKey();
+//            final List<Tuple2<Integer, Region>> v = entry.getValue();
 
             List<Tuple2<Variant, String>> gvs = new ArrayList<>();
             List<Variant> ref = new ArrayList<>();
@@ -4772,12 +4843,12 @@ public class VarDict {
         sb.append(var.fwd).append(delm);
         sb.append(var.rev).append(delm);
         sb.append(var.genotype).append(delm);
-        sb.append(var.freq).append(delm);
+        sb.append(var.freq == 0 ? 0 : format("%.3f", var.freq)).append(delm);
         sb.append(var.bias).append(delm);
-        sb.append(var.pmean).append(delm);
-        sb.append(var.pstd?1:0).append(delm);
+        sb.append(format("%.1f", var.pmean)).append(delm);
+        sb.append(var.pstd ? 1 : 0).append(delm);
         sb.append(format("%.1f", var.qual)).append(delm);
-        sb.append(var.qstd?1:0).append(delm);
+        sb.append(var.qstd ? 1 : 0).append(delm);
         sb.append(format("%.1f", var.mapq)).append(delm);
         sb.append(format("%.3f", var.qratio)).append(delm);
         sb.append(format("%.3f", var.hifreq)).append(delm);
@@ -4800,7 +4871,7 @@ public class VarDict {
         sb.append(var.genotype).append(delm);
         sb.append(format("%.3f", var.freq)).append(delm);
         sb.append(var.bias).append(delm);
-        sb.append(var.pmean).append(delm);
+        sb.append(format("%.1f", var.pmean)).append(delm);
         sb.append(var.pstd?1:0).append(delm);
         sb.append(format("%.1f", var.qual)).append(delm);
         sb.append(var.qstd?1:0).append(delm);
@@ -4811,7 +4882,7 @@ public class VarDict {
         sb.append(var.shift3).append(delm);
         sb.append(var.msi == 0? 0 : format("%.3f", var.msi)).append(delm);
         sb.append(var.msint).append(delm);
-        sb.append(var.nm).append(delm);
+        sb.append(format("%.1f", var.nm)).append(delm);
         sb.append(var.hicnt).append(delm);
         sb.append(var.hicov).append(delm);
         sb.append(var.leftseq).append(delm);
@@ -4874,6 +4945,20 @@ public class VarDict {
                 case ref:
                     return vars.get(key).ref;
             }
+        }
+        return null;
+    }
+
+    private static Variant getVarMaybe(Vars vars, VarsType type, Object... keys) {
+        switch (type) {
+            case var:
+                if (vars.var.size() > (Integer)keys[0]) {
+                    return vars.var.get((Integer)keys[0]);
+                }
+            case varn:
+                return vars.varn.get(keys[0]);
+            case ref:
+                return vars.ref;
         }
         return null;
     }
