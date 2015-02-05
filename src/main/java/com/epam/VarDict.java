@@ -14,6 +14,7 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import jregex.REFlags;
 import jregex.Replacer;
 
 public class VarDict {
@@ -1021,14 +1022,14 @@ public class VarDict {
     }
 
     final static Random RND = new Random(System.currentTimeMillis());
-    private static final Pattern IDLEN = Pattern.compile("(\\d+)[ID]");
-    private static final Pattern NUMBER_MISMATCHES = Pattern.compile("(?i)NM:i:(\\d+)");
-    private static final Pattern MATCH_INSERTION = Pattern.compile("(\\d+)[MI]");
-    private static final Pattern SOFT_CLIPPED = Pattern.compile("(\\d+)[MIS]");
-    private static final Pattern ALIGNED_LENGTH = Pattern.compile("(\\d+)[MD]");
-    private static final Pattern CIGAR_PAIR = Pattern.compile("(\\d+)([A-Z])");
-    private static final Pattern BEGIN_D_S = Pattern.compile("^(\\d+)S");
-    private static final Pattern D_S_END = Pattern.compile("(\\d+)S$");
+    private static final jregex.Pattern IDLEN = new jregex.Pattern("(\\d+)[ID]");
+    private static final jregex.Pattern NUMBER_MISMATCHES = new jregex.Pattern("NM:i:(\\d+)", REFlags.IGNORE_CASE);
+    private static final jregex.Pattern MATCH_INSERTION = new jregex.Pattern("(\\d+)[MI]");
+    private static final jregex.Pattern SOFT_CLIPPED = new jregex.Pattern("(\\d+)[MIS]");
+    private static final jregex.Pattern ALIGNED_LENGTH = new jregex.Pattern("(\\d+)[MD]");
+    private static final jregex.Pattern CIGAR_PAIR = new jregex.Pattern("(\\d+)([A-Z])");
+    private static final jregex.Pattern BEGIN_D_S = new jregex.Pattern("^(\\d+)S");
+    private static final jregex.Pattern D_S_END = new jregex.Pattern("(\\d+)S$");
 
 
 
@@ -1222,8 +1223,6 @@ public class VarDict {
     private static final jregex.Pattern j_D_ID_DD_M = new jregex.Pattern("(\\d+)([ID])(\\d)M$");
     private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD = Pattern.compile("^(.*?)(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
     private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD_prim = Pattern.compile("(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
-    private static final Pattern D_MIS = Pattern.compile("(\\d+)[MIS]");
-    private static final Pattern D_MD = Pattern.compile("(\\d+)[MD]");
     private static final Pattern DIG_D_DIG_M_DIG_DI_DIGI = Pattern.compile("(\\d+)D(\\d)M(\\d+)([DI])(\\d+I)?");
     private static final Pattern D_I_DD_M_D_d_DI = Pattern.compile("(\\d+)I(\\d)M(\\d+)D(\\d+I)?");
     private static final Pattern DIG_I_dig_M_DIG_DI_DIGI = Pattern.compile("(\\d+)I(\\d)M(\\d+)([DI])(\\d+I)?");
@@ -1235,7 +1234,7 @@ public class VarDict {
     private static final Pattern D_M_D_S_END = Pattern.compile("\\d+M\\d+S$");
     private static final Pattern ANY_D_M_D_S = Pattern.compile("^(.*?)(\\d+)M(\\d+)S$");
     private static final Pattern START_DIG = Pattern.compile("^-(\\d+)");
-    private static final Pattern SA_Z = Pattern.compile("\\tSA:Z:\\S+");
+    private static final jregex.Pattern SA_Z = new jregex.Pattern("\\tSA:Z:\\S+");
 
 
 
@@ -1397,7 +1396,7 @@ public class VarDict {
                     }
 
                     int tnm = 0;
-                    Matcher nmMatcher = NUMBER_MISMATCHES.matcher(line);
+                    jregex.Matcher nmMatcher = NUMBER_MISMATCHES.matcher(line);
                     if (nmMatcher.find()) { // number of mismatches. Don't use NM since it includes gaps, which can be from indels
                         tnm = toInt(nmMatcher.group(1)) - extractIndel(row.cigar);
                         if (tnm > conf.mismatch) { // edit distance - indels is the # of mismatches
@@ -1478,7 +1477,7 @@ public class VarDict {
                     final String cigarStr = mc._2();
 
                     List<String> cigar = new ArrayList<>();
-                    Matcher cigarM = CIGAR_PAIR.matcher(cigarStr);
+                    jregex.Matcher cigarM = CIGAR_PAIR.matcher(cigarStr);
                     while (cigarM.find()) {
                         cigar.add(cigarM.group(1));
                         cigar.add(cigarM.group(2));
@@ -3551,7 +3550,7 @@ public class VarDict {
     private static final Pattern B_MIN_DIG_ANY  = Pattern.compile("^-\\d+(.*)");
     private static final Pattern UP_DIG_E = Pattern.compile("\\^(\\d+)$");
     private static final Pattern ATGS_ATGS = Pattern.compile("(\\+[ATGC]+)&[ATGC]+$");
-    private static final Pattern B_ATGS_ATGS_E = Pattern.compile("^[ATGC]&[ATGC]+$");
+    private static final jregex.Pattern B_ATGS_ATGS_E = new jregex.Pattern("^[ATGC]&[ATGC]+$");
 
     private static final Comparator<Object[]> COMP1 = new Comparator<Object[]>() {
         @Override
@@ -5046,9 +5045,9 @@ public class VarDict {
         return "Complex";
     }
 
-    public static List<String> globalFind(Pattern pattern, String string) {
+    public static List<String> globalFind(jregex.Pattern alignedLength, String string) {
         List<String> result = new LinkedList<>();
-        Matcher matcher = pattern.matcher(string);
+        jregex.Matcher matcher = alignedLength.matcher(string);
         while(matcher.find()) {
             result.add(matcher.group(1));
         }
@@ -5338,11 +5337,11 @@ public class VarDict {
                     int refoff = position + rdoff;
                     int RDOFF = rdoff;
                     if (!ov5.isEmpty()) {
-                        Matcher matcher = D_MIS.matcher(ov5); // read position
+                        jregex.Matcher matcher = SOFT_CLIPPED.matcher(ov5); // read position
                         while (matcher.find()) {
                             rdoff += toInt(matcher.group(1));
                         }
-                        matcher = D_MD.matcher(ov5); // reference position
+                        matcher = ALIGNED_LENGTH.matcher(ov5); // reference position
                         while (matcher.find()) {
                             refoff += toInt(matcher.group(1));
                         }
@@ -5412,11 +5411,11 @@ public class VarDict {
             int refoff = position + mch;
             int rdoff = mch;
             if (!ov5.isEmpty()) {
-                List<String> rdp = globalFind(D_MIS, ov5); // read position
+                List<String> rdp = globalFind(SOFT_CLIPPED, ov5); // read position
                 for (String string : rdp) {
                     rdoff += toInt(string);
                 }
-                List<String> rfp = globalFind(D_MD, ov5); // reference position
+                List<String> rfp = globalFind(ALIGNED_LENGTH, ov5); // reference position
                 for (String string : rfp) {
                     refoff += toInt(string);
                 }
@@ -5459,4 +5458,19 @@ public class VarDict {
         }
         return Tuple2.newTuple(position, cigarStr);
     }
+
+
+    public static void main(String[] args) {
+        String x = "as nm:i:10xxx";
+        jregex.Pattern pattern = new jregex.Pattern("NM:i:(\\d+)", REFlags.IGNORE_CASE);
+        jregex.Matcher matcher = pattern.matcher(x);
+        if (matcher.find()) {
+            System.err.println(matcher.group(1));
+        } else {
+            System.err.println("Not matched");
+        }
+    }
 }
+
+
+
