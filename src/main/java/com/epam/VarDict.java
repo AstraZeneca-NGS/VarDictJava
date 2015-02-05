@@ -234,7 +234,6 @@ public class VarDict {
             }
         }
 
-//        ampVardictAsync(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
         ampVardictParallel(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
     }
 
@@ -5459,17 +5458,6 @@ public class VarDict {
         return Tuple2.newTuple(position, cigarStr);
     }
 
-
-    public static void main(String[] args) {
-        String x = "as nm:i:10xxx";
-        jregex.Pattern pattern = new jregex.Pattern("NM:i:(\\d+)", REFlags.IGNORE_CASE);
-        jregex.Matcher matcher = pattern.matcher(x);
-        if (matcher.find()) {
-            System.err.println(matcher.group(1));
-        } else {
-            System.err.println("Not matched");
-        }
-    }
 }
 
 
