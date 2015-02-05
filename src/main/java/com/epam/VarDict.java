@@ -234,7 +234,7 @@ public class VarDict {
         }
 
 //        ampVardictAsync(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
-        ampVardictAsync(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
+        ampVardictParallel(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
     }
 
 
@@ -316,13 +316,13 @@ public class VarDict {
         }
 
         if (conf.bam.hasBam2()) {
-            somaticAsync(segs, chrs, ampliconBasedCalling, sample, samplem, conf);
+            somaticParallel(segs, chrs, ampliconBasedCalling, sample, samplem, conf);
         } else {
-            vardictAsync(segs, chrs, ampliconBasedCalling, sample, conf);
+            vardictParallel(segs, chrs, ampliconBasedCalling, sample, conf);
         }
     }
 
-    private static void vardictAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, final Configuration conf) throws IOException {
+    private static void vardictParallel(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, final Configuration conf) throws IOException {
         final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(10);
         executor.submit(new Runnable() {
@@ -361,7 +361,7 @@ public class VarDict {
 
     }
 
-    private static void somaticAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, String samplem, final Configuration conf) throws IOException {
+    private static void somaticParallel(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, String samplem, final Configuration conf) throws IOException {
         final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toSamdict = new LinkedBlockingQueue<>(10);
 
@@ -402,7 +402,7 @@ public class VarDict {
         }
         executor.shutdown();
     }
-    private static void somaticAsync1(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, String samplem, final Configuration conf) throws IOException {
+    private static void somaticNotParallel(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling, final String sample, String samplem, final Configuration conf) throws IOException {
         for (List<Region> list : segs) {
             for (Region region : list) {
                 final Set<String> splice = new ConcurrentHashSet<>();
@@ -410,7 +410,6 @@ public class VarDict {
                 Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region,  conf.bam.getBam1(), ref, chrs, splice, ampliconBasedCalling, 0, conf);
                 Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region,  conf.bam.getBam2(), ref, chrs, splice, ampliconBasedCalling, t1._1(), conf);
                 somdict(region, t1._2(), t2._2(), sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1(), t2._1()), conf, System.out);
-
             }
         }
 
@@ -3406,15 +3405,17 @@ public class VarDict {
     }
 
     private static boolean isHasAndEquals(Character ch1, Map<Integer, Character> ref, int index) {
-        if (!ref.containsKey(index))
+        Character refc = ref.get(index);
+        if (refc == null)
             return false;
-        return isEquals(ch1, ref.get(index));
+        return refc.equals(ch1);
     }
 
     private static boolean isHasAndNotEquals(Character ch1, Map<Integer, Character> ref, int index) {
-        if (!ref.containsKey(index))
+        Character refc = ref.get(index);
+        if (refc == null)
             return false;
-        return isNotEquals(ch1, ref.get(index));
+        return !refc.equals(ch1);
     }
 
     private static boolean isEquals(Character ch1, Character ch2) {
@@ -3526,12 +3527,12 @@ public class VarDict {
             for (Entry<String, Integer> entV : v.entrySet()) {
                 String vn = entV.getKey();
                 int cnt = entV.getValue();
-                int ecnt = 0;
-                Matcher mtch = ATGC_E.matcher(vn);
-                if (mtch.find()) {
-                    ecnt = mtch.group(1).length();
-                }
-                tmp.add(new Object[] { p, vn, cnt, ecnt });
+//                int ecnt = 0;
+//                Matcher mtch = ATGC_E.matcher(vn);
+//                if (mtch.find()) {
+//                    ecnt = mtch.group(1).length();
+//                }
+                tmp.add(new Object[] { p, vn, cnt, /*ecnt*/ });
             }
         }
         Collections.sort(tmp, COMP1);
@@ -4584,7 +4585,7 @@ public class VarDict {
     });
 
 
-    private static void ampVardictAsync(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
+    private static void ampVardictParallel(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
             final String bam1, final String sample, final Configuration conf) throws IOException {
 
         final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
@@ -4642,14 +4643,14 @@ public class VarDict {
         executor.shutdown();
     }
 
-    private static void ampVardictAsync1(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
+    private static void ampVardictNotParallel(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
             final String bam1, final String sample, final Configuration conf) throws IOException {
 
         for (List<Region> regions : segs) {
             Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
             int j = 0;
             Region rg = null;
-            final Set<String> splice = new ConcurrentHashSet<>();
+            final Set<String> splice = new HashSet<>();
             List<Map<Integer, Vars>> vars = new ArrayList<>();
             for (Region region : regions) {
                 rg = region; // ??
@@ -5194,14 +5195,22 @@ public class VarDict {
     }
 
     public static char charAt(String str, int index) {
-        if (index < 0)
-            return str.charAt(str.length() + index);
+        if (index < 0) {
+            int i = str.length() + index;
+            if (i < 0)
+                return (char)-1; //
+            return str.charAt(i);
+        }
         return str.charAt(index);
     }
 
     public static char charAt(StringBuilder str, int index) {
-        if (index < 0)
+        if (index < 0) {
+            int i = str.length() + index;
+            if (i < 0)
+                return (char)-1;//
             return str.charAt(str.length() + index);
+        }
         return str.charAt(index);
     }
 
