@@ -9,7 +9,6 @@ import java.util.List;
 import org.apache.commons.cli.*;
 
 import com.epam.VarDict.BedRowFormat;
-import com.epam.VarDict.Configuration;
 
 public class Main {
 
@@ -60,8 +59,8 @@ public class Main {
         }
         conf.ampliconBasedCalling = cmd.getOptionValue("a");
         conf.performLocalRealignment = 1 == getIntValue(cmd, "k", 1);
-        conf.hasFasta = cmd.hasOption("G");
         conf.fasta = cmd.getOptionValue("G", "/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa");
+
         conf.regionOfInterest = cmd.getOptionValue("R");
         conf.delimiter = cmd.getOptionValue("d", "\t");
         conf.sampleName = cmd.getOptionValue("N");
@@ -74,7 +73,7 @@ public class Main {
                 regexp = regexp.substring(0, regexp.length() -1);
             conf.sampleNameRegexp = regexp;
         }
-        conf.bam = new VarDict.Bam(cmd.getOptionValue("b"));
+        conf.bam = new Configuration.BamNames(cmd.getOptionValue("b"));
 
         int c_col = getColumnValue(cmd, "c", DEFAULT_BED_ROW_FORMAT.chrColumn);
         int S_col = getColumnValue(cmd, "S", DEFAULT_BED_ROW_FORMAT.startColumn);
@@ -90,7 +89,7 @@ public class Main {
             e_col = E_col;
         }
 
-        conf.badRowFormat = new BedRowFormat(c_col, S_col, E_col, s_col, e_col, g_col);
+        conf.bedRowFormat = new BedRowFormat(c_col, S_col, E_col, s_col, e_col, g_col);
         conf.columnForChromosome = getColumnValue(cmd, "c", -1);
 
         conf.numberNucleotideToExtend = getIntValue(cmd, "x", 0);
@@ -130,7 +129,7 @@ public class Main {
             threads = Runtime.getRuntime().availableProcessors();
         }
 
-        conf.threads = Math.max(threads, 2);
+        conf.threads = Math.max(threads, 1);
 
 
         VarDict.start(conf);
