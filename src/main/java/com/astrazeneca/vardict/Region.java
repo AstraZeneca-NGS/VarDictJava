@@ -1,4 +1,4 @@
-package com.epam;
+package com.astrazeneca.vardict;
 
 public class Region {
     final String chr;

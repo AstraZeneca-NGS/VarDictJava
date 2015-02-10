@@ -1,6 +1,4 @@
-package com.epam;
-
-import static com.epam.Utils.toInt;
+package com.astrazeneca.vardict;
 
 import java.util.*;
 

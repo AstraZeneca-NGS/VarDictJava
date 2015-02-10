@@ -1,4 +1,4 @@
-package com.epam;
+package com.astrazeneca.vardict;
 
 import java.io.BufferedReader;
 import java.io.IOException;

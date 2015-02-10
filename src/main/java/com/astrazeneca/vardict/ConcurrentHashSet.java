@@ -1,4 +1,4 @@
-package com.epam;
+package com.astrazeneca.vardict;
 
 import java.util.Collection;
 import java.util.Iterator;

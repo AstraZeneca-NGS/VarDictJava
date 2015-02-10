@@ -27,7 +27,6 @@ dependencies {
     testCompile 'junit:junit:4.8.2' 
 }
 
-mainClassName = "com.epam.Main"
-//applicationDefaultJvmArgs = ["-Xmx512m"]
+mainClassName = "com.astrazeneca.vardict.Main"
 
 

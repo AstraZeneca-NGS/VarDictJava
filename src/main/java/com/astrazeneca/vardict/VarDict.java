@@ -1,10 +1,10 @@
-package com.epam;
+package com.astrazeneca.vardict;
 
-import static com.epam.Tuple.tuple;
-import static com.epam.Utils.*;
-import static com.epam.VarDict.VarsType.ref;
-import static com.epam.VarDict.VarsType.var;
-import static com.epam.VarDict.VarsType.varn;
+import static com.astrazeneca.vardict.Tuple.tuple;
+import static com.astrazeneca.vardict.Utils.*;
+import static com.astrazeneca.vardict.VarDict.VarsType.ref;
+import static com.astrazeneca.vardict.VarDict.VarsType.var;
+import static com.astrazeneca.vardict.VarDict.VarsType.varn;
 import static java.lang.Math.abs;
 import static java.lang.String.format;
 import static java.util.Collections.singletonList;
@@ -20,9 +20,9 @@ import java.util.regex.Pattern;
 import jregex.REFlags;
 import jregex.Replacer;
 
-import com.epam.Tuple.Tuple2;
-import com.epam.Tuple.Tuple3;
-import com.epam.Tuple.Tuple4;
+import com.astrazeneca.vardict.Tuple.Tuple2;
+import com.astrazeneca.vardict.Tuple.Tuple3;
+import com.astrazeneca.vardict.Tuple.Tuple4;
 
 public class VarDict {
 
@@ -1193,8 +1193,6 @@ public class VarDict {
         if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) {
             chr = region.chr.substring("chr".length());
         }
-        int lineCount = 0;
-        int lineTotal = 0;
         for (String bami : bams) {
             String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : "-F " + conf.samfilter;
             try (Samtools reader = "".equals(samfilter) ?
@@ -1204,7 +1202,6 @@ public class VarDict {
                 int dupp = -1;
                 String line;
                 while ((line = reader.read()) != null) {
-                    lineTotal++;
                     if (conf.isDownsampling() && RND.nextDouble() <= conf.downsampling) {
                         continue;
                     }
@@ -1942,7 +1939,6 @@ public class VarDict {
                             break;
                         }
                     }
-                    lineCount++;
                 }
             }
 
@@ -2416,7 +2412,7 @@ public class VarDict {
                 len : region.end + numberNucleotideToExtend + 700;
 
         String[] subSeq = retriveSubSeq(fasta, region.chr, s_start, s_end);
-        String header = subSeq[0];
+//        String header = subSeq[0];
         String exon = subSeq[1];
         for (int i = s_start; i < s_start + exon.length(); i++) { // TODO why '<=' ?
             ref.put(i, Character.toUpperCase(exon.charAt(i - s_start)));
@@ -2583,8 +2579,8 @@ public class VarDict {
                         bi = p3;
                         vref = getVariation(hash, p3, ins);
                     } else if (tmp.length() < ins.length()) {
-                        int p3s = p3 + tmp.length();
-                        // int p3e = p3s + seq3.length() - ins.length() + 2;
+//                        int p3s = p3 + tmp.length();
+//                        int p3e = p3s + seq3.length() - ins.length() + 2;
                         ins = substr(ins, 0, ins.length() - tmp.length()) + "&" + substr(ins, p3 - p5);
                         ins = "+" + ins;
                         bi = p3 - 1;
@@ -2773,11 +2769,6 @@ public class VarDict {
                 }
             }
             sc5v.used = true;
-            // Map<Integer, Map<String, Integer>> tins = new HashMap() {{
-            // put(bi, new HashMap() {{
-            // put("+" + ins, iref.cnt);
-            // }});
-            // }};
             Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.cnt));
             realignins(hash, iHash, tins, cov, sclip5, sclip3, ref, chr, chrs, conf);
             Variation mref = getVariationMaybe(hash, bi, ref.get(bi));
@@ -2820,7 +2811,7 @@ public class VarDict {
             Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, 1, chr, chrs);
             final int bi = tpl._1();
             final String ins = tpl._2();
-            final int be = tpl._3();
+//            final int be = tpl._3();
             if (bi == 0) {
                 continue;
             }
@@ -2836,7 +2827,7 @@ public class VarDict {
                     break;
                 }
             }
-            final int offset = bi == be ? (p - bi - 1) : -(p + be - bi);
+//            final int offset = bi == be ? (p - bi - 1) : -(p + be - bi);
             int len = ins.length();
             if (ins.indexOf('&') != -1) {
                 len--;
@@ -3371,7 +3362,6 @@ public class VarDict {
     private static final Pattern B_PLUS_ATGC = Pattern.compile("^\\+([ATGC]+)");
     private static final Pattern AMP_ATGC = Pattern.compile("&([ATGC]+)");
     private static final Pattern HASH_ATGC = Pattern.compile("#([ATGC]+)");
-    private static final Pattern CARET_ATGC_E = Pattern.compile("\\^([ATGC]+)$");
     private static final Pattern CARET_ATGNC = Pattern.compile("\\^([ATGNC]+)");
     private static final Pattern CARET_ATGC = Pattern.compile("\\^([ATGC]+)");
 
@@ -3431,11 +3421,11 @@ public class VarDict {
             if (mtch.find()) {
                 compm = mtch.group(1);
             }
-            String newins = ""; // the adjacent insertion
-            mtch = CARET_ATGC_E.matcher(vn);
-            if (mtch.find()) {
-                newins = mtch.group(1);
-            }
+//            String newins = ""; // the adjacent insertion
+//            mtch = CARET_ATGC_E.matcher(vn);
+//            if (mtch.find()) {
+//                newins = mtch.group(1);
+//            }
 
             int newdel = 0; // the adjacent deletion
             try {

@@ -1,6 +1,6 @@
-package com.epam;
+package com.astrazeneca.vardict;
 
-import static com.epam.VarDict.DEFAULT_BED_ROW_FORMAT;
+import static com.astrazeneca.vardict.VarDict.DEFAULT_BED_ROW_FORMAT;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -8,7 +8,7 @@ import java.util.List;
 
 import org.apache.commons.cli.*;
 
-import com.epam.VarDict.BedRowFormat;
+import com.astrazeneca.vardict.VarDict.BedRowFormat;
 
 public class Main {
 

@@ -1,6 +1,6 @@
-package com.epam;
+package com.astrazeneca.vardict;
 
-import com.epam.VarDict.BedRowFormat;
+import com.astrazeneca.vardict.VarDict.BedRowFormat;
 
 public class Configuration {
     boolean printHeader; //-h
