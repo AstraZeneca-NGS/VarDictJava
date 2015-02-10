@@ -281,7 +281,7 @@ public class VarDict {
                 Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
                 final Set<String> splice = new HashSet<>();
                 Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), ref, chrs, splice, ampliconBasedCalling, 0, conf);
-                vardict(region, tpl._2(), conf.bam.getBam1(), sample, splice, conf, System.out);
+                vardict(region, tpl._2(), sample, splice, conf, System.out);
             }
         }
     }
@@ -300,7 +300,7 @@ public class VarDict {
                             final Set<String> splice = new ConcurrentHashSet<>();
                             Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
                             Future<Tuple2<Integer, Map<Integer, Vars>>> f1 = executor.submit(new ToVarsWorker(region, conf.bam.getBam1(), chrs, splice, ampliconBasedCalling, ref, conf));
-                            Future<OutputStream> f2 = executor.submit(new SomWorker(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, ref, conf, f1, sample));
+                            Future<OutputStream> f2 = executor.submit(new SomdictWorker(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, ref, conf, f1, sample));
                             toSamdict.put(f2);
                         }
                     }
@@ -399,6 +399,20 @@ public class VarDict {
         return tuple(sample, samplem);
     }
 
+    /**
+     * @param segs region
+     * @param vars1 variants from BAM1
+     * @param vars2 variants from BAM2
+     * @param sample
+     * @param chrs
+     * @param splice
+     * @param ampliconBasedCalling
+     * @param rlen
+     * @param conf Configuration
+     * @param out
+     * @return
+     * @throws IOException
+     */
     private static int somdict(Region segs, Map<Integer, Vars> vars1, Map<Integer, Vars> vars2,
             String sample,
             Map<String, Integer> chrs,
@@ -528,7 +542,7 @@ public class VarDict {
                                     type = "AFDiff";
                                 }
                             }
-                            if (isNoise(v2nt, conf) && vartype.equals("SNV")) {
+                            if (isNoise(v2nt, conf.goodq, conf.lofreq) && vartype.equals("SNV")) {
                                 type = "StrongSomatic";
                             }
                             out.println(join("\t", sample, segs.gene, segs.chr,
@@ -752,10 +766,27 @@ public class VarDict {
         return rlen;
     }
 
-    // Taken a likely somatic indels and see whether combine two bam files still support somatic status. This is mainly
-    // for Indels that softclipping overhang is too short to positively being called in one bam file, but can be called
-    // in the other bam file, thus creating false positives
-    private static Tuple2<Integer, String> combineAnalysis(Variant var1, Variant var2, String chr, int p, String nt, Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, int rlen, Configuration conf) throws IOException {
+    /**
+     * Taken a likely somatic indels and see whether combine two bam files still support somatic status. This is mainly for Indels
+     * that softclipping overhang is too short to positively being called in one bam file, but can be called in the other bam file,
+     * thus creating false positives
+     *
+     * @param var1 variant 1
+     * @param var2 variant 2
+     * @param chr chromosome
+     * @param p position
+     * @param nt nucleotide
+     *
+     * @param chrs
+     * @param splice
+     * @param ampliconBasedCalling
+     * @param rlen
+     * @param conf Configuration
+     * @return (new <code>rlen</code>, "FALSE" | "")
+     * @throws IOException
+     */
+    private static Tuple2<Integer, String> combineAnalysis(Variant var1, Variant var2, String chr, int p, String nt,
+            Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, int rlen, Configuration conf) throws IOException {
         if (conf.y) {
             System.err.printf("Start Combine %s %s\n", p, nt);
         }
@@ -827,9 +858,19 @@ public class VarDict {
         return tuple(rlen, "");
     }
 
-    private static boolean isNoise(Variant vref, Configuration conf) {
+    /**
+     * A variance is considered noise if the quality is below <code>goodq</code> and there're no more than 3 reads
+     *
+     * @param vref
+     *            Variant
+     * @param goodq
+     * @param lofreq
+     * @return Returns <tt>true</tt> if variance is considered noise if the quality is below <code>goodq</code> and there're no more
+     *         than 3 reads
+     */
+    private static boolean isNoise(Variant vref, double goodq, double lofreq) {
         if (((vref.qual < 4.5d || (vref.qual < 12 && !vref.qstd)) && vref.cov <= 3)
-                || (vref.qual < conf.goodq && vref.freq < 2 * conf.lofreq && vref.cov <= 1)) {
+                || (vref.qual < goodq && vref.freq < 2 * lofreq && vref.cov <= 1)) {
 
             vref.tcov -= vref.cov;
             vref.cov = 0;
@@ -844,7 +885,15 @@ public class VarDict {
         return false;
     }
 
-    private static void vardict(Region region, Map<Integer, Vars> vars, String bam1, String sample, Set<String> splice, Configuration conf, PrintStream out) {
+    /**
+     * @param region
+     * @param vars
+     * @param sample
+     * @param splice
+     * @param conf
+     * @param out
+     */
+    private static void vardict(Region region, Map<Integer, Vars> vars, String sample, Set<String> splice, Configuration conf, PrintStream out) {
         for (int p = region.start; p <= region.end; p++) {
             List<String> vts = new ArrayList<>();
             List<Variant> vrefs = new ArrayList<>();
@@ -1100,7 +1149,7 @@ public class VarDict {
     private static final jregex.Pattern D_M_D_ID_D_M = new jregex.Pattern("^(\\d)M(\\d+)([ID])(\\d+)M");
     private static final jregex.Pattern D_ID_DD_M = new jregex.Pattern("(\\d+)([ID])(\\d)M$");
 
-    private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD = Pattern.compile("^(.*?)(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
+    private static final jregex.Pattern D_M_D_DD_M_D_I_D_M_D_DD = new jregex.Pattern("^(.*?)(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
     private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD_prim = Pattern.compile("(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
     private static final Pattern DIG_D_DIG_M_DIG_DI_DIGI = Pattern.compile("(\\d+)D(\\d)M(\\d+)([DI])(\\d+I)?");
     private static final Pattern DIG_I_dig_M_DIG_DI_DIGI = Pattern.compile("(\\d+)I(\\d)M(\\d+)([DI])(\\d+I)?");
@@ -1113,19 +1162,32 @@ public class VarDict {
     private static final Pattern START_DIG = Pattern.compile("^-(\\d+)");
     private static final jregex.Pattern SA_Z = new jregex.Pattern("\\tSA:Z:\\S+");
 
+    /**
+     * Construct a variant structure given a region and BAM files.
+     * @param region region
+     * @param bam BAM file name
+     * @param chrs
+     * @param splice
+     * @param ampliconBasedCalling
+     * @param rlen max read length
+     * @param ref reference in a given region
+     * @param conf Configuration
+     * @return (noninsertion variant  structure, insertion variant structure, coverage, rlen)
+     * @throws IOException
+     */
     private static Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer> parseSAM(Region region, String bam,
-            Map<String, Integer> chrs, Set<String> SPLICE, String ampliconBasedCalling, int Rlen, Map<Integer, Character> ref, Configuration conf) throws IOException {
+            Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, int rlen, Map<Integer, Character> ref, Configuration conf) throws IOException {
 
         String[] bams = bam.split(":");
 
         Map<Integer, Map<String, Variation>> hash = new HashMap<>();
         Map<Integer, Map<String, Variation>> iHash = new HashMap<>();
         Map<Integer, Integer> cov = new HashMap<>();
-        Map<Integer, Sclip> sclip3 = new HashMap<>();
-        Map<Integer, Sclip> sclip5 = new HashMap<>();
+        Map<Integer, Sclip> sclip3 = new HashMap<>(); // soft clipped at 3'
+        Map<Integer, Sclip> sclip5 = new HashMap<>(); // soft clipped at 5'
         Map<Integer, Map<String, Integer>> ins = new HashMap<>();
         Map<Integer, Map<String, Integer>> mnp = new HashMap<>(); // Keep track of MNPs
-        Map<Integer, Map<String, Integer>> dels5 = new HashMap<>(); // Keep track of MNPs
+        Map<Integer, Map<String, Integer>> dels5 = new HashMap<>();
 
         String chr = region.chr;
         if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) {
@@ -1274,12 +1336,12 @@ public class VarDict {
 
                     int start = position;
                     int offset = 0;
-                    List<String> segs = globalFind(MATCH_INSERTION, cigarStr); // Only match and insertion counts toward read length
-                    List<String> segs2 = globalFind(SOFT_CLIPPED, cigarStr); // For total length, including soft-clipped bases
-                    int rlen = sum(segs); // The read length for matched bases
-                    int rlen2 = sum(segs2); // The total length, including soft-clipped bases
-                    if (rlen2 > Rlen) { // Determine the read length
-                        Rlen = rlen2;
+                     // Only match and insertion counts toward read length
+                     // For total length, including soft-clipped bases
+                    int rlen1 = sum(globalFind(MATCH_INSERTION, cigarStr)); // The read length for matched bases
+                    int rlen2 = sum(globalFind(SOFT_CLIPPED, cigarStr)); // The total length, including soft-clipped bases
+                    if (rlen2 > rlen) { // Determine the read length
+                        rlen = rlen2;
                     }
 
                     for (int ci = 0; ci < cigar.size(); ci += 2) {
@@ -1293,7 +1355,7 @@ public class VarDict {
                         switch (operation) {
                             case "N":
                                 String key = (start - 1) + "-" + (start + m - 1);
-                                SPLICE.add(key);
+                                splice.add(key);
 
                                 start += m;
                                 offset = 0;
@@ -1484,7 +1546,7 @@ public class VarDict {
                                     Variation hv = getVariation(iHash, start - 1, "+" + s);
                                     hv.incDir(dir);
                                     hv.cnt++;
-                                    int tp = p < rlen - p ? p + 1 : rlen - p;
+                                    int tp = p < rlen1 - p ? p + 1 : rlen1 - p;
                                     double tmpq = 0;
                                     for (int i = 0; i < q.length(); i++) {
                                         tmpq += q.charAt(i) - 33;
@@ -1678,7 +1740,7 @@ public class VarDict {
                                     hv.incDir(dir);
                                     hv.cnt++;
 
-                                    int tp = p < rlen - p ? p + 1 : rlen - p;
+                                    int tp = p < rlen1 - p ? p + 1 : rlen1 - p;
                                     double tmpq = 0;
 
                                     for (int i = 0; i < q.length(); i++) {
@@ -1829,7 +1891,7 @@ public class VarDict {
                                         increment(mnp, start - qbases + 1, s);
                                     }
                                     hv.cnt++;
-                                    int tp = p < rlen - p ? p + 1 : rlen - p;
+                                    int tp = p < rlen1 - p ? p + 1 : rlen1 - p;
                                     q = q / (qbases + qibases);
                                     if (hv.pstd == false && hv.pp != 0 && tp != hv.pp) {
                                         hv.pstd = true;
@@ -1889,24 +1951,24 @@ public class VarDict {
         if (conf.performLocalRealignment) {
             if (conf.y)
                 System.err.println("Start Realigndel");
-            realigndel(hash, dels5, cov, sclip5, sclip3, ref, region.chr, chrs, Rlen, bams, conf);
+            realigndel(hash, dels5, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
             if (conf.y)
                 System.err.println("Start Realignins");
             realignins(hash, iHash, ins, cov, sclip5, sclip3, ref, region.chr, chrs, conf);
             if (conf.y)
                 System.err.println("Start Realignlgdel");
-            realignlgdel(hash, cov, sclip5, sclip3, ref, region.chr, chrs, Rlen, bams, conf);
+            realignlgdel(hash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
             if (conf.y)
                 System.err.println("Start Realignlgins");
-            realignlgins(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, Rlen, bams, conf);
+            realignlgins(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
             if (conf.y)
                 System.err.println("Start Realignlgins30");
-            realignlgins30(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, Rlen, bams, conf);
+            realignlgins30(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
         }
 
         adjMNP(hash, mnp, cov, conf);
 
-        return tuple(hash, iHash, cov, Rlen);
+        return tuple(hash, iHash, cov, rlen);
     }
 
     private static Tuple2<Integer, Map<Integer, Vars>> toVars(Region region, String bam, Map<Integer, Character> ref,
@@ -4242,13 +4304,13 @@ public class VarDict {
 
     }
 
-    private static class SomWorker implements Callable<OutputStream> {
+    private static class SomdictWorker implements Callable<OutputStream> {
 
         final Future<Tuple2<Integer, Map<Integer, Vars>>> first;
         final ToVarsWorker second;
         final String sample;
 
-        public SomWorker(Region region, String bam, Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, Map<Integer, Character> ref, Configuration conf,
+        public SomdictWorker(Region region, String bam, Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, Map<Integer, Character> ref, Configuration conf,
                 Future<Tuple2<Integer, Map<Integer, Vars>>> first,
                 String sample) {
             this.first = first;
@@ -4294,21 +4356,21 @@ public class VarDict {
             Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), ref, chrs, splice, ampliconBasedCalling, 0, conf);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream out = new PrintStream(baos);
-            vardict(region, tpl._2(), conf.bam.getBam1(), sample, splice, conf, out);
+            vardict(region, tpl._2(), sample, splice, conf, out);
             out.close();
             return baos;
         }
 
     }
 
-    private static class SegsWorker implements Callable<OutputStream> {
+    private static class AmpVardictWorker implements Callable<OutputStream> {
         final Map<Integer, List<Tuple2<Integer, Region>>> pos;
         final Region rg;
         final List<Future<Tuple2<Integer, Map<Integer, Vars>>>> workers;
         final ToVarsWorker worker;
         final String sample;
 
-        public SegsWorker(Map<Integer, List<Tuple2<Integer, Region>>> pos, Region rg, String sample, List<Future<Tuple2<Integer,
+        public AmpVardictWorker(Map<Integer, List<Tuple2<Integer, Region>>> pos, Region rg, String sample, List<Future<Tuple2<Integer,
                 Map<Integer, Vars>>>> workers,
                 ToVarsWorker worker) {
             this.pos = pos;
@@ -4369,7 +4431,7 @@ public class VarDict {
                             }
                             ToVarsWorker toVars = new ToVarsWorker(region, bam1, chrs, splice, ampliconBasedCalling, null, conf);
                             if (workers.size() == regions.size() - 1) {
-                                toPrint.put(executor.submit(new SegsWorker(pos, rg, sample, workers, toVars)));
+                                toPrint.put(executor.submit(new AmpVardictWorker(pos, rg, sample, workers, toVars)));
                             } else {
                                 workers.add(executor.submit(toVars));
                             }
@@ -4398,7 +4460,6 @@ public class VarDict {
         executor.shutdown();
     }
 
-    @SuppressWarnings("unused")
     private static void ampVardictNotParallel(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
             final String bam1, final String sample, final Configuration conf) throws IOException {
 
@@ -4649,6 +4710,10 @@ public class VarDict {
         return sb.toString();
     }
 
+    /**
+     * Adjust the complex variant
+     * @param vref variant
+     */
     private static void adjComplex(Variant vref) {
         String refnt = vref.refallele;
         String varnt = vref.varallele;
@@ -4721,6 +4786,15 @@ public class VarDict {
         return null;
     }
 
+    /**
+     * Returns <tt>true</tt> whether a variant meet specified criteria
+     * @param vref variant
+     * @param rref
+     * @param type Type of variant
+     * @param splice
+     * @param conf Configuration (contains preferences for min, freg, filter and etc)
+     * @return <tt>true</tt> if variant meet specified criteria
+     */
     private static boolean isGoodVar(Variant vref, Variant rref, String type,
             Set<String> splice,
             Configuration conf) {
@@ -4880,25 +4954,19 @@ public class VarDict {
             }
 
             // Combine two deletions and insertion into one complex if they are close
-            Matcher cm = D_M_D_DD_M_D_I_D_M_D_DD.matcher(cigarStr);
-            if (cm.find()) {
-                int mid = toInt(cm.group(4)) + toInt(cm.group(6));
+            mm = D_M_D_DD_M_D_I_D_M_D_DD.matcher(cigarStr);
+            if (mm.find()) {
+                int mid = toInt(mm.group(4)) + toInt(mm.group(6));
                 if (mid <= 10) {
-                    int tslen = mid + toInt(cm.group(5));
-                    int dlen = toInt(cm.group(3)) + mid + toInt(cm.group(7));
-                    String ov5 = cm.group(1);
-                    int rdoff = toInt(cm.group(2));
+                    int tslen = mid + toInt(mm.group(5));
+                    int dlen = toInt(mm.group(3)) + mid + toInt(mm.group(7));
+                    String ov5 = mm.group(1);
+                    int rdoff = toInt(mm.group(2));
                     int refoff = position + rdoff;
                     int RDOFF = rdoff;
                     if (!ov5.isEmpty()) {
-                        jregex.Matcher matcher = SOFT_CLIPPED.matcher(ov5); // read position
-                        while (matcher.find()) {
-                            rdoff += toInt(matcher.group(1));
-                        }
-                        matcher = ALIGNED_LENGTH.matcher(ov5); // reference position
-                        while (matcher.find()) {
-                            refoff += toInt(matcher.group(1));
-                        }
+                        rdoff += sum(globalFind(SOFT_CLIPPED, ov5)); // read position
+                        refoff += sum(globalFind(ALIGNED_LENGTH, ov5)); // reference position
                     }
                     int rn = 0;
                     while (rdoff + rn < querySeq.length()
@@ -4913,7 +4981,7 @@ public class VarDict {
                 }
             }
             // Combine two close deletions (<10bp) into one
-            cm = DIG_D_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
+            Matcher cm = DIG_D_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
             if (cm.find()) {
                 int g2 = toInt(cm.group(2));
                 int g3 = toInt(cm.group(3));
