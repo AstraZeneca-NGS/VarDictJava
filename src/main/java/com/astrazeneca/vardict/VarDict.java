@@ -2500,13 +2500,13 @@ public class VarDict {
         for (Entry<Integer, Sclip> ent5 : sclip5.entrySet()) {
             tmp5.add(tuple(ent5.getKey(), ent5.getValue(), ent5.getValue().cnt));
         }
-        Collections.sort(tmp5, COMP3); // TODO sort {$a->[1] <=> $b->[1];} ????
+        Collections.sort(tmp5, COMP3);
 
         List<Tuple3<Integer, Sclip, Integer>> tmp3 = new ArrayList<>();
         for (Entry<Integer, Sclip> ent3 : sclip3.entrySet()) {
             tmp3.add(tuple(ent3.getKey(), ent3.getValue(), ent3.getValue().cnt));
         }
-        Collections.sort(tmp3, COMP3); // TODO sort {$a->[1] <=> $b->[1];} ????
+        Collections.sort(tmp3, COMP3);
 
         for (Tuple3<Integer, Sclip, Integer> t5 : tmp5) {
             final int p5 = t5._1();
@@ -3010,7 +3010,7 @@ public class VarDict {
     static final Comparator<Tuple3<Integer, Sclip, Integer>> COMP3 = new Comparator<Tuple3<Integer, Sclip, Integer>>() {
         @Override
         public int compare(Tuple3<Integer, Sclip, Integer> o1, Tuple3<Integer, Sclip, Integer> o2) {
-            return Integer.compare(o1._1(), o2._1());
+            return Integer.compare(o1._3(), o2._3());
         }
     };
 
@@ -3070,6 +3070,7 @@ public class VarDict {
             }
             final String gt;
             if (extra.length() > 0) {
+                extra = extra.reverse();
                 gt = "-" + dellen + "&" + extra;
                 bp -= extra.length();
             } else {
@@ -3138,13 +3139,6 @@ public class VarDict {
                 }
                 sclip.used = true;
             }
-            // final int fbp = bp;
-            // Map<Integer, Map<String, Integer>> dels5 = new HashMap() {{
-            // put(fbp, new HashMap() {{
-            // put(gt, tv.cnt);
-            // }});
-            // }};
-
             Map<Integer, Map<String, Integer>> dels5 = singletonMap(bp, singletonMap(gt, tv.cnt));
             realigndel(hash, dels5, cov, sclip5, sclip3, ref, chr, chrs, rlen, bams, conf);
             if (conf.y) {
