@@ -65,6 +65,12 @@ public class VarDict {
         }
     }
 
+    /**
+     * Read map of chromosome lengths
+     * @param bam BAM file name
+     * @return Map of chromosome lengths. Key - chromosome name, value - length
+     * @throws IOException
+     */
     private static Map<String, Integer> readChr(String bam) throws IOException {
         try (Samtools reader = new Samtools("view", "-H", bam)) {
             Map<String, Integer> chrs = new HashMap<>();
@@ -1089,23 +1095,84 @@ public class VarDict {
         boolean used;
     }
 
+    /**
+     * Intermediate variant structure
+     */
     public static class Variation {
+        /**
+         * Variant count
+         */
         int cnt;
+
+        /**
+         * Variant count on forward strand
+         */
         int dirPlus;
+
+        /**
+         * Variant count on reverse strand
+         */
         int dirMinus;
+
+        /**
+         * Sum of variant positions in read
+         */
         int pmean;
+
+        /**
+         * Sum of base qualities for variant
+         */
         double qmean;
+
+        /**
+         * Sum of mapping qualities for variant
+         */
         int Qmean;
+
+        /**
+         * Sum of number of mismatches for variant
+         */
         int nm;
+
+        /**
+         * Number of low-quality reads with the variant
+         */
         int locnt;
+
+        /**
+         * Number of high-quality reads with the variant
+         */
         int hicnt;
 
+        /**
+         * Flag that is true when variant is found in at least 2 different positions
+         */
         boolean pstd;
+
+        /**
+         * Flag that is 1 when variant is read with at least 2 different qualities
+         */
         boolean qstd;
+
+        /**
+         * Position in read for previous instance of this variant (used for pstd)
+         */
         int pp;
+
+        /**
+         * Base quality for previous instance of this variant (used for qstd)
+         */
         double pq;
+
+        /**
+         * Adjusted count for indels due to local realignment
+         */
         int extracnt;
 
+        /**
+         * Increment count for direction
+         * @param dir true for forward strand, false for reverse strand
+         */
         public void incDir(boolean dir) {
             if (dir)
                 this.dirMinus++;
@@ -1113,6 +1180,10 @@ public class VarDict {
                 this.dirPlus++;
         }
 
+        /**
+         * Decrement count for direction
+         * @param dir true for forward strand, false for reverse strand
+         */
         public void decDir(boolean dir) {
             if (dir)
                 this.dirMinus--;
@@ -1120,12 +1191,21 @@ public class VarDict {
                 this.dirPlus--;
         }
 
+        /**
+         * Get variant count for direction
+         * @param dir true for forward strand, false for reverse strand
+         * @return variant count
+         */
         public int getDir(boolean dir) {
             if (dir)
                 return this.dirMinus;
             return this.dirPlus;
         }
 
+        /**
+         * Add count for direction
+         * @param dir true for forward strand, false for reverse strand
+         */
         public void addDir(boolean dir, int add) {
             if (dir)
                 this.dirMinus += add;
@@ -1133,6 +1213,10 @@ public class VarDict {
                 this.dirPlus += add;
         }
 
+        /**
+         * Subtract count for direction
+         * @param dir true for forward strand, false for reverse strand
+         */
         public void subDir(boolean dir, int sub) {
             if (dir)
                 this.dirMinus -= sub;
@@ -1166,9 +1250,9 @@ public class VarDict {
      * Construct a variant structure given a region and BAM files.
      * @param region region
      * @param bam BAM file name
-     * @param chrs
-     * @param splice
-     * @param ampliconBasedCalling
+     * @param chrs map of chromosome lengths
+     * @param splice set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @param rlen max read length
      * @param ref reference in a given region
      * @param conf Configuration
@@ -1967,6 +2051,19 @@ public class VarDict {
         return tuple(hash, iHash, cov, rlen);
     }
 
+    /**
+     * Read BAM files and create variant structure
+     * @param region region of interest
+     * @param bam BAM file names (':' delimiter)
+     * @param ref part of reference sequence (key - position, value - base)
+     * @param chrs map of chromosome lengths
+     * @param SPLICE set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
+     * @param Rlen maximum read length
+     * @param conf VarDict configuration
+     * @return Tuple of (maxmimum read length, variant structure)
+     * @throws IOException
+     */
     private static Tuple2<Integer, Map<Integer, Vars>> toVars(Region region, String bam, Map<Integer, Character> ref,
             Map<String, Integer> chrs, Set<String> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
 
@@ -2403,6 +2500,15 @@ public class VarDict {
         return tuple(Rlen, vars);
     }
 
+    /**
+     * Get part of reference sequence
+     * @param region region of interest
+     * @param chrs map of chromosome lengths
+     * @param fasta file namo of reference genome in FASTA format
+     * @param numberNucleotideToExtend number of base pairs to extend around region of interest
+     * @return reference sequence map: key - position, value - base
+     * @throws IOException
+     */
     private static Map<Integer, Character> getREF(Region region, Map<String, Integer> chrs, String fasta, int numberNucleotideToExtend) throws IOException {
         Map<Integer, Character> ref = new HashMap<Integer, Character>();
 
@@ -2421,6 +2527,11 @@ public class VarDict {
         return ref;
     }
 
+    /**
+     * Extract total length of insertions and deletions from CIGAR string
+     * @param cigar CIGAR string
+     * @return Total length of indels
+     */
     private static int extractIndel(String cigar) {
         int idlen = 0;
         for (String s : globalFind(IDLEN, cigar)) {
@@ -2429,6 +2540,13 @@ public class VarDict {
         return idlen;
     }
 
+    /**
+     * Find microsatellite instability
+     * @param tseq1
+     * @param tseq2
+     * @param left
+     * @return (MSI count, No. of bases to be shifted to 3 prime for deletions due to alternative alignment, MicroSattelite unit length in base pairs)
+     */
     private static Tuple3<Double, Integer, String> findMSI(String tseq1, String tseq2, String left) {
 
         int nmsi = 1;
@@ -2469,12 +2587,34 @@ public class VarDict {
         return tuple(msicnt, shift3, maxmsi);
     }
 
+    /**
+     * Variants for position
+     */
     private static class Vars {
+        /**
+         * Reference variant
+         */
         private Variant ref;
+
+        /**
+         * List of all variants except reference variant
+         */
         private List<Variant> var = new ArrayList<>();
+
+        /**
+         * Map of all variants except reference variant.
+         * Key - variant description string, value - variant
+         */
         private Map<String, Variant> varn = new HashMap<>();
     }
 
+    /**
+     * Calculate strand bias flag
+     * @param fwd Variant count for forward strand
+     * @param rev Variant count for reverse strand
+     * @param conf Configuration
+     * @return 0 - small total count, only one of strands, 1 - strand bias, 2 - no strand bias
+     */
     private static int strandBias(int fwd, int rev, Configuration conf) {
 
         if (fwd + rev <= 12) { // using p=0.01, because prop.test(1,12) = 0.01
@@ -4727,6 +4867,9 @@ public class VarDict {
 
     }
 
+    /**
+     * VARN - array of variants, REF - reference variant, VAR - map of (variant description string => variant)
+     */
     static enum VarsType {
         varn, ref, var,
     }
@@ -4773,9 +4916,9 @@ public class VarDict {
     /**
      * Returns <tt>true</tt> whether a variant meet specified criteria
      * @param vref variant
-     * @param rref
+     * @param rref reference variant
      * @param type Type of variant
-     * @param splice
+     * @param splice set of strings representing introns in splice
      * @param conf Configuration (contains preferences for min, freg, filter and etc)
      * @return <tt>true</tt> if variant meet specified criteria
      */
@@ -4830,6 +4973,12 @@ public class VarDict {
         return true;
     }
 
+    /**
+     * Find variant type based on variant sequence
+     * @param ref reference sequence
+     * @param var variant sequence
+     * @return variant type
+     */
     private static String varType(String ref, String var) {
         if (ref.length() == 1 && var.length() == 1) {
             return "SNV";
@@ -4843,6 +4992,13 @@ public class VarDict {
         return "Complex";
     }
 
+    /**
+     * Create region from command-line option
+     * @param region Region string from command line
+     * @param numberNucleotideToExtend number of nucleotides to extend region
+     * @param zeroBased Are positions zero-based or 1-based
+     * @return Region
+     */
     private static Region buildRegion(String region, final int numberNucleotideToExtend, final boolean zeroBased) {
         String[] split = region.split(":");
         String chr = split[0];
@@ -4862,6 +5018,14 @@ public class VarDict {
 
     }
 
+    /**
+     * Modify sequence alignment CIGAR string
+     * @param ref Map of reference sequence (key - position, value - base)
+     * @param oPosition Position of first matched base in sequence
+     * @param oCigar Original CIGAR string
+     * @param querySeq Base sequence
+     * @return Tuple of (adjusted position of first matched base, modified CIGAR string)
+     */
     private static Tuple2<Integer, String> modifyCigar(Map<Integer, Character> ref, final int oPosition, final String oCigar, final String querySeq) {
         int position = oPosition;
         String cigarStr = oCigar;
