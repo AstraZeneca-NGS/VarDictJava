@@ -17,12 +17,14 @@ cd path_to_vardict_folder
 - Running in single sample mode:  
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f 0.01 -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f 0.01```
+<path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f 0.01 -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f 0.01
+```
 
 - Paired variant calling:
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | testsomatic.R | var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR```
+<path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | testsomatic.R | var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
+```
 
 
 ##Options
