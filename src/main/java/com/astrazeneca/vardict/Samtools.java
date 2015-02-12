@@ -6,6 +6,21 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Utility class to invoke samtools
+ *
+ * <p><b>Sample usage:</b>
+ *
+ *  <pre>
+ * try (Samtools samtools = new Samtools("view", "-H", "xx.bam")) {
+ *      String line;
+ *      while ((line = samtools.read()) != null) {
+ *          .....
+ *      }
+ * }
+ *  </pre>
+ *
+ */
 public class Samtools implements AutoCloseable {
 
     private Process proc;
