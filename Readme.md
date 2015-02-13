@@ -44,14 +44,14 @@ The following is an example command to run in single sample mode:
   
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f $AF_THR
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f $AF_THR
 ```
 
 VarDictJava can also be invoked without BED file if region is specified on command line with `-R` option.
 The following is an example command to run VarDictJava for a region (chromosome 7, position from 55270300 to 55270348, EGFR gene) with `-R` option:
 
 ```
-<path_to_vardict_folder>/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam  -z -R  chr7:55270300-55270348:EGFR | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f 0.001 >vars.vcf
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam  -z -R  chr7:55270300-55270348:EGFR | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f 0.001 >vars.vcf
 ```
 
 In single sample mode, output columns contain a description and statistical info for variants in the single sample. See section Output Columns for list of columns in the output. 
@@ -65,7 +65,7 @@ In this mode, the number of statistics columns in the output is doubled: one set
 The following is an example command to run in paired mode:
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | testsomatic.R | var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | testsomatic.R | var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
 
 ##Program Workflow
