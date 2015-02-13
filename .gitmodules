@@ -1,0 +1,3 @@
+[submodule "VarDict"]
+	path = VarDict
+	url = https://github.com/AstraZeneca-NGS/VarDict
