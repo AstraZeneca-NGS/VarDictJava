@@ -37,9 +37,8 @@ To build the project, in the root folder of the project, run the following comma
 ./gradlew clean installApp 
 ```
 
-<a name="singleSample">
+<a name="singleSample"></a>
 ###Single sample mode
-</a>
 
 To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 (see the [workflow](#programWorkflow)) using `teststrandbias.R` and `var2vcf_valid.pl.`
 The following is an example command to run in single sample mode:
@@ -58,9 +57,8 @@ The following is an example command to run VarDictJava for a region (chromosome 
 
 In single sample mode, output columns contain a description and statistical info for variants in the single sample. See section [Output Columns](##Output Columns) for list of columns in the output. 
 
-<a name="pairedSample">
+<a name="pairedSample"></a>
 ###Paired variant calling
-</a>
 
 To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 (see the [workflow](##Program Workflow)) using `testsomatic.R` and `var2vcf_somatic.pl`.
 
@@ -72,9 +70,8 @@ AF_THR="0.01" # minimum allele frequency
 <path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | testsomatic.R | var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
 
-<a name="programWorkflow">
+<a name="programWorkflow"></a>
 ##Program Workflow
-</a>
 The VarDict program follows the workflow:
 
 1.	Get regions of interest from a BED file or the command line.
@@ -178,9 +175,8 @@ The VarDict program follows the workflow:
 - `-th threads`  
     Threads count. If omitted, number of threads is equal to number of processor cores.
 
-<a name="outputColumns">
+<a name="outputColumns"></a>
 ##Output columns
-</a>
 
 1. Sample - sample name
 2. Gene - gene name from BED file
