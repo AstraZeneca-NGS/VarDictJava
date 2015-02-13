@@ -3,7 +3,7 @@
 ##Introduction
 VarDictJava is a variant discovery program written in Java and Perl. It is a partial Java port of [VarDict variant caller](https://github.com/AstraZeneca-NGS/VarDict). 
 
-Original Perl VarDict is a sensitive variant caller for both single and paired sample variant calling from BAM files. VarDict implements several novel features such as amplicon bias aware variant calling from targeted
+The original Perl VarDict is a sensitive variant caller for both single and paired sample variant calling from BAM files. VarDict implements several novel features such as amplicon bias aware variant calling from targeted
 sequencing experiments, rescue of long indels by realigning bwa soft clipped reads and better scalability
 than Java based variant callers.
 
@@ -25,8 +25,10 @@ The VarDictJava source code is located at [https://github.com/AstraZeneca-NGS/Va
 To load the project, execute the following command:
 
 ```
-git clone https://github.com/AstraZeneca-NGS/VarDictJava.git
+git clone --recursive https://github.com/AstraZeneca-NGS/VarDictJava.git
 ```
+
+Note that original VardDict project is placed in this repository as submodule and it's contents can be found in sub-directory VarDict in VarDictJava working folder. So when you use `teststrandbias.R` and `var2vcf_valid.pl.` (see details and examples below), you have to add prefix VarDict: `VarDict/teststrandbias.R` and `VarDict/var2vcf_valid.pl.`
 
 ###Compiling
 The project uses [Gradle](http://gradle.org/) and already includes a gradlew script.
@@ -44,14 +46,14 @@ The following is an example command to run in single sample mode:
   
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f $AF_THR
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/teststrandbias.R | VarDict/var2vcf_valid.pl -N sample_name -E -f $AF_THR
 ```
 
-VarDictJava can also be invoked without BED file if region is specified on command line with `-R` option.
+VarDictJava can also be invoked without a BED file if the region is specified in the command line with `-R` option.
 The following is an example command to run VarDictJava for a region (chromosome 7, position from 55270300 to 55270348, EGFR gene) with `-R` option:
 
 ```
-<path_to_vardict_folder>/build/install/VarDict/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam  -z -R  chr7:55270300-55270348:EGFR | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f 0.001 >vars.vcf
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam  -z -R  chr7:55270300-55270348:EGFR | VarDict/teststrandbias.R | VarDict/var2vcf_valid.pl -N sample_name -E -f 0.001 >vars.vcf
 ```
 
 In single sample mode, output columns contain a description and statistical info for variants in the single sample. See section Output Columns for list of columns in the output. 
@@ -65,7 +67,7 @@ In this mode, the number of statistics columns in the output is doubled: one set
 The following is an example command to run in paired mode:
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | testsomatic.R | var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/testsomatic.R | VarDict/var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
 
 ##Program Workflow
@@ -73,15 +75,15 @@ The VarDictJava program follows the workflow:
 
 1.	Get regions of interest from a BED file or the command line.
 2.	For each segment:
-	1.	Find all variants for this segment in mapped reads:
-		1.	Optionally skip duplicated reads, low mapping-quality reads, and reads having a large number of mismatches.
-		2.	Skip a read if it does not overlap with the segment.
-		3.	Preprocess the CIGAR string for each read.
-		4.	For each position, create a variant. If a variant is already present, adjust its count using the adjCnt function.
-	2. Realign some of the variants using special ad-hoc approaches.
-	3. Calculate statistics for the variant, filter out some bad ones, if any.
-	4. Assign a type to each variant.
-	5. Output variants in an intermediate internal format (tabular). Columns of the table are described in Output columns section.     
+	a.	Find all variants for this segment in mapped reads:
+		i.	Optionally skip duplicated reads, low mapping-quality reads, and reads having a large number of mismatches.
+		ii.	Skip a read if it does not overlap with the segment.
+		iii.	Preprocess the CIGAR string for each read.
+		iv.	For each position, create a variant. If a variant is already present, adjust its count using the adjCnt function.
+	b. Realign some of the variants using special ad-hoc approaches.
+	c. Calculate statistics for the variant, filter out some bad ones, if any.
+	d. Assign a type to each variant.
+	e. Output variants in an intermediate internal format (tabular). Columns of the table are described in the Output Columns section.     
           **Note**: To perform Steps 1 and 2, use the Java program VarDict.
 
 3.	Perform a statistical test for strand bias using an R script.  
@@ -104,25 +106,25 @@ The VarDictJava program follows the workflow:
 - `-D`    
     Debug mode.  Will print some error messages and append full genotype at the end.
 - `-t`   
-    Indicate to remove duplicated reads.  Only one pair with same start positions will be kept
+    Indicate to remove duplicated reads.  Only one pair with identical start positions will be kept
 - `-3`   
      Indicate to move indels to 3-prime if alternative alignment can be achieved.
 - `-F bit`  
      The hexical to filter reads using samtools. Default: `0x500` (filter 2nd alignments and duplicates).  Use `-F 0` to turn it off.
 - `-z 0/1`       
-    Indicate whether is zero-based cooridates, as IGV does.  Default: `1` for BED file or amplicon BED file.  Use `0` to turn it off. When use `-R` option, it's set to `0`
+    Indicate whether the BED file contains zero-based cooridates, the same way as the Genome browser IGV does.  -z 1 indicates that coordinates in a BED file start from 0. -z 0 indicates that the coordinates start from 1. Default: `1` for a BED file or amplicon BED file.  Use `0` to turn it off. When using `-R` option, it is set to `0`
 - `-a int:float`    
-    Indicate it's amplicon based calling.  Reads don't map to the amplicon will be skipped.  A read pair is considered belonging the amplicon if the edges are less than int bp to the amplicon, and overlap fraction is at least float.  Default: `10:0.95`
+    Indicate it is amplicon based calling.  Reads that do not map to the amplicon will be skipped.  A read pair is considered to belong to the amplicon if the edges are less than int bp to the amplicon, and overlap fraction is at least float.  Default: `10:0.95`
 - `-k 0/1`   
     Indicate whether to perform local realignment.  Default: `1` or yes.  Set to `0` to disable it.
 - `-G Genome fasta`  
-    The reference fasta.  Should be indexed (.fai).  Default to: `/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa`
+    The reference fasta.  Should be indexed (.fai).  Defaults to: `/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa`
 - `-R Region`  
-    The region of interest.  In the format of chr:start-end.  If end is omitted, then a single position.  No BED is needed.
+    The region of interest.  In the format of chr:start-end.  If chr is not start-end but start (end is omitted), then it is a single position.  No BED is needed.
 - `-d delimiter`  
-    The delimiter for split `region_info`, default to tab `"\t"`
+    The delimiter for splitting `region_info`, defaults to tab `"\t"`
 - `-n regular_expression`  
-    The regular expression to extract sample name from bam filenames.  Default to: `/([^\/\._]+?)_[^\/]*.bam/`
+    The regular expression to extract sample names from bam filenames.  Defaults to: `/([^\/\._]+?)_[^\/]*.bam/`
 - `-N string`   
     The sample name to be used directly.  Will overwrite `-n` option
 - `-b string`   
@@ -130,27 +132,27 @@ The VarDictJava program follows the workflow:
 - `-c INT`   
     The column for chromosome
 - `-S INT`   
-    The column for region start, e.g. gene start
+    The column for the region start, e.g. gene start
 - `-E INT`  
-    The column for region end, e.g. gene end
+    The column for the region end, e.g. gene end
 - `-s INT`   
-    The column for segment starts in the region, e.g. exon starts
+    The column for a segment starts in the region, e.g. exon starts
 - `-e INT`  
-    The column for segment ends in the region, e.g. exon ends
+    The column for a segment ends in the region, e.g. exon ends
 - `-g INT`     
-    The column for gene name, or segment annotation
+    The column for a gene name, or segment annotation
 - `-x INT`   
-    The number of nucleotide to extend for each segment, default: `0`
+    The number of nucleotides to extend for each segment, default: `0`
 - `-f double`   
     The threshold for allele frequency, default: `0.05` or `5%`
 - `-r minimum reads`   
-    The minimum # of variance reads, default `2`
+    The minimum # of variance reads, default: `2`
 - `-B INT`  
-    The minimum # of reads to determine strand bias, default `2`
+    The minimum # of reads to determine strand bias, default: `2`
 - `-Q INT`  
     If set, reads with mapping quality less than INT will be filtered and ignored
 - `-q INT`   
-    The phred score for a base to be considered a good call.  Default: 25 (for Illumina). For PGM, set it to ~15, as PGM tends to under estimate base quality.
+    The phred score for a base to be considered a good call.  Default: 25 (for Illumina). For PGM, set it to ~15, as PGM tends to underestimate base quality.
 - `-m INT`   
     If set, reads with mismatches more than `INT` will be filtered and ignored.  Gaps are not counted as mismatches. Valid only for bowtie2/TopHat or BWA aln followed by sampe.  BWA mem is calculated as NM - Indels.  Default: 8, or reads with more than 8 mismatches will not be used.
 - `-T INT`  
@@ -158,24 +160,24 @@ The VarDictJava program follows the workflow:
 - `-X INT`   
     Extension of bp to look for mismatches after insersion or deletion.  Default to 3 bp, or only calls when they're within 3 bp.
 - `-P number`  
-    The read position filter.  If the mean variants position is less that specified, it's considered false positive.  Default: 5
+    The read position filter.  If the mean variants position is less that specified, it is considered false positive.  Default: 5
 - `-Z double`  
-    For downsampling fraction.  e.g. `0.7` means roughly `70%` downsampling.  Default: No downsampling.  Use with caution.  The downsampling will be random and non-reproducible.
+    For downsampling fraction,  e.g. `0.7` means roughly `70%` downsampling.  Default: No downsampling.  Use with caution.  The downsampling will be random and non-reproducible.
 - `-o Qratio`  
     The `Qratio` of `(good_quality_reads)/(bad_quality_reads+0.5)`.  The quality is defined by `-q` option.  Default: `1.5`
 - `-O MapQ`  
     The reads should have at least mean `MapQ` to be considered a valid variant.  Default: no filtering
 - `-V freq`  
-    The lowest frequency in normal sample allowed for a putative somatic mutations.  Default to `0.05`
+    The lowest frequency in a normal sample allowed for a putative somatic mutations.  Defaults to `0.05`
 - `-I INT`  
     The indel size.  Default: 120bp
 - `-th threads`  
-    Threads count. If omitted, number of threads is equal to number of processor cores.
+    Threads count. If omitted, the number of threads equals to number of processor cores.
 
 ##Output columns
 
 1. Sample - sample name
-2. Gene - gene name from BED file
+2. Gene - gene name from a BED file
 3. Chr - chromosome name
 4. Start - start position of the variation
 5. End - end position of the variation
@@ -200,7 +202,7 @@ The VarDictJava program follows the workflow:
 26. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
 27. MSI - MicroSattelite. > 1 indicates MSI
 28. MSINT - MicroSattelite unit length in bp
-29. NM - average number of mismatches for reads containing variant
+29. NM - average number of mismatches for reads containing the variant
 30. HICNT - number of high-quality reads with the variant
 31. HICOV - position coverage by high quality reads
 21. 5pFlankSeq - neighboring reference sequence to 5' end 
