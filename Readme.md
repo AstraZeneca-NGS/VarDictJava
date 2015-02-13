@@ -9,7 +9,7 @@ than Java based variant callers.
 
 Original code by Zhongwu Lai 2014.
 
-VarDictJava can run in [single sample](#singleSample), [paired sample](#pairedSample), or amplicon bias aware modes. As input, VarDictJava takes reference genomes in FASTA format, aligned reads in BAM format, and target regions in BED format.
+VarDictJava can run in single sample (see Single sample mode section), paired sample (see Paired variant calling section), or amplicon bias aware modes. As input, VarDictJava takes reference genomes in FASTA format, aligned reads in BAM format, and target regions in BED format.
 
 ##Requirements
 1. JDK 1.7 or later
@@ -37,10 +37,9 @@ To build the project, in the root folder of the project, run the following comma
 ./gradlew clean installApp 
 ```
 
-<a name="singleSample"></a>
 ###Single sample mode
 
-To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 (see the [workflow](#programWorkflow)) using `teststrandbias.R` and `var2vcf_valid.pl.`
+To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 (see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl.`
 The following is an example command to run in single sample mode:
   
 ```
@@ -55,12 +54,11 @@ The following is an example command to run VarDictJava for a region (chromosome 
 <path_to_vardict_folder>/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam  -z -R  chr7:55270300-55270348:EGFR | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f 0.001 >vars.vcf
 ```
 
-In single sample mode, output columns contain a description and statistical info for variants in the single sample. See section [Output Columns](##Output Columns) for list of columns in the output. 
+In single sample mode, output columns contain a description and statistical info for variants in the single sample. See section Output Columns for list of columns in the output. 
 
-<a name="pairedSample"></a>
 ###Paired variant calling
 
-To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 (see the [workflow](##Program Workflow)) using `testsomatic.R` and `var2vcf_somatic.pl`.
+To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 (see the Program Workflow section) using `testsomatic.R` and `var2vcf_somatic.pl`.
 
 In this mode, the number of statistics columns in the output is doubled: one set of columns is for the first sample, the other - for second sample.
 
@@ -70,9 +68,8 @@ AF_THR="0.01" # minimum allele frequency
 <path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | testsomatic.R | var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
 
-<a name="programWorkflow"></a>
 ##Program Workflow
-The VarDict program follows the workflow:
+The VarDictJava program follows the workflow:
 
 1.	Get regions of interest from a BED file or the command line.
 2.	For each segment:
@@ -84,8 +81,8 @@ The VarDict program follows the workflow:
 	2. Realign some of the variants using special ad-hoc approaches.
 	3. Calculate statistics for the variant, filter out some bad ones, if any.
 	4. Assign a type to each variant.
-	5. Output variants in an intermediate internal format (tabular). Columns of the table are described in [Output columns section](#outputColumns).     
-          **Note**: To perform Steps 1 and 2, use the Java program VarDict-0.1.
+	5. Output variants in an intermediate internal format (tabular). Columns of the table are described in Output columns section.     
+          **Note**: To perform Steps 1 and 2, use the Java program VarDict.
 
 3.	Perform a statistical test for strand bias using an R script.  
     **Note**: Use R script for this step.
@@ -175,7 +172,6 @@ The VarDict program follows the workflow:
 - `-th threads`  
     Threads count. If omitted, number of threads is equal to number of processor cores.
 
-<a name="outputColumns"></a>
 ##Output columns
 
 1. Sample - sample name
