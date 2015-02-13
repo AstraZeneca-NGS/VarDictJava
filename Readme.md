@@ -1,33 +1,103 @@
-#VarDict-java
+#VarDictJava
 
-This is a Java port of [VarDict variant caller](https://github.com/AstraZeneca-NGS/VarDict).
+##Introduction
+VarDictJava is a variant discovery program written in Java and Perl. It is a partial Java port of [VarDict variant caller](https://github.com/AstraZeneca-NGS/VarDict). 
+
+Original Perl VarDict is a sensitive variant caller for both single and paired sample variant calling from BAM files. VarDict implements several novel features such as amplicon bias aware variant calling from targeted
+sequencing experiments, rescue of long indels by realigning bwa soft clipped reads and better scalability
+than Java based variant callers.
+
+Original code by Zhongwu Lai 2014.
+
+VarDictJava can run in [single sample](#singleSample), [paired sample](#pairedSample), or amplicon bias aware modes. As input, VarDictJava takes reference genomes in FASTA format, aligned reads in BAM format, and target regions in BED format.
 
 ##Requirements
 1. JDK 1.7 or later
-2. Samtools (must be in `$PATH`)
-2. Internet connection to download dependencies using gradle.
+2. Samtools (must be in path)
+3. R language (uses /usr/bin/env R)
+4. Perl (uses /usr/bin/env perl)
+3. Internet connection to download dependencies using gradle.
 
 ##Getting started
-- To build:
+###Getting source code
+The VarDictJava source code is located at [https://github.com/AstraZeneca-NGS/VarDictJava](https://github.com/AstraZeneca-NGS/VarDictJava).
+
+To load the project, execute the following command:
+
 ```
-cd path_to_vardict_folder
+git clone https://github.com/AstraZeneca-NGS/VarDictJava.git
+```
+
+###Compiling
+The project uses [Gradle](http://gradle.org/) and already includes a gradlew script.
+
+To build the project, in the root folder of the project, run the following command:
+
+```
 ./gradlew clean installApp 
 ```
 
-- Running in single sample mode:  
+<a name="singleSample">
+###Single sample mode
+</a>
+
+To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 (see the [workflow](#programWorkflow)) using `teststrandbias.R` and `var2vcf_valid.pl.`
+The following is an example command to run in single sample mode:
+  
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f 0.01 -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f 0.01
+<path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f $AF_THR
 ```
 
-- Paired variant calling:
+VarDictJava can also be invoked without BED file if region is specified on command line with `-R` option.
+The following is an example command to run VarDictJava for a region (chromosome 7, position from 55270300 to 55270348, EGFR gene) with `-R` option:
+
+```
+<path_to_vardict_folder>/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam  -z -R  chr7:55270300-55270348:EGFR | teststrandbias.R | var2vcf_valid.pl -N sample_name -E -f 0.001 >vars.vcf
+```
+
+In single sample mode, output columns contain a description and statistical info for variants in the single sample. See section [Output Columns](##Output Columns) for list of columns in the output. 
+
+<a name="pairedSample">
+###Paired variant calling
+</a>
+
+To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 (see the [workflow](##Program Workflow)) using `testsomatic.R` and `var2vcf_somatic.pl`.
+
+In this mode, the number of statistics columns in the output is doubled: one set of columns is for the first sample, the other - for second sample.
+
+The following is an example command to run in paired mode:
 ```
 AF_THR="0.01" # minimum allele frequency
 <path_to_vardict_folder>/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | testsomatic.R | var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
 
+<a name="programWorkflow">
+##Program Workflow
+</a>
+The VarDict program follows the workflow:
 
-##Options
+1.	Get regions of interest from a BED file or the command line.
+2.	For each segment:
+	1.	Find all variants for this segment in mapped reads:
+		1.	Optionally skip duplicated reads, low mapping-quality reads, and reads having a large number of mismatches.
+		2.	Skip a read if it does not overlap with the segment.
+		3.	Preprocess the CIGAR string for each read.
+		4.	For each position, create a variant. If a variant is already present, adjust its count using the adjCnt function.
+	2. Realign some of the variants using special ad-hoc approaches.
+	3. Calculate statistics for the variant, filter out some bad ones, if any.
+	4. Assign a type to each variant.
+	5. Output variants in an intermediate internal format (tabular). Columns of the table are described in [Output columns section](#outputColumns).     
+          **Note**: To perform Steps 1 and 2, use the Java program VarDict-0.1.
+
+3.	Perform a statistical test for strand bias using an R script.  
+    **Note**: Use R script for this step.
+4.	Transform the intermediate tabular format to VCF. Output the variants with filtering and statistical data.  
+     **Note**: Use the Perl scripts `var2vcf_valid.pl` or `var2vcf_somatic.pl` for this step.
+
+
+
+##Program Options
 
 - `-H`  
     Print help page
@@ -108,3 +178,40 @@ AF_THR="0.01" # minimum allele frequency
 - `-th threads`  
     Threads count. If omitted, number of threads is equal to number of processor cores.
 
+<a name="outputColumns">
+##Output columns
+</a>
+
+1. Sample - sample name
+2. Gene - gene name from BED file
+3. Chr - chromosome name
+4. Start - start position of the variation
+5. End - end position of the variation
+6. Ref - reference sequence
+7. Alt - variant sequence
+8. Depth - total coverage
+9. AltDepth - variant coverage
+10. RefFwdReads - reference forward strand coverage
+11. RefRevReads - reference reverse strand coverage
+12. AltFwdReads - variant forward strand coverage
+13. AltRevReads - variant reverse strand coverage
+14. Genotype - genotype description string
+15. AF - allele frequency
+16. Bias - strand bias flag
+17. PMean - mean position in read
+18. PStd - flag for read position standard deviation
+19. QMean - mean base quality
+20. QStd - flag for base quality standard deviation
+23. QRATIO - ratio of high quality reads to low-quality reads
+24. HIFREQ - variant frequency for high-quality reads
+25. EXTRAFR - Adjusted AF for indels due to local realignment
+26. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
+27. MSI - MicroSattelite. > 1 indicates MSI
+28. MSINT - MicroSattelite unit length in bp
+29. NM - average number of mismatches for reads containing variant
+30. HICNT - number of high-quality reads with the variant
+31. HICOV - position coverage by high quality reads
+21. 5pFlankSeq - neighboring reference sequence to 5' end 
+22. 3pFlankSeq - neighboring reference sequence to 3' end
+23. SEGMENT:CHR_START_END - position description
+24. VARTYPE - variant type
