@@ -40,6 +40,7 @@ public class Configuration {
     double mapq = 0; // -O The minimun mean mapping quality to be considered, default 0
     boolean doPileup = false; // -p Do pileup regarless the frequency
     double lofreq = 0.05d; // -V The lowest frequency in normal sample allowed for a putative somatic mutations, default to 0.05
+    final int lowqual = 10;
     int threads;
 
     public boolean isColumnForChromosomeSet() {

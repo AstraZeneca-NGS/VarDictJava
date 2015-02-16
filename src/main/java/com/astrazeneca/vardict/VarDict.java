@@ -44,7 +44,7 @@ public class VarDict {
         Map<String, Integer> chrs = readChr(conf.bam.getBamX());
 
         if (conf.regionOfInterest != null) {
-            Region region = buildRegion(conf.regionOfInterest, conf.numberNucleotideToExtend, conf.isZeroBasedDefined() ? conf.zeroBased : false);
+            Region region = buildRegion(conf.regionOfInterest, conf.numberNucleotideToExtend, chrs, conf.isZeroBasedDefined() ? conf.zeroBased : false);
             nonAmpVardict(singletonList(singletonList(region)), chrs, conf.ampliconBasedCalling, sample, samplem, conf);
         } else {
             Tuple3<String, Boolean, List<String>> tpl = readBedFile(conf);
@@ -53,13 +53,13 @@ public class VarDict {
             List<String> segraw = tpl._3();
 
             if (ampliconBasedCalling != null) {
-                List<List<Region>> segs = toRegions(segraw, zeroBased != null ? zeroBased : false, conf.delimiter);
+                List<List<Region>> segs = toRegions(segraw, chrs, zeroBased != null ? zeroBased : false, conf.delimiter);
                 if (conf.threads == 1)
                     ampVardictNotParallel(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
                 else
                     ampVardictParallel(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
             } else {
-                List<List<Region>> regions = toRegions(segraw, zeroBased, conf);
+                List<List<Region>> regions = toRegions(segraw, chrs, zeroBased, conf);
                 nonAmpVardict(regions, chrs, null, sample, samplem, conf);
             }
         }
@@ -95,7 +95,7 @@ public class VarDict {
         }
     };
 
-    private static List<List<Region>> toRegions(List<String> segraw, Boolean zeroBased, Configuration conf) throws IOException {
+    private static List<List<Region>> toRegions(List<String> segraw, Map<String, Integer> chrs, Boolean zeroBased, Configuration conf) throws IOException {
         boolean zb = conf.zeroBased;
         List<List<Region>> segs = new LinkedList<>();
         BedRowFormat format = conf.bedRowFormat;
@@ -115,6 +115,7 @@ public class VarDict {
                 }
             }
             String chr = splitA[format.chrColumn];
+            chr = corrcetChr(chrs, chr);
             int cdss = toInt(splitA[format.startColumn]);
             int cdse = toInt(splitA[format.endColumn]);
             String gene = format.geneColumn < splitA.length ? splitA[format.geneColumn] : chr;
@@ -147,12 +148,13 @@ public class VarDict {
         return segs;
     }
 
-    private static List<List<Region>> toRegions(List<String> segraw, boolean zeroBased, String delimiter) throws IOException {
+    private static List<List<Region>> toRegions(List<String> segraw, Map<String, Integer> chrs, boolean zeroBased, String delimiter) throws IOException {
         List<List<Region>> segs = new LinkedList<>();
         Map<String, List<Region>> tsegs = new HashMap<>();
         for (String string : segraw) {
             String[] split = string.split(delimiter);
             String chr = split[0];
+            chr = corrcetChr(chrs, chr);
             int start = toInt(split[1]);
             int end = toInt(split[2]);
             String gene = split[3];
@@ -188,6 +190,17 @@ public class VarDict {
         }
 
         return segs;
+    }
+
+    private static String corrcetChr(Map<String, Integer> chrs, String chr) {
+        if (!chrs.containsKey(chr)) {
+            if (chr.startsWith("chr")) {
+                chr = chr.substring("chr".length());
+            } else {
+                chr = "chr" + chr;
+            }
+        }
+        return chr;
     }
 
     private static Tuple3<String, Boolean, List<String>> readBedFile(Configuration conf) throws IOException, FileNotFoundException {
@@ -1325,10 +1338,11 @@ public class VarDict {
                         }
                     }
 
+                    final int indel = sum(globalFind(IDLEN, row.cigar));
                     int tnm = 0;
                     jregex.Matcher nmMatcher = NUMBER_MISMATCHES.matcher(line);
                     if (nmMatcher.find()) { // number of mismatches. Don't use NM since it includes gaps, which can be from indels
-                        tnm = toInt(nmMatcher.group(1)) - extractIndel(row.cigar);
+                        tnm = toInt(nmMatcher.group(1)) - indel;
                         if (tnm > conf.mismatch) { // edit distance - indels is the # of mismatches
                             continue;
                         }
@@ -1404,7 +1418,7 @@ public class VarDict {
 
                     // Modify the CIGAR for potential mis-alignment for indels at the end of reads to softclipping and let VarDict's
                     // algorithm to figure out indels
-                    Tuple2<Integer, String> mc = modifyCigar(ref, row.position, row.cigar, row.querySeq);
+                    Tuple2<Integer, String> mc = modifyCigar(indel, ref, row.position, row.cigar, row.querySeq, row.queryQual, conf.lowqual);
                     final int position = mc._1();
                     final String cigarStr = mc._2();
 
@@ -2099,7 +2113,7 @@ public class VarDict {
                 }
             }
 
-            int tcov = cov.get(p);
+            final int tcov = cov.get(p);
             if (tcov == 0) { // ignore when there's no coverage
                 continue;
             }
@@ -2128,8 +2142,9 @@ public class VarDict {
                 double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
                 int hicnt = cnt.hicnt;
                 int locnt = cnt.locnt;
+                int ttcov = tcov;
                 if (cnt.cnt > tcov && cnt.cnt - tcov < cnt.extracnt) {
-                    tcov = cnt.cnt;
+                    ttcov = cnt.cnt;
                 }
                 Variant tvref = new Variant();
                 tvref.n = n;
@@ -2137,7 +2152,7 @@ public class VarDict {
                 tvref.fwd = fwd;
                 tvref.rev = rev;
                 tvref.bias = String.valueOf(bias);
-                tvref.freq = cnt.cnt / (double)tcov;
+                tvref.freq = cnt.cnt / (double)ttcov;
                 tvref.pmean = cnt.pmean / (double)cnt.cnt;
                 tvref.pstd = cnt.pstd;
                 tvref.qual = vqual;
@@ -2145,7 +2160,7 @@ public class VarDict {
                 tvref.mapq = mq;
                 tvref.qratio = hicnt / (locnt != 0 ? locnt : 0.5d);
                 tvref.hifreq = hicov > 0 ? hicnt / (double)hicov : 0;
-                tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)tcov : 0;
+                tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)ttcov : 0;
                 tvref.shift3 = 0;
                 tvref.msi = 0;
                 tvref.nm = cnt.nm / (double)cnt.cnt;
@@ -2185,9 +2200,9 @@ public class VarDict {
                     int hicnt = cnt.hicnt;
                     int locnt = cnt.locnt;
                     hicov += hicnt;
-
+                    int ttcov = tcov;
                     if (cnt.cnt > tcov && cnt.cnt - tcov < cnt.extracnt) {
-                        tcov = cnt.cnt;
+                        ttcov = cnt.cnt;
                     }
 
                     Variant tvref = new Variant();
@@ -2196,7 +2211,7 @@ public class VarDict {
                     tvref.fwd = fwd;
                     tvref.rev = rev;
                     tvref.bias = String.valueOf(bias);
-                    tvref.freq = cnt.cnt / (double)tcov;
+                    tvref.freq = cnt.cnt / (double)ttcov;
                     tvref.pmean = cnt.pmean / (double)cnt.cnt;
                     tvref.pstd = cnt.pstd;
                     tvref.qual = vqual;
@@ -2204,7 +2219,7 @@ public class VarDict {
                     tvref.mapq = mq;
                     tvref.qratio = hicnt / (locnt != 0 ? locnt : 0.5d);
                     tvref.hifreq = hicov > 0 ? hicnt / (double)hicov : 0;
-                    tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)tcov : 0;
+                    tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)ttcov : 0;
                     tvref.shift3 = 0;
                     tvref.msi = 0;
                     tvref.nm = cnt.nm / (double)cnt.cnt;
@@ -2525,19 +2540,6 @@ public class VarDict {
         }
 
         return ref;
-    }
-
-    /**
-     * Extract total length of insertions and deletions from CIGAR string
-     * @param cigar CIGAR string
-     * @return Total length of indels
-     */
-    private static int extractIndel(String cigar) {
-        int idlen = 0;
-        for (String s : globalFind(IDLEN, cigar)) {
-            idlen += toInt(s);
-        }
-        return idlen;
     }
 
     /**
@@ -3150,7 +3152,7 @@ public class VarDict {
     static final Comparator<Tuple3<Integer, Sclip, Integer>> COMP3 = new Comparator<Tuple3<Integer, Sclip, Integer>>() {
         @Override
         public int compare(Tuple3<Integer, Sclip, Integer> o1, Tuple3<Integer, Sclip, Integer> o2) {
-            return Integer.compare(o1._3(), o2._3());
+            return Integer.compare(o2._3(), o1._3());
         }
     };
 
@@ -4027,8 +4029,7 @@ public class VarDict {
                 Character nt = ent.getKey();
                 int ncnt = ent.getValue();
                 tt += ncnt;
-                if (ncnt > max
-                        || (scv.seq.containsKey(i) && scv.seq.get(i).containsKey(nt) && scv.seq.get(i).get(nt).qmean > maxq)) {
+                if (scv.seq.containsKey(i) && scv.seq.get(i).containsKey(nt) && scv.seq.get(i).get(nt).qmean > maxq) {
                     max = ncnt;
                     mnt = nt;
                     maxq = scv.seq.get(i).get(nt).qmean;
@@ -4530,7 +4531,7 @@ public class VarDict {
     private static void ampVardictParallel(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
             final String bam1, final String sample, final Configuration conf) throws IOException {
 
-        final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
+        final ExecutorService executor = new ForkJoinPool(); //Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(21);
 
         executor.submit(new Runnable() {
@@ -4996,12 +4997,14 @@ public class VarDict {
      * Create region from command-line option
      * @param region Region string from command line
      * @param numberNucleotideToExtend number of nucleotides to extend region
+     * @param chrs
      * @param zeroBased Are positions zero-based or 1-based
      * @return Region
      */
-    private static Region buildRegion(String region, final int numberNucleotideToExtend, final boolean zeroBased) {
+    private static Region buildRegion(String region, final int numberNucleotideToExtend, Map<String, Integer> chrs, final boolean zeroBased) {
         String[] split = region.split(":");
         String chr = split[0];
+        chr = corrcetChr(chrs, chr);
         String gene = split.length < 3 ? chr : split[2];
         String[] range = split[1].split("-");
         int start = toInt(range[0].replaceAll(",", ""));
@@ -5020,17 +5023,22 @@ public class VarDict {
 
     /**
      * Modify sequence alignment CIGAR string
+     * @param indel lenght of insert/delete
      * @param ref Map of reference sequence (key - position, value - base)
      * @param oPosition Position of first matched base in sequence
      * @param oCigar Original CIGAR string
      * @param querySeq Base sequence
+     * @param queryQual
+     * @param lowqual
      * @return Tuple of (adjusted position of first matched base, modified CIGAR string)
      */
-    private static Tuple2<Integer, String> modifyCigar(Map<Integer, Character> ref, final int oPosition, final String oCigar, final String querySeq) {
+    private static Tuple2<Integer, String> modifyCigar(int indel, Map<Integer, Character> ref,
+            final int oPosition, final String oCigar, final String querySeq, final String queryQual, final int lowqual) {
+
         int position = oPosition;
         String cigarStr = oCigar;
         boolean flag = true;
-        while (flag) {
+        while (flag && indel > 0) {
             flag = false;
             jregex.Matcher mm = D_S_D_ID.matcher(cigarStr);
             if (mm.find()) {
@@ -5173,6 +5181,7 @@ public class VarDict {
             }
         }
 
+        //The following two clauses to capture sometimes mis-softly clipped reads by aligner
         Matcher mtch = ANY_D_M_D_S.matcher(cigarStr);
         if (mtch.find()) {
             String ov5 = mtch.group(1);
@@ -5181,18 +5190,13 @@ public class VarDict {
             int refoff = position + mch;
             int rdoff = mch;
             if (!ov5.isEmpty()) {
-                List<String> rdp = globalFind(SOFT_CLIPPED, ov5); // read position
-                for (String string : rdp) {
-                    rdoff += toInt(string);
-                }
-                List<String> rfp = globalFind(ALIGNED_LENGTH, ov5); // reference position
-                for (String string : rfp) {
-                    refoff += toInt(string);
-                }
+                rdoff += sum(globalFind(SOFT_CLIPPED, ov5)); // read position
+                refoff += sum(globalFind(ALIGNED_LENGTH, ov5)); // reference position
             }
             int rn = 0;
             while (rn + 1 < soft
-                    && isHasAndEquals(querySeq.charAt(rdoff + rn + 1), ref, refoff + rn + 1)) {
+                    && isHasAndEquals(querySeq.charAt(rdoff + rn + 1), ref, refoff + rn + 1)
+                    && queryQual.charAt(rdoff + rn + 1) - 33 > lowqual) {
                 rn++;
             }
             if (rn > 3 || isHasAndEquals(querySeq.charAt(rdoff), ref, refoff)) {
@@ -5203,8 +5207,18 @@ public class VarDict {
                 } else {
                     cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M");
                 }
+                rn++;
             }
-
+            if (rn == 0) {
+                while (isHasAndNotEquals(querySeq.charAt(rdoff - rn - 1), ref, refoff - rn - 1)) {
+                    rn++;
+                }
+                if (rn > 0) {
+                    soft += rn;
+                    mch -= rn;
+                    cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M" + soft + "S");
+                }
+            }
         }
 
         mtch = D_S_D_M.matcher(cigarStr);
@@ -5212,10 +5226,11 @@ public class VarDict {
             int mch = toInt(mtch.group(2));
             int soft = toInt(mtch.group(1));
             int rn = 0;
-            while (rn + 1 < soft && isEquals(ref.get(position - rn - 2), querySeq.charAt(soft - rn - 2))) {
+            while (rn + 1 < soft && isHasAndEquals(querySeq.charAt(soft - rn - 2), ref, position - rn - 2)
+                    && queryQual.charAt(soft - rn - 2) - 33 > lowqual) {
                 rn++;
             }
-            if (rn > 3 || isEquals(ref.get(position - 1), querySeq.charAt(soft - 1))) {
+            if (rn > 3 || isHasAndEquals(querySeq.charAt(soft - 1), ref, position - 1)) {
                 mch += rn + 1;
                 soft -= rn + 1;
                 if (soft > 0) {
@@ -5224,6 +5239,18 @@ public class VarDict {
                     cigarStr = mtch.replaceFirst(mch + "M");
                 }
                 position -= rn + 1;
+                rn++;
+            }
+            if (rn == 0) {
+                while (isHasAndNotEquals(querySeq.charAt(soft + rn), ref, position + rn)) {
+                    rn++;
+                }
+                if (rn > 0) {
+                    soft += rn;
+                    mch -= rn;
+                    cigarStr = mtch.replaceFirst(soft + "S" + mch + "M");
+                    position += rn;
+                }
             }
         }
         return tuple(position, cigarStr);
