@@ -7,6 +7,14 @@ public class Variant {
 
     /**
      * Variant description string
+     * Description string format:
+     * 1). single letter                   - for SNPs
+     * 2). + sequence                      - for insertions
+     * 3). - number                        - for deletions
+     * 4). ... # sequence                  - for insertion/deletion variants followed by short matched sequence
+     * 5). ... ^ sequence                  - followed by insertion
+     * 6). ... ^ number                    - followed by deletion
+     * 7). ... & sequence                  - for insertion/deletion variants followed by matched sequence
      */
     String n;
 
