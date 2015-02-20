@@ -29,4 +29,13 @@ dependencies {
 
 mainClassName = "com.astrazeneca.vardict.Main"
 
+javadoc {
+    options.noQualifiers 'java.lang:java.io:java.util'
+    options.memberLevel=JavadocMemberLevel.PACKAGE
+    exclude '**/ConcurrentHashSet*'
+    exclude '**/Utils*'
+    exclude '**/Tuple*'
+    exclude '**/Main*'
+}
+
 
