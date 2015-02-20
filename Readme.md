@@ -39,6 +39,13 @@ To build the project, in the root folder of the project, run the following comma
 ./gradlew clean installApp 
 ```
 
+To generate Javadoc, in the build/docs/javadoc folder, run the following command:
+
+```
+./gradlew clean javadoc
+```
+
+
 ###Single sample mode
 
 To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 (see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl.`
