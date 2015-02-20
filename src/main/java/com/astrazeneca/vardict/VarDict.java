@@ -3556,15 +3556,10 @@ public class VarDict {
                 StringBuilder insert = new StringBuilder(substr(seq, 0, n));
                 StringBuilder extra = new StringBuilder();
                 int ept = 0;
-                try {
-                    while (!isEquals(seq.charAt(n + ept), ref.get(p + ept * dir - dirExt))
-                            || !isEquals(seq.charAt(n + ept + 1), ref.get(p + (ept + 1) * dir - dirExt))) {
-                        extra.append(seq.charAt(n + ept));
-                        ept++;
-                    }
-                } catch (StringIndexOutOfBoundsException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
+                while (n + ept + 1 < seq.length() && (!isEquals(seq.charAt(n + ept), ref.get(p + ept * dir - dirExt))
+                        || !isEquals(seq.charAt(n + ept + 1), ref.get(p + (ept + 1) * dir - dirExt)))) {
+                    extra.append(seq.charAt(n + ept));
+                    ept++;
                 }
                 if (dir == -1) {
                     insert.append(extra);
