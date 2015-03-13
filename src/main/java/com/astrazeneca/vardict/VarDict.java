@@ -98,7 +98,7 @@ public class VarDict {
     };
 
     private static List<List<Region>> toRegions(List<String> segraw, Map<String, Integer> chrs, Boolean zeroBased, Configuration conf) throws IOException {
-        boolean zb = conf.zeroBased;
+        boolean zb = conf.isZeroBasedDefined() ? conf.zeroBased : false;
         List<List<Region>> segs = new LinkedList<>();
         BedRowFormat format = conf.bedRowFormat;
         for (String seg : segraw) {
