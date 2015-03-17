@@ -9,6 +9,9 @@ import static java.lang.Math.abs;
 import static java.lang.String.format;
 import static java.util.Collections.singletonList;
 import static java.util.Collections.singletonMap;
+import htsjdk.samtools.*;
+import htsjdk.samtools.reference.IndexedFastaSequenceFile;
+import htsjdk.samtools.reference.ReferenceSequence;
 
 import java.io.*;
 import java.util.*;
@@ -74,17 +77,14 @@ public class VarDict {
      * @throws IOException
      */
     static Map<String, Integer> readChr(String bam) throws IOException {
-        try (Samtools reader = new Samtools("view", "-H", bam)) {
+        try (SamReader reader = SamReaderFactory.makeDefault().open(new File(bam))) {
+            SAMFileHeader header = reader.getFileHeader();
             Map<String, Integer> chrs = new HashMap<>();
-            String line;
-            while ((line = reader.read()) != null) {
-                if (line.startsWith("@SQ")) {
-                    Matcher sn = SN.matcher(line);
-                    Matcher ln = LN.matcher(line);
-                    if (sn.find() && ln.find()) {
-                        chrs.put(sn.group(1), toInt(ln.group(1)));
-                    }
-                }
+            for (SAMSequenceRecord record : header.getSequenceDictionary().getSequences()) {
+                record.getSequenceLength();
+                String sn = record.getSequenceName();
+                int ln = record.getSequenceLength();
+                chrs.put(sn, ln);
             }
             return chrs;
         }
@@ -969,7 +969,7 @@ public class VarDict {
                         vref.genotype,
                         format("%.3f", vref.freq),
                         vref.bias,
-                        vref.pmean,
+                        format("%.1f", vref.pmean),
                         vref.pstd ? 1 : 0,
                         format("%.1f", vref.qual),
                         vref.qstd ? 1 : 0,
@@ -980,7 +980,7 @@ public class VarDict {
                         vref.shift3,
                         vref.msi == 0 ? 0 : format("%.3f", vref.msi),
                         vref.msint,
-                        vref.nm,
+                        format("%.1f", vref.nm),
                         vref.hicnt,
                         vref.hicov,
                         vref.leftseq,
@@ -993,23 +993,13 @@ public class VarDict {
             }
 
         }
-
     }
 
     private static String[] retriveSubSeq(String fasta, String chr, int start, int end) throws IOException {
-        try (Samtools reader = new Samtools("faidx", fasta, chr + ":" + start + "-" + end)) {
-            String line;
-            String header = null;
-            StringBuilder exon = new StringBuilder();
-            while ((line = reader.read()) != null) {
-                if (header == null) {
-                    header = line;
-                } else {
-                    exon.append(line);
-                }
-            }
-
-            return new String[] { header, exon != null ? exon.toString().replaceAll("\\s+", "") : "" };
+        try (IndexedFastaSequenceFile idx = new IndexedFastaSequenceFile(new File(fasta))) {
+            ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
+            byte[] bases = seq.getBases();
+            return new String[] { ">" + chr + ":" + start + "-" + end, bases != null ? new String(bases) : "" };
         }
     }
 
@@ -1312,6 +1302,41 @@ public class VarDict {
      */
     private static final jregex.Pattern SA_Z = new jregex.Pattern("\\tSA:Z:\\S+");
 
+    private static class SamView implements AutoCloseable {
+
+        private SAMRecordIterator iterator;
+        private SamReader reader;
+        private int filter = 0;
+
+        public SamView(String file, String samfilter, Region region) {
+            reader = SamReaderFactory.makeDefault().open(new File(file));
+            iterator = reader.queryOverlapping(region.chr, region.start, region.end);
+            if (!"".equals(samfilter)) {
+                filter = Integer.decode(samfilter);
+            }
+
+        }
+
+        public String read() throws IOException {
+            while(iterator.hasNext()) {
+                SAMRecord record = iterator.next();
+                if (filter != 0 && (record.getFlags() & filter) != 0) {
+                    continue;
+                }
+                String samString = record.getSAMString();
+                return samString;
+            }
+            return null;
+        }
+
+
+        @Override
+        public void close() throws IOException {
+            reader.close();
+        }
+    }
+
+
     /**
      * Construct a variant structure given a region and BAM files.
      * @param region region
@@ -1344,10 +1369,12 @@ public class VarDict {
             chr = region.chr.substring("chr".length());
         }
         for (String bami : bams) {
-            String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : "-F " + conf.samfilter;
-            try (Samtools reader = "".equals(samfilter) ?
-                    new Samtools("view", bami, chr + ":" + region.start + "-" + region.end)
-                    : new Samtools("view", samfilter, bami, chr + ":" + region.start + "-" + region.end)) {
+//            String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : "-F " + conf.samfilter;
+//            try (Samtools reader = "".equals(samfilter) ?
+//                    new Samtools("view", bami, chr + ":" + region.start + "-" + region.end)
+//                    : new Samtools("view", samfilter, bami, chr + ":" + region.start + "-" + region.end)) {
+            String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : conf.samfilter;
+            try (SamView reader =  new SamView(bami, samfilter, region)) {
                 //dup contains already seen reads. For each seen read dup contains either POS-RNEXT-PNEXT or POS-CIGAR (if next segment in template is unmapped).
                 Set<String> dup = new HashSet<>();
                 //position of first matching base (POS in SAM)
@@ -2447,10 +2474,7 @@ public class VarDict {
             }
 
             //position coverage by high-quality reads
-            int hicov = 0;
-            for (Variation vr : v.values()) {
-                hicov += vr.hicnt;
-            }
+            final int hicov = calcHicov(v);
 
             //array of all variants for the position
             List<Variant> var = new ArrayList<>();
@@ -2961,6 +2985,14 @@ public class VarDict {
         }
 
         return tuple(Rlen, vars);
+    }
+
+    private static int calcHicov(Map<String, Variation> v) {
+        int hicov = 0;
+        for (Variation vr : v.values()) {
+            hicov += vr.hicnt;
+        }
+        return hicov;
     }
 
     /**
@@ -4559,7 +4591,9 @@ public class VarDict {
         int dlen = e - s;
         String dlenqr = dlen + "D";
         for (String bam : bams) {
-            try (Samtools reader = new Samtools("view", bam, chr + ":" + s + "-" + e)) {
+//            try (Samtools reader = new Samtools("view", bam, chr + ":" + s + "-" + e)) {
+                try (SamView reader =  new SamView(bam, "", new Region(chr, s, e, ""))) {
+
                 String line;
                 while ((line = reader.read()) != null) {
                     String[] a = line.split("\t");

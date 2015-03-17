@@ -21,6 +21,7 @@ import java.util.List;
  *  </pre>
  *
  */
+@Deprecated
 public class Samtools implements AutoCloseable {
 
     private Process proc;
