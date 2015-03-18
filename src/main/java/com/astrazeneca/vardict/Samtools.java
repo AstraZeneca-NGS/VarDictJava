@@ -41,9 +41,9 @@ public class Samtools implements AutoCloseable {
         reader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
     }
 
-    public String read() throws IOException {
-        return reader.readLine();
-    }
+//    public String read() throws IOException {
+//        return reader.readLine();
+//    }
 
     @Override
     public void close() throws IOException {

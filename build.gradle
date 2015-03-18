@@ -28,8 +28,8 @@ dependencies {
     testCompile 'junit:junit:4.8.2' 
 }
 
-//mainClassName = "com.astrazeneca.vardict.Main"
-mainClassName = "com.astrazeneca.vardict.PToolsExample"
+mainClassName = "com.astrazeneca.vardict.Main"
+//mainClassName = "com.astrazeneca.vardict.PToolsExample"
 
 javadoc {
     options.noQualifiers 'java.lang:java.io:java.util'
