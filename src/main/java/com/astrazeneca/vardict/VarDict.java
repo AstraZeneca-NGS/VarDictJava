@@ -5729,8 +5729,7 @@ public class VarDict {
                 Otherwise increase position by number of deleted bases
                  */
                 String tslen = toInt(mm.group(1)) + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0) + "S";
-                //TODO: original string : $a[3] += $3 eq "D" ? $2 : 0;
-                position = mm.group(3).equals("D") ? 2 : 0;
+                position += mm.group(3).equals("D") ? 2 : 0;
                 //Regexp replaces found CIGAR sequence with tslen (number + S)
                 Replacer r = BEGIN_NUMBER_S_NUMBER_IorD.replacer(tslen);
                 cigarStr = r.replace(cigarStr);
