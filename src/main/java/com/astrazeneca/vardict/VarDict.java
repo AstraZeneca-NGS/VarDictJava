@@ -1512,12 +1512,13 @@ public class VarDict {
                     final String cigarStr = mc._2();
 
                     //CIGAR string as pairs of number-letter
-                    List<String> cigar = new ArrayList<>();
-                    jregex.Matcher cigarM = CIGAR_PAIR.matcher(cigarStr);
-                    while (cigarM.find()) {
-                        cigar.add(cigarM.group(1));
-                        cigar.add(cigarM.group(2));
-                    }
+//                    List<String> cigar = new ArrayList<>();
+//                    jregex.Matcher cigarM = CIGAR_PAIR.matcher(cigarStr);
+//                    while (cigarM.find()) {
+//                        cigar.add(cigarM.group(1));
+//                        cigar.add(cigarM.group(2));
+//                    }
+                    Cigar cigar = TextCigarCodec.decode(cigarStr);
 
                     //adjusted start position
                     int start = position;
@@ -1531,13 +1532,14 @@ public class VarDict {
                     }
 
                     //Loop over CIGAR records
-                    for (int ci = 0; ci < cigar.size(); ci += 2) {
+                    for (int ci = 0; ci < cigar.numCigarElements(); ci++) {
+                        CigarElement cigarElem = cigar.getCigarElement(ci);
                         //length of segment in CIGAR
-                        int m = toInt(cigar.get(ci));
+                        int m = cigarElem.getLength();
                         //letter from CIGAR
-                        String operation = cigar.get(ci + 1);
+                        CigarOperator operation = cigarElem.getOperator();
                         // Treat insertions at the edge as soft-clipping
-                        if ((ci == 0 || ci == cigar.size() - 2) && operation.equals("I")) {
+                        if ((ci == 0 || ci == cigar.size() - 1) && operation == CigarOperator.I) {
                             operation = "S";
                         }
 
