@@ -22,7 +22,6 @@ import java.util.regex.Pattern;
 
 import jregex.Replacer;
 
-import com.astrazeneca.vardict.Samrecord.Flag;
 import com.astrazeneca.vardict.Tuple.Tuple2;
 import com.astrazeneca.vardict.Tuple.Tuple3;
 import com.astrazeneca.vardict.Tuple.Tuple4;
@@ -1153,12 +1152,12 @@ public class VarDict {
         int hicnt;
 
         /**
-         * Flag that is true when variant is found in at least 2 different positions
+         * Flags that is true when variant is found in at least 2 different positions
          */
         boolean pstd;
 
         /**
-         * Flag that is 1 when variant is read with at least 2 different qualities
+         * Flags that is 1 when variant is read with at least 2 different qualities
          */
         boolean qstd;
 
@@ -1371,7 +1370,7 @@ public class VarDict {
                     }
 
                     final String querySequence = record.getReadString();
-                    final Flag flag = new Flag(record.getFlags());
+                    final Flags flag = new Flags(record.getFlags());
 
                     if (conf.hasMappingQuality() && record.getMappingQuality() < conf.mappingQuality) { // ignore low mapping quality reads
                         continue;
@@ -6044,4 +6043,5 @@ public class VarDict {
         }
         return tuple(position, cigarStr);
     }
+
 }
