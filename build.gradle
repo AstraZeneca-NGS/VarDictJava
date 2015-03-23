@@ -31,7 +31,6 @@ dependencies {
 }
 
 mainClassName = "com.astrazeneca.vardict.Main"
-//mainClassName = "com.astrazeneca.vardict.PToolsExample"
 
 javadoc {
     options.noQualifiers 'java.lang:java.io:java.util'
