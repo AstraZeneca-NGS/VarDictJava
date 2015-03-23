@@ -35,6 +35,26 @@ public final class Utils {
         return sb.toString();
     }
 
+    public static String joinNotNull(String delim, Object... args) {
+        if (args.length == 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < args.length; i++) {
+            if (args[i] == null) {
+                if (i + 1 != args.length && args[i + 1] != null) {
+                    sb.append(delim);
+                }
+                continue;
+            }
+            sb.append(args[i]);
+            if (i + 1 != args.length && args[i + 1] != null) {
+                sb.append(delim);
+            }
+        }
+        return sb.toString();
+    }
+
     public static <K, V> V getOrElse(Map<K, V> map, K key, V or) {
         V v = map.get(key);
         if (v == null) {

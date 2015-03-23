@@ -9,6 +9,9 @@ import static java.lang.Math.abs;
 import static java.lang.String.format;
 import static java.util.Collections.singletonList;
 import static java.util.Collections.singletonMap;
+import htsjdk.samtools.*;
+import htsjdk.samtools.reference.IndexedFastaSequenceFile;
+import htsjdk.samtools.reference.ReferenceSequence;
 
 import java.io.*;
 import java.util.*;
@@ -17,7 +20,6 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import jregex.REFlags;
 import jregex.Replacer;
 
 import com.astrazeneca.vardict.Tuple.Tuple2;
@@ -74,17 +76,14 @@ public class VarDict {
      * @throws IOException
      */
     static Map<String, Integer> readChr(String bam) throws IOException {
-        try (Samtools reader = new Samtools("view", "-H", bam)) {
+        try (SamReader reader = SamReaderFactory.makeDefault().open(new File(bam))) {
+            SAMFileHeader header = reader.getFileHeader();
             Map<String, Integer> chrs = new HashMap<>();
-            String line;
-            while ((line = reader.read()) != null) {
-                if (line.startsWith("@SQ")) {
-                    Matcher sn = SN.matcher(line);
-                    Matcher ln = LN.matcher(line);
-                    if (sn.find() && ln.find()) {
-                        chrs.put(sn.group(1), toInt(ln.group(1)));
-                    }
-                }
+            for (SAMSequenceRecord record : header.getSequenceDictionary().getSequences()) {
+                record.getSequenceLength();
+                String sn = record.getSequenceName();
+                int ln = record.getSequenceLength();
+                chrs.put(sn, ln);
             }
             return chrs;
         }
@@ -993,31 +992,16 @@ public class VarDict {
             }
 
         }
-
     }
 
     private static String[] retriveSubSeq(String fasta, String chr, int start, int end) throws IOException {
-        try (Samtools reader = new Samtools("faidx", fasta, chr + ":" + start + "-" + end)) {
-            String line;
-            String header = null;
-            StringBuilder exon = new StringBuilder();
-            while ((line = reader.read()) != null) {
-                if (header == null) {
-                    header = line;
-                } else {
-                    exon.append(line);
-                }
-            }
-
-            return new String[] { header, exon != null ? exon.toString().replaceAll("\\s+", "") : "" };
+        try (IndexedFastaSequenceFile idx = new IndexedFastaSequenceFile(new File(fasta))) {
+            ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
+            byte[] bases = seq.getBases();
+            return new String[] { ">" + chr + ":" + start + "-" + end, bases != null ? new String(bases) : "" };
         }
     }
 
-    private static final jregex.Pattern IDLEN = new jregex.Pattern("(\\d+)[ID]");
-    /**
-     * The regexp extracts edit distance from NM tag in optional fields
-     */
-    private static final jregex.Pattern NUMBER_MISMATCHES = new jregex.Pattern("NM:i:(\\d+)", REFlags.IGNORE_CASE);
     private static final jregex.Pattern MATCH_INSERTION = new jregex.Pattern("(\\d+)[MI]");
     private static final jregex.Pattern SOFT_CLIPPED = new jregex.Pattern("(\\d+)[MIS]");
     /**
@@ -1025,11 +1009,6 @@ public class VarDict {
      */
     private static final jregex.Pattern ALIGNED_LENGTH = new jregex.Pattern("(\\d+)[MD]");
     private static final jregex.Pattern CIGAR_PAIR = new jregex.Pattern("(\\d+)([A-Z])");
-    /**
-     * regexp tests if CIGAR string starts with digits followed by S (soft-clipping)
-     */
-    private static final jregex.Pattern BEGIN_NUMBER_S = new jregex.Pattern("^(\\d+)S");
-    private static final jregex.Pattern NUMBER_S_END = new jregex.Pattern("(\\d+)S$");
 
     private static Variation getVariationFromSeq(Sclip sclip, int idx, Character ch) {
         Map<Character, Variation> map = sclip.seq.get(idx);
@@ -1173,12 +1152,12 @@ public class VarDict {
         int hicnt;
 
         /**
-         * Flag that is true when variant is found in at least 2 different positions
+         * Flags that is true when variant is found in at least 2 different positions
          */
         boolean pstd;
 
         /**
-         * Flag that is 1 when variant is read with at least 2 different qualities
+         * Flags that is 1 when variant is read with at least 2 different qualities
          */
         boolean qstd;
 
@@ -1265,11 +1244,11 @@ public class VarDict {
     /**
      * Regexp finds number followed by S followed by number followed by M followed by number followed by I or D at the start of string
      */
-    private static final jregex.Pattern BEGIN_NUMBER_S_NUMBER_M_IorD = new jregex.Pattern("^(\\d+)S(\\d+)M(\\d+)([ID])");
+    private static final jregex.Pattern BEGIN_NUMBER_S_NUMBER_M_NUMBER_IorD = new jregex.Pattern("^(\\d+)S(\\d+)M(\\d+)([ID])");
     /**
      * Regexp finds number followed by I or D followed by number followed by M followed by number followed by S followed by end of string
      */
-    private static final jregex.Pattern D_ID_D_M_S = new jregex.Pattern("(\\d+)([ID])(\\d+)M(\\d+)S$");
+    private static final jregex.Pattern NUMBER_IorD_NUMBER_M_NUMBER_S_END = new jregex.Pattern("(\\d+)([ID])(\\d+)M(\\d+)S$");
     /**
      * Regexp finds digit-M-number-(I or D)-number-M
      */
@@ -1312,6 +1291,40 @@ public class VarDict {
      */
     private static final jregex.Pattern SA_Z = new jregex.Pattern("\\tSA:Z:\\S+");
 
+    private static class SamView implements AutoCloseable {
+
+        private SAMRecordIterator iterator;
+        private SamReader reader;
+        private int filter = 0;
+
+        public SamView(String file, String samfilter, Region region) {
+            reader = SamReaderFactory.makeDefault().open(new File(file));
+            iterator = reader.queryOverlapping(region.chr, region.start, region.end);
+            if (!"".equals(samfilter)) {
+                filter = Integer.decode(samfilter);
+            }
+
+        }
+
+        public SAMRecord read() throws IOException {
+            while(iterator.hasNext()) {
+                SAMRecord record = iterator.next();
+                if (filter != 0 && (record.getFlags() & filter) != 0) {
+                    continue;
+                }
+                return record;
+            }
+            return null;
+        }
+
+
+        @Override
+        public void close() throws IOException {
+            reader.close();
+        }
+    }
+
+
     /**
      * Construct a variant structure given a region and BAM files.
      * @param region region
@@ -1344,75 +1357,86 @@ public class VarDict {
             chr = region.chr.substring("chr".length());
         }
         for (String bami : bams) {
-            String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : "-F " + conf.samfilter;
-            try (Samtools reader = "".equals(samfilter) ?
-                    new Samtools("view", bami, chr + ":" + region.start + "-" + region.end)
-                    : new Samtools("view", samfilter, bami, chr + ":" + region.start + "-" + region.end)) {
+            String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : conf.samfilter;
+            try (SamView reader =  new SamView(bami, samfilter, region)) {
                 //dup contains already seen reads. For each seen read dup contains either POS-RNEXT-PNEXT or POS-CIGAR (if next segment in template is unmapped).
                 Set<String> dup = new HashSet<>();
                 //position of first matching base (POS in SAM)
                 int dupp = -1;
-                String line;
-                while ((line = reader.read()) != null) {
+                SAMRecord record;
+                while ((record = reader.read()) != null) {
                     if (conf.isDownsampling() && RND.nextDouble() <= conf.downsampling) {
                         continue;
                     }
-                    Samrecord row = new Samrecord(line);
 
-                    if (conf.hasMappingQuality() && row.mapq < conf.mappingQuality) { // ignore low mapping quality reads
+                    final String querySequence = record.getReadString();
+                    final Flags flag = new Flags(record.getFlags());
+
+                    if (conf.hasMappingQuality() && record.getMappingQuality() < conf.mappingQuality) { // ignore low mapping quality reads
                         continue;
                     }
 
-                    if (row.flag.isNotPrimaryAlignment() && conf.samfilter != null) {
+                    if (flag.isNotPrimaryAlignment() && conf.samfilter != null) {
                         continue;
                     }
 
-                    if ("*".equals(row.querySeq)) {
+                    if ("*".equals(querySequence)) {
                         continue;
                     }
+
+
+                    final String mrnm = getMrnm(record);
+
 
                     // filter duplicated reads if option -t is set
                     if (conf.removeDuplicatedReads) {
-                        if (row.position != dupp) {
+                        if (record.getAlignmentStart() != dupp) {
                             dup.clear();
                         }
-                        if (row.isDefined(7) && row.mpos < 10) {
-                            String dupKey = row.position + "-" + row.mrnm + "-" + row.mpos;
+                        if (record.getMateAlignmentStart() < 10) {
+                            String dupKey = record.getAlignmentStart() + "-" + mrnm + "-" + record.getMateAlignmentStart();
                             if (dup.contains(dupKey)) {
                                 continue;
                             }
                             dup.add(dupKey);
-                            dupp = row.position;
-                        } else if (row.flag.isUnmappedMate()) {
-                            String dupKey = row.position + "-" + row.cigar;
+                            dupp = record.getAlignmentStart();
+                        } else if (flag.isUnmappedMate()) {
+                            String dupKey = record.getAlignmentStart() + "-" + record.getCigarString();
                             if (dup.contains(dupKey)) {
                                 continue;
                             }
                             dup.add(dupKey);
-                            dupp = row.position;
+                            dupp = record.getAlignmentStart();
                         }
                     }
 
-                    final int indel = sum(globalFind(IDLEN, row.cigar));
+                    final String line = record.getSAMString();
+                    final Cigar readCigar = record.getCigar();
+                    final int indel = getInsertionDeletionLenght(readCigar);
+
                     int tnm = 0;
-                    jregex.Matcher nmMatcher = NUMBER_MISMATCHES.matcher(line);
-                    if (nmMatcher.find()) { // number of mismatches. Don't use NM since it includes gaps, which can be from indels
-                        tnm = toInt(nmMatcher.group(1)) - indel;
+                    Integer nmi = record.getIntegerAttribute(SAMTag.NM.name());
+                    if (nmi != null) { // number of mismatches. Don't use NM since it includes gaps, which can be from indels
+                        tnm = nmi - indel;
                         if (tnm > conf.mismatch) { // edit distance - indels is the # of mismatches
                             continue;
                         }
                     } else { //Skip the read if number of mismatches is not available
-                        if (conf.y && !row.cigar.equals("*")) {
+                        if (conf.y && !record.getCigarString().equals("*")) {
                             System.err.println("No XM tag for mismatches. " + line);
                         }
                         continue;
                     }
 
+
+                    final String queryQuality = record.getBaseQualityString();
+                    final boolean isMrnmEqual = record.getReferenceName().equals(record.getMateReferenceName());
+
                     //number of mismatches
                     final int nm = tnm;
                     int n = 0; // keep track the read position, including softclipped
                     int p = 0; // keep track the position in the alignment, excluding softclipped
-                    boolean dir = row.flag.isReverseStrand();
+                    boolean dir = flag.isReverseStrand();
                     if (ampliconBasedCalling != null) {
                         String[] split = ampliconBasedCalling.split(":");
                         //distance to amplicon (specified in -a option)
@@ -1427,19 +1451,20 @@ public class VarDict {
                             ovlp = 0.95;
                         }
                         //rlen3 holds sum of lengths of matched and deleted segments
-                        int rlen3 = sum(globalFind(ALIGNED_LENGTH, row.cigar)); // The total aligned length, excluding soft-clipped
+                        int rlen3 = getAlignedLenght(readCigar); // The total aligned length, excluding soft-clipped
                                                                                 // bases and insertions
-                        int segstart = row.position;
+                        int segstart = record.getAlignmentStart();
                         int segend = segstart + rlen3 - 1;
 
-                        if (BEGIN_NUMBER_S.matcher(row.cigar).find()) { //If read starts with soft-clipped sequence
+
+                        if (readCigar.getCigarElement(0).getOperator() == CigarOperator.S) { //If read starts with soft-clipped sequence
                             //Ignore reads that overlap with region of interest by fraction less than ovlp
                             int ts1 = segstart > region.start ? segstart : region.start;
                             int te1 = segend < region.end ? segend : region.end;
                             if (Math.abs(ts1 - te1) / (double)(segend - segstart) > ovlp == false) {
                                 continue;
                             }
-                        } else if (NUMBER_S_END.matcher(row.cigar).find()) { //If read ends with contains soft-clipped sequence
+                        } else if (readCigar.getCigarElement(readCigar.numCigarElements() - 1).getOperator() == CigarOperator.S) { //If read ends with contains soft-clipped sequence
                             //Ignore reads that overlap with region of interest by fraction less than ovlp
                             int ts1 = segstart > region.start ? segstart : region.start;
                             int te1 = segend < region.end ? segend : region.end;
@@ -1449,12 +1474,12 @@ public class VarDict {
 
                         } else { //no soft-clipping
                             //if RNEXT is identical to RNAME and TLEN is defined
-                            if (row.mrnm.equals("=") && row.isDefined(8) && row.isize != 0) {
-                                if (row.isize > 0) {
-                                    segend = segstart + row.isize - 1;
+                            if ( isMrnmEqual && record.getInferredInsertSize() != 0) {
+                                if (record.getInferredInsertSize() > 0) {
+                                    segend = segstart + record.getInferredInsertSize() - 1;
                                 } else {
-                                    segstart = row.mpos;
-                                    segend = row.mpos - row.isize - 1;
+                                    segstart = record.getMateAlignmentStart();
+                                    segend = record.getMateAlignmentStart() - record.getInferredInsertSize() - 1;
                                 }
                             }
                             // No segment overlapping test since samtools should take care of it
@@ -1467,12 +1492,12 @@ public class VarDict {
                             }
                         }
                     }
-                    if (row.flag.isUnmappedMate()) {
+                    if (flag.isUnmappedMate()) {
                         // to be implemented
                     } else {
-                        if (row.mrnm.equals("=")) {
+                        if (isMrnmEqual) {
                             if (SA_Z.matcher(line).find()) {
-                                if (row.flag.isSupplementaryAlignment()) { // the supplementary alignment
+                                if (flag.isSupplementaryAlignment()) { // the supplementary alignment
                                     continue; // Ignore the supplmentary for now so that it won't skew the coverage
                                 }
                             }
@@ -1482,7 +1507,7 @@ public class VarDict {
 
                     // Modify the CIGAR for potential mis-alignment for indels at the end of reads to softclipping and let VarDict's
                     // algorithm to figure out indels
-                    Tuple2<Integer, String> mc = modifyCigar(indel, ref, row.position, row.cigar, row.querySeq, row.queryQual, conf.lowqual);
+                    Tuple2<Integer, String> mc = modifyCigar(indel, ref, record.getAlignmentStart(), record.getCigarString(), querySequence, queryQuality, conf.lowqual);
                     final int position = mc._1();
                     final String cigarStr = mc._2();
 
@@ -1539,12 +1564,12 @@ public class VarDict {
                                     5). read quality is more than 10
                                      */
                                     while (m - 1 >= 0 && start - 1 > 0 && start - 1 <= chrs.get(chr)
-                                            && isHasAndEquals(row.querySeq.charAt(m - 1), ref, start - 1)
-                                            && row.queryQual.charAt(m - 1) - 33 > 10) {
+                                            && isHasAndEquals(querySequence.charAt(m - 1), ref, start - 1)
+                                            && queryQuality.charAt(m - 1) - 33 > 10) {
                                         //create variant if it is not present
                                         Variation variation = getVariation(hash, start - 1, ref.get(start - 1).toString());
                                         //add count
-                                        addCnt(variation, dir, m, row.queryQual.charAt(m - 1) - 33, row.mapq, nm, conf.goodq);
+                                        addCnt(variation, dir, m, queryQuality.charAt(m - 1) - 33, record.getMappingQuality(), nm, conf.goodq);
                                         //increase coverage
                                         incCnt(cov, start - 1, 1);
                                         start--;
@@ -1558,11 +1583,11 @@ public class VarDict {
                                         //loop over remaining soft-clipped sequence
                                         for (int si = m - 1; si >= 0; si--) {
                                             //stop if unknown base (N - any of ATGC) is found
-                                            if (row.querySeq.charAt(si) == 'N') {
+                                            if (querySequence.charAt(si) == 'N') {
                                                 break;
                                             }
                                             //tq - base quality
-                                            int tq = row.queryQual.charAt(si) - 33;
+                                            int tq = queryQuality.charAt(si) - 33;
                                             if (tq <= 12)
                                                 lowqcnt++;
                                             //Stop if a low-quality base is found
@@ -1581,7 +1606,7 @@ public class VarDict {
                                                 sclip5.put(start, sclip);
                                             }
                                             for (int si = m - 1; m - si <= qn; si--) {
-                                                Character ch = row.querySeq.charAt(si);
+                                                Character ch = querySequence.charAt(si);
                                                 int idx = m - 1 - si;
                                                 Map<Character, Integer> cnts = sclip.nt.get(idx);
                                                 if (cnts == null) {
@@ -1590,9 +1615,9 @@ public class VarDict {
                                                 }
                                                 incCnt(cnts, ch, 1);
                                                 Variation seqVariation = getVariationFromSeq(sclip, idx, ch);
-                                                addCnt(seqVariation, dir, si - (m - qn), row.queryQual.charAt(si) - 33, row.mapq, nm, conf.goodq);
+                                                addCnt(seqVariation, dir, si - (m - qn), queryQuality.charAt(si) - 33, record.getMappingQuality(), nm, conf.goodq);
                                             }
-                                            addCnt(sclip, dir, m, q / (double)qn, row.mapq, nm, conf.goodq);
+                                            addCnt(sclip, dir, m, q / (double)qn, record.getMappingQuality(), nm, conf.goodq);
                                         }
 
                                     }
@@ -1605,13 +1630,13 @@ public class VarDict {
                                     3). reference base at start matches read base at n
                                     4). read quality is more than 10
                                      */
-                                    while (n < row.querySeq.length()
-                                            && isHasAndEquals(row.querySeq.charAt(n), ref, start)
-                                            && row.queryQual.charAt(n) - 33 > 10) {
+                                    while (n < querySequence.length()
+                                            && isHasAndEquals(querySequence.charAt(n), ref, start)
+                                            && queryQuality.charAt(n) - 33 > 10) {
                                         //initialize entry in $hash if not present
                                         Variation variation = getVariation(hash, start, ref.get(start).toString());
                                         //add count
-                                        addCnt(variation, dir, rlen2 - p, row.queryQual.charAt(n) - 33, row.mapq, nm, conf.goodq);
+                                        addCnt(variation, dir, rlen2 - p, queryQuality.charAt(n) - 33, record.getMappingQuality(), nm, conf.goodq);
                                         //add coverage
                                         incCnt(cov, start, 1);
                                         n++;
@@ -1619,15 +1644,15 @@ public class VarDict {
                                         m--;
                                         p++;
                                     }
-                                    if (row.querySeq.length() - n > 0) { //If there remains a soft-clipped sequence at the end (not everything was matched)
+                                    if (querySequence.length() - n > 0) { //If there remains a soft-clipped sequence at the end (not everything was matched)
                                         int q = 0; //sum of read qualities (to get mean quality)
                                         int qn = 0; //number of quality figures
                                         int lowqcnt = 0; //number of low-quality bases in the sequence
                                         for (int si = 0; si < m; si++) { //loop over remaining soft-clipped sequence
-                                            if (row.querySeq.charAt(n + si) == 'N') { //stop if unknown base (N - any of ATGC) is found
+                                            if (querySequence.charAt(n + si) == 'N') { //stop if unknown base (N - any of ATGC) is found
                                                 break;
                                             }
-                                            int tq = row.queryQual.charAt(n + si) - 33; //base quality
+                                            int tq = queryQuality.charAt(n + si) - 33; //base quality
                                             if (tq <= 12) {
                                                 lowqcnt++;
                                             }
@@ -1647,7 +1672,7 @@ public class VarDict {
                                                 sclip3.put(start, sclip);
                                             }
                                             for (int si = 0; si < qn; si++) {
-                                                Character ch = row.querySeq.charAt(n + si);
+                                                Character ch = querySequence.charAt(n + si);
                                                 int idx = si;
                                                 Map<Character, Integer> cnts = sclip.nt.get(idx);
                                                 if (cnts == null) {
@@ -1656,9 +1681,9 @@ public class VarDict {
                                                 }
                                                 incCnt(cnts, ch, 1);
                                                 Variation variation = getVariationFromSeq(sclip, idx, ch);
-                                                addCnt(variation, dir, qn - si, row.queryQual.charAt(n + si) - 33, row.mapq, nm, conf.goodq);
+                                                addCnt(variation, dir, qn - si, queryQuality.charAt(n + si) - 33, record.getMappingQuality(), nm, conf.goodq);
                                             }
-                                            addCnt(sclip, dir, m, q / (double)qn, row.mapq, nm, conf.goodq);
+                                            addCnt(sclip, dir, m, q / (double)qn, record.getMappingQuality(), nm, conf.goodq);
                                         }
 
                                     }
@@ -1675,9 +1700,9 @@ public class VarDict {
                             case "I": { //Insertion
                                 offset = 0;
                                 //inserted segment of read sequence
-                                StringBuilder s = new StringBuilder(substr(row.querySeq, n, m));
+                                StringBuilder s = new StringBuilder(substr(querySequence, n, m));
                                 //quality of this segment
-                                StringBuilder q = new StringBuilder(substr(row.queryQual, n, m));
+                                StringBuilder q = new StringBuilder(substr(queryQuality, n, m));
                                 //sequence to be appended if next segment is matched
                                 StringBuilder ss = new StringBuilder();
 
@@ -1705,16 +1730,16 @@ public class VarDict {
                                     int ci2 = toInt(cigar.get(ci + 2));
                                     int ci4 = toInt(cigar.get(ci + 4));
                                     //append to s '#' and part of read sequence corresponding to next CIGAR segment (matched one)
-                                    s.append("#").append(substr(row.querySeq, n + m, ci2));
+                                    s.append("#").append(substr(querySequence, n + m, ci2));
                                     //append next segment quality to q
-                                    q.append(substr(row.queryQual, n + m, ci2));
+                                    q.append(substr(queryQuality, n + m, ci2));
 
                                     //if an insertion is two segments ahead, append '^' + part of sequence corresponding to next-next segment
                                     //otherwise (deletion) append '^' + length of a next-next segment
-                                    s.append('^').append(cigar.get(ci + 5).equals("I") ? substr(row.querySeq, n + m + ci2, ci4) : ci4);
+                                    s.append('^').append(cigar.get(ci + 5).equals("I") ? substr(querySequence, n + m + ci2, ci4) : ci4);
                                     //if an insertion is two segments ahead, append part of quality string sequence corresponding to next-next segment
                                     //otherwise (deletion) append first quality score of next segment
-                                    q.append(cigar.get(ci + 5).equals("I") ? substr(row.queryQual, n + m + ci2, ci4) : row.queryQual.charAt(n + m + ci2));
+                                    q.append(cigar.get(ci + 5).equals("I") ? substr(queryQuality, n + m + ci2, ci4) : queryQuality.charAt(n + m + ci2));
 
                                     //add length of next segment to both multoffs and multoffp
                                     //add length of next-next segment to multoffp (for insertion) or to multoffs (for deletion)
@@ -1726,7 +1751,7 @@ public class VarDict {
                                     int ci6 = cigar.size() > ci + 6 ? toInt(cigar.get(ci + 6)) : 0;
                                     if (ci6 != 0 && cigar.get(ci + 7).equals("M")) {
                                         Tuple4<Integer, String, String, Integer> tpl = finndOffset(start + multoffs,
-                                                n + m + multoffp, ci6, row.querySeq, row.queryQual, ref, cov, conf.vext, conf.goodq);
+                                                n + m + multoffp, ci6, querySequence, queryQuality, ref, cov, conf.vext, conf.goodq);
                                         offset = tpl._1();
                                         ss = new StringBuilder(tpl._2());
                                         q.append(tpl._3());
@@ -1743,16 +1768,16 @@ public class VarDict {
                                         //Loop over next CIGAR segment (no more than conf.vext bases ahead)
                                         for (int vi = 0; vsn <= conf.vext && vi < ci2; vi++) {
                                             //If base is unknown, exit loop
-                                            if (row.querySeq.charAt(n + m + vi) == 'N') {
+                                            if (querySequence.charAt(n + m + vi) == 'N') {
                                                 break;
                                             }
                                             //If base quality is less than conf.goodq, exit loop
-                                            if (row.queryQual.charAt(n + m + vi) - 33 < conf.goodq) {
+                                            if (queryQuality.charAt(n + m + vi) - 33 < conf.goodq) {
                                                 break;
                                             }
                                             //If reference sequence has base at this position and it matches read base, update offset
                                             if (ref.containsKey(start + vi)) {
-                                                if (isNotEquals(row.querySeq.charAt(n + m + vi), ref.get(start + vi))) {
+                                                if (isNotEquals(querySequence.charAt(n + m + vi), ref.get(start + vi))) {
                                                     offset = vi + 1;
                                                     vsn = 0;
                                                 } else {
@@ -1762,8 +1787,8 @@ public class VarDict {
                                         }
                                         if (offset != 0) { //If next CIGAR segment has good matching base
                                             //Append first offset bases of next segment to ss and q
-                                            ss.append(substr(row.querySeq, n + m, offset));
-                                            q.append(substr(row.queryQual, n + m, offset));
+                                            ss.append(substr(querySequence, n + m, offset));
+                                            q.append(substr(queryQuality, n + m, offset));
                                             //Increase coverage for positions corresponding to first offset bases of next segment
                                             for (int osi = 0; osi < offset; osi++) {
                                                 incCnt(cov, start + osi, 1);
@@ -1807,7 +1832,7 @@ public class VarDict {
                                     }
                                     hv.pmean += tp;
                                     hv.qmean += tmpq;
-                                    hv.Qmean += row.mapq;
+                                    hv.Qmean += record.getMappingQuality();
                                     hv.pp = tp;
                                     hv.pq = tmpq;
                                     if (tmpq >= conf.goodq) {
@@ -1826,13 +1851,13 @@ public class VarDict {
                                     3). read base at position n-1 matches reference at start-1
                                      */
                                     if (getVariationMaybe(hash, start - 1, ref.get(start - 1)) != null
-                                            && isHasAndEquals(row.querySeq.charAt(n - 1), ref, start - 1)) {
+                                            && isHasAndEquals(querySequence.charAt(n - 1), ref, start - 1)) {
 
                                         // subCnt(getVariation(hash, start - 1, ref.get(start - 1 ).toString()), dir, tp, tmpq,
                                         // Qmean, nm, conf);
-                                        Variation tv = getVariation(hash, start - 1, String.valueOf(row.querySeq.charAt(n - 1)));
+                                        Variation tv = getVariation(hash, start - 1, String.valueOf(querySequence.charAt(n - 1)));
                                         //Substract count.
-                                        subCnt(tv, dir, tp, row.queryQual.charAt(n - 1) - 33, row.mapq, nm, conf);
+                                        subCnt(tv, dir, tp, queryQuality.charAt(n - 1) - 33, record.getMappingQuality(), nm, conf);
                                     }
                                     // Adjust count if the insertion is at the edge so that the AF won't > 1
                                     /*
@@ -1849,7 +1874,7 @@ public class VarDict {
                                         ttref.qstd = hv.qstd;
                                         ttref.pmean += tp;
                                         ttref.qmean += tmpq;
-                                        ttref.Qmean += row.mapq;
+                                        ttref.Qmean += record.getMappingQuality();
                                         ttref.pp = tp;
                                         ttref.pq = tmpq;
                                         ttref.nm += nm - nmoff;
@@ -1871,7 +1896,7 @@ public class VarDict {
                                 //sequence to be appended if next segment is matched
                                 StringBuilder ss = new StringBuilder();
                                 //quality of last base before deletion
-                                char q1 = row.queryQual.charAt(n - 1);
+                                char q1 = queryQuality.charAt(n - 1);
                                 //quality of this segment
                                 StringBuilder q = new StringBuilder();
 
@@ -1899,15 +1924,15 @@ public class VarDict {
                                     int ci4 = toInt(cigar.get(ci + 4));
 
                                     //append '#' + next matched segment from read
-                                    s.append("#").append(substr(row.querySeq, n, ci2));
+                                    s.append("#").append(substr(querySequence, n, ci2));
                                     //append quality string of next matched segment from read
-                                    q.append(substr(row.queryQual, n, ci2));
+                                    q.append(substr(queryQuality, n, ci2));
 
                                     //if an insertion is two segments ahead, append '^' + part of sequence corresponding to next-next segment
                                     //otherwise (deletion) append '^' + length of a next-next segment
-                                    s.append('^').append(cigar.get(ci + 5).equals("I") ? substr(row.querySeq, n + ci2, ci4) : ci4);
+                                    s.append('^').append(cigar.get(ci + 5).equals("I") ? substr(querySequence, n + ci2, ci4) : ci4);
                                     //same for quality string
-                                    q.append(cigar.get(ci + 5).equals("I") ? substr(row.queryQual, n + ci2, ci4) : "");
+                                    q.append(cigar.get(ci + 5).equals("I") ? substr(queryQuality, n + ci2, ci4) : "");
 
                                     //add length of next segment to both read and reference offsets
                                     //add length of next-next segment to reference position (for insertion) or to read position(for deletion)
@@ -1920,10 +1945,10 @@ public class VarDict {
                                         int tn = n + multoffp;
                                         int ts = start + multoffs + m;
                                         for (int vi = 0; vsn <= conf.vext && vi < ci6; vi++) {
-                                            if (row.querySeq.charAt(tn + vi) == 'N') {
+                                            if (querySequence.charAt(tn + vi) == 'N') {
                                                 break;
                                             }
-                                            if (row.queryQual.charAt(tn + vi) - 33 < conf.goodq) {
+                                            if (queryQuality.charAt(tn + vi) - 33 < conf.goodq) {
                                                 break;
                                             }
                                             if (isHasAndEquals('N', ref, ts + vi)) {
@@ -1931,7 +1956,7 @@ public class VarDict {
                                             }
                                             Character refCh = ref.get(ts + vi);
                                             if (refCh != null) {
-                                                if (isNotEquals(row.querySeq.charAt(tn + vi), refCh)) {
+                                                if (isNotEquals(querySequence.charAt(tn + vi), refCh)) {
                                                     offset = vi + 1;
                                                     nmoff++;
                                                     vsn = 0;
@@ -1941,8 +1966,8 @@ public class VarDict {
                                             }
                                         }
                                         if (offset != 0) {
-                                            ss.append(substr(row.querySeq, tn, offset));
-                                            q.append(substr(row.queryQual, tn, offset));
+                                            ss.append(substr(querySequence, tn, offset));
+                                            q.append(substr(queryQuality, tn, offset));
                                         }
                                     }
                                     // skip next 2 CIGAR segments
@@ -1956,9 +1981,9 @@ public class VarDict {
 
                                     int ci2 = toInt(cigar.get(ci + 2));
                                     //Append '^' + next segment (inserted)
-                                    s.append("^").append(substr(row.querySeq, n, ci2));
+                                    s.append("^").append(substr(querySequence, n, ci2));
                                     //Append next segement to quality string
-                                    q.append(substr(row.queryQual, n, ci2));
+                                    q.append(substr(queryQuality, n, ci2));
 
                                     //Shift reference position by length of next segment
                                     //skip next CIGAR segment
@@ -1970,11 +1995,11 @@ public class VarDict {
                                         int tn = n + multoffp;
                                         int ts = start + m;
                                         for (int vi = 0; vsn <= conf.vext && vi < ci4; vi++) {
-                                            char seqCh = row.querySeq.charAt(tn + vi);
+                                            char seqCh = querySequence.charAt(tn + vi);
                                             if (seqCh == 'N') {
                                                 break;
                                             }
-                                            if (row.queryQual.charAt(tn + vi) - 33 < conf.goodq) {
+                                            if (queryQuality.charAt(tn + vi) - 33 < conf.goodq) {
                                                 break;
                                             }
                                             Character refCh = ref.get(ts + vi);
@@ -1992,8 +2017,8 @@ public class VarDict {
                                             }
                                         }
                                         if (offset != 0) {
-                                            ss.append(substr(row.querySeq, tn, offset));
-                                            q.append(substr(row.queryQual, tn, offset));
+                                            ss.append(substr(querySequence, tn, offset));
+                                            q.append(substr(queryQuality, tn, offset));
                                         }
                                     }
                                     ci += 2;
@@ -2008,13 +2033,13 @@ public class VarDict {
                                         int vsn = 0;
                                         //Loop over next CIGAR segment (no more than conf.vext bases ahead)
                                         for (int vi = 0; vsn <= conf.vext && vi < ci2; vi++) {
-                                            char seqCh = row.querySeq.charAt(n + vi);
+                                            char seqCh = querySequence.charAt(n + vi);
                                             //If base is unknown, exit loop
                                             if (seqCh == 'N') {
                                                 break;
                                             }
                                             //If base quality is less than $GOODQ, exit loop
-                                            if (row.queryQual.charAt(n + vi) - 33 < conf.goodq) {
+                                            if (queryQuality.charAt(n + vi) - 33 < conf.goodq) {
                                                 break;
                                             }
                                             //If reference sequence has base at this position and it matches read base, update offset
@@ -2036,8 +2061,8 @@ public class VarDict {
                                         //If next CIGAR segment has good matching base
                                         if (offset != 0) {
                                             //Append first offset bases of next segment to ss and q
-                                            ss.append(substr(row.querySeq, n, offset));
-                                            q.append(substr(row.queryQual, n, offset));
+                                            ss.append(substr(querySequence, n, offset));
+                                            q.append(substr(queryQuality, n, offset));
                                         }
                                     }
                                 }
@@ -2048,7 +2073,7 @@ public class VarDict {
                                 }
 
                                 //quality of first matched base after deletion
-                                char q2 = row.queryQual.charAt(n + offset);
+                                char q2 = queryQuality.charAt(n + offset);
                                 //append best of $q1 and $q2
                                 q.append(q1 > q2 ? q1 : q2);
 
@@ -2085,7 +2110,7 @@ public class VarDict {
                                     }
                                     hv.pmean += tp;
                                     hv.qmean += tmpq;
-                                    hv.Qmean += row.mapq;
+                                    hv.Qmean += record.getMappingQuality();
                                     hv.pp = tp;
                                     hv.pq = tmpq;
                                     hv.nm += nm - nmoff;
@@ -2132,7 +2157,7 @@ public class VarDict {
                             }
 
                             //variation string. Initialize to first base of the read sequence
-                            String s = String.valueOf(row.querySeq.charAt(n));
+                            String s = String.valueOf(querySequence.charAt(n));
                             //skip if base is unknown
                             if (s.equals("N")) {
                                 start++;
@@ -2142,15 +2167,15 @@ public class VarDict {
                             }
 
                             //sum of qualities for bases
-                            double q = row.queryQual.charAt(n) - 33;
+                            double q = queryQuality.charAt(n) - 33;
                             //number of bases for quality calculation
                             int qbases = 1;
                             //number of bases in insertion for quality calculation
                             int qibases = 0;
                             // for more than one nucleotide mismatch
                             StringBuilder ss = new StringBuilder();
-                            // More than one mismatches will only perform when all nucleotides have row.queryQual > $GOODQ
-                            // Update: Forgo the row.queryQual check. Will recover later
+                            // More than one mismatches will only perform when all nucleotides have queryQuality > $GOODQ
+                            // Update: Forgo the queryQuality check. Will recover later
 
                             /*
                             Condition:
@@ -2162,11 +2187,11 @@ public class VarDict {
                             while ((start + 1) >= region.start
                                     && (start + 1) <= region.end && (i + 1) < m
                                     && q >= conf.goodq
-                                    && isHasAndNotEquals(row.querySeq.charAt(n), ref, start)
+                                    && isHasAndNotEquals(querySequence.charAt(n), ref, start)
                                     && isNotEquals('N', ref.get(start))) {
 
                                 //Break if base is unknown in the read
-                                if (row.querySeq.charAt(n + 1) == 'N') {
+                                if (querySequence.charAt(n + 1) == 'N') {
                                     break;
                                 }
                                 if (isHasAndEquals('N', ref, start + 1)) {
@@ -2174,12 +2199,12 @@ public class VarDict {
                                 }
 
                                 //Condition: base at n + 1 does not match reference base at start + 1
-                                if (isNotEquals(ref.get(start + 1), row.querySeq.charAt(n + 1))) {
+                                if (isNotEquals(ref.get(start + 1), querySequence.charAt(n + 1))) {
 
                                     //append the base from read
-                                    ss.append(row.querySeq.charAt(n + 1));
+                                    ss.append(querySequence.charAt(n + 1));
                                     //add quality to total sum
-                                    q += row.queryQual.charAt(n + 1) - 33;
+                                    q += queryQuality.charAt(n + 1) - 33;
                                     //increase number of bases
                                     qbases++;
                                     //shift read position by 1
@@ -2212,14 +2237,14 @@ public class VarDict {
                             if (m - i <= conf.vext
                                     && cigar.size() > ci + 3 && "D".equals(cigar.get(ci + 3))
                                     && ref.containsKey(start)
-                                    && (ss.length() > 0 || isNotEquals(row.querySeq.charAt(n), ref.get(start)))
-                                    && row.queryQual.charAt(n) - 33 > conf.goodq) {
+                                    && (ss.length() > 0 || isNotEquals(querySequence.charAt(n), ref.get(start)))
+                                    && queryQuality.charAt(n) - 33 > conf.goodq) {
 
                                 //loop until end of CIGAR segments
                                 while (i + 1 < m) {
                                     //append next base to s and add its quality to q
-                                    s += row.querySeq.charAt(n + 1);
-                                    q += row.queryQual.charAt(n + 1) - 33;
+                                    s += querySequence.charAt(n + 1);
+                                    q += queryQuality.charAt(n + 1) - 33;
                                     //increase number of bases
                                     qbases++;
 
@@ -2241,12 +2266,12 @@ public class VarDict {
                                 if (cigar.size() > ci + 3 && "I".equals(cigar.get(ci + 3))) {
                                     int ci2 = toInt(cigar.get(ci + 2));
                                     //append '^' + next-next segment sequence
-                                    s += "^" + substr(row.querySeq, n + 1, ci2);
+                                    s += "^" + substr(querySequence, n + 1, ci2);
 
                                     //Loop over next-next segment
                                     for (int qi = 1; qi <= ci2; qi++) {
                                         //add base quality to total quality
-                                        q += row.queryQual.charAt(n + 1 + qi) - 33;
+                                        q += queryQuality.charAt(n + 1 + qi) - 33;
                                         //increase number of insertion bases
                                         qibases++;
                                     }
@@ -2260,7 +2285,7 @@ public class VarDict {
                                 String op = cigar.size() > ci + 3 ? cigar.get(ci + 3) : "";
                                 if (ci2 != 0 && "M".equals(op)) {
                                     Tuple4<Integer, String, String, Integer> tpl =
-                                            finndOffset(start + ddlen + 1, n + 1, ci2, row.querySeq, row.queryQual, ref, cov, conf.vext, conf.goodq);
+                                            finndOffset(start + ddlen + 1, n + 1, ci2, querySequence, queryQuality, ref, cov, conf.vext, conf.goodq);
                                     int toffset = tpl._1();
                                     if (toffset != 0) {
                                         moffset = toffset;
@@ -2307,7 +2332,7 @@ public class VarDict {
                                     }
                                     hv.pmean += tp;
                                     hv.qmean += q;
-                                    hv.Qmean += row.mapq;
+                                    hv.Qmean += record.getMappingQuality();
                                     hv.pp = tp;
                                     hv.pq = q;
                                     hv.nm += nm - nmoff;
@@ -2388,6 +2413,37 @@ public class VarDict {
         return tuple(hash, iHash, cov, rlen);
     }
 
+    private static int getAlignedLenght(Cigar readCigar) {
+        int lenght = 0;
+        for (CigarElement element : readCigar.getCigarElements()) {
+            if (element.getOperator() == CigarOperator.M || element.getOperator() == CigarOperator.D) {
+                lenght += element.getLength();
+            }
+        }
+        return lenght;
+    }
+
+    private static int getInsertionDeletionLenght(Cigar readCigar) {
+        int lenght = 0;
+        for (CigarElement element : readCigar.getCigarElements()) {
+            if (element.getOperator() == CigarOperator.I || element.getOperator() == CigarOperator.D) {
+                lenght += element.getLength();
+            }
+        }
+        return lenght;
+    }
+
+    private static String getMrnm(SAMRecord record) {
+        if (record.getMateReferenceName() == null) {
+            return "*";
+        }
+
+        if (record.getReferenceName().equals(record.getMateReferenceName())) {
+            return "=";
+        }
+        return record.getMateReferenceName();
+    }
+
     /**
      * Read BAM files and create variant structure
      * @param region region of interest
@@ -2447,10 +2503,7 @@ public class VarDict {
             }
 
             //position coverage by high-quality reads
-            int hicov = 0;
-            for (Variation vr : v.values()) {
-                hicov += vr.hicnt;
-            }
+            int hicov = calcHicov(v);
 
             //array of all variants for the position
             List<Variant> var = new ArrayList<>();
@@ -2961,6 +3014,14 @@ public class VarDict {
         }
 
         return tuple(Rlen, vars);
+    }
+
+    private static int calcHicov(Map<String, Variation> v) {
+        int hicov = 0;
+        for (Variation vr : v.values()) {
+            hicov += vr.hicnt;
+        }
+        return hicov;
     }
 
     /**
@@ -4558,16 +4619,18 @@ public class VarDict {
         int midcnt = 0; // Reads end in the middle
         int dlen = e - s;
         String dlenqr = dlen + "D";
+        Region region = new Region(chr, s, e, "");
         for (String bam : bams) {
-            try (Samtools reader = new Samtools("view", bam, chr + ":" + s + "-" + e)) {
-                String line;
-                while ((line = reader.read()) != null) {
+            try (SamView reader = new SamView(bam, "", region)) {
+                SAMRecord record;
+                while ((record = reader.read()) != null) {
+                    String line = record.getSAMString();
                     String[] a = line.split("\t");
-                    if (a[5].contains(dlenqr)) {
+                    if (record.getCigarString().contains(dlenqr)) {
                         continue;
                     }
                     int rs = toInt(a[3]);
-                    int rlen = sum(globalFind(ALIGNED_LENGTH, a[5])); // The total aligned length, excluding soft-clipped bases and
+                    int rlen = getAlignedLenght(record.getCigar()); // The total aligned length, excluding soft-clipped bases and
                                                                       // insertions
                     int re = rs + rlen;
                     if (re > e + 2 && rs < s - 2) {
@@ -5744,23 +5807,23 @@ public class VarDict {
                 cigarStr = r.replace(cigarStr);
                 flag = true;
             }
-            mm = BEGIN_NUMBER_S_NUMBER_M_IorD.matcher(cigarStr);
+            mm = BEGIN_NUMBER_S_NUMBER_M_NUMBER_IorD.matcher(cigarStr);
             if (mm.find()) { // If CIGAR starts with soft-clipping followed by matched sequence and insertion or deletion
                 int tmid = toInt(mm.group(2));
                 if (tmid <= 10) { // If matched sequence length is no more than 10, replace everything with soft-clipping
                     String tslen = toInt(mm.group(1)) + tmid + (mm.group(4).equals("I") ? toInt(mm.group(3)) : 0) + "S";
                     position += tmid + (mm.group(4).equals("D") ? toInt(mm.group(3)) : 0);
-                    Replacer r = BEGIN_NUMBER_S_NUMBER_M_IorD.replacer(tslen);
+                    Replacer r = BEGIN_NUMBER_S_NUMBER_M_NUMBER_IorD.replacer(tslen);
                     cigarStr = r.replace(cigarStr);
                     flag = true;
                 }
             }
-            mm = D_ID_D_M_S.matcher(cigarStr);
+            mm = NUMBER_IorD_NUMBER_M_NUMBER_S_END.matcher(cigarStr);
             if (mm.find()) { // If CIGAR ends with insertion or deletion, matched sequence and soft-clipping
                 int tmid = toInt(mm.group(3));
                 if (tmid <= 10) { // If matched sequence length is no more than 10, replace everything with soft-clipping
                     String tslen = toInt(mm.group(4)) + tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
-                    Replacer r = D_ID_D_M_S.replacer(tslen);
+                    Replacer r = NUMBER_IorD_NUMBER_M_NUMBER_S_END.replacer(tslen);
                     cigarStr = r.replace(cigarStr);
                     flag = true;
                 }
