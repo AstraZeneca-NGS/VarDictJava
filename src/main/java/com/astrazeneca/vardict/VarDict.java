@@ -6044,4 +6044,478 @@ public class VarDict {
         return tuple(position, cigarStr);
     }
 
+    static Tuple2<Integer, String> modifyCigar2(int indel, Map<Integer, Character> ref,
+            final int oPosition, final String oCigar, final String querySeq, final String queryQual, final int lowqual) {
+
+        int position = oPosition;
+        String cigarStr = oCigar;
+        LinkedList<CigarElement> cigar = new LinkedList<>(TextCigarCodec.decode(oCigar).getCigarElements());
+        /**
+         * flag is set to true if CIGAR string is modified and should be looked at again
+         */
+        boolean flag = true;
+        while (flag && indel > 0) {
+            flag = false;
+
+            if (cigar.size() > 1) {
+
+                CigarElement firstElem = cigar.get(0);
+                CigarElement secondElem = cigar.get(1);
+                CigarOperator operation2 = secondElem.getOperator();
+                if (firstElem.getOperator() == CigarOperator.S
+                        && (operation2 == CigarOperator.I || operation2 == CigarOperator.D)) {
+
+                    int length = firstElem.getLength();
+                    if(operation2 == CigarOperator.I) {
+                        length += secondElem.getLength();
+                    } else {
+                        position += 2;
+                    }
+                    CigarElement tslen = new CigarElement(length , CigarOperator.S);
+                    cigar.removeFirst();
+                    cigar.removeFirst();
+                    cigar.addFirst(tslen);
+                    flag = true;
+                }
+            }
+
+            if (cigar.size() > 1) {
+                Iterator<CigarElement> it = cigar.descendingIterator();
+                CigarElement lastElement = it.next();
+                CigarElement penultElement = it.next();
+
+                if (lastElement.getOperator() == CigarOperator.S
+                        && (penultElement.getOperator() == CigarOperator.I
+                         || penultElement.getOperator() == CigarOperator.D)) { // If CIGAR ends with insertion or deletion followed by soft-clipping
+                    //Replace insertion or deletion with soft-clipping
+                    //Regexp replaces found CIGAR sequence with $tslen (number + S)
+
+                    int length = lastElement.getLength();
+                    if(penultElement.getOperator() == CigarOperator.I) {
+                        length += penultElement.getLength();
+                    }
+                    CigarElement tslen = new CigarElement(length , CigarOperator.S);
+                    cigar.removeLast();
+                    cigar.removeLast();
+                    cigar.addLast(tslen);
+                    flag = true;
+                }
+            }
+
+
+            if (cigar.size() > 2) { // If CIGAR starts with soft-clipping followed by matched sequence and insertion or deletion
+                Iterator<CigarElement> it = cigar.iterator();
+                CigarElement firstElem = it.next();
+                CigarElement secondElem = it.next();
+                CigarElement thirdElement = it.next();
+                if (firstElem.getOperator() == CigarOperator.S
+                        && secondElem.getOperator() == CigarOperator.M
+                        && (thirdElement.getOperator() == CigarOperator.I || thirdElement.getOperator() == CigarOperator.D)) {
+
+                    if (secondElem.getLength() <= 10) {
+                        int length = firstElem.getLength() + secondElem.getLength();
+                        position += secondElem.getLength();
+                        if(thirdElement.getOperator() == CigarOperator.I) {
+                            length += thirdElement.getLength();
+                        } else {
+                            position += thirdElement.getLength();
+                        }
+                        CigarElement tslen = new CigarElement(length , CigarOperator.S);
+                        cigar.removeFirst();
+                        cigar.removeFirst();
+                        cigar.removeFirst();
+                        cigar.addFirst(tslen);
+                        flag = true;
+
+                    }
+
+                }
+            }
+
+            if (cigar.size() > 2) {
+                Iterator<CigarElement> it = cigar.descendingIterator();
+                CigarElement lastElement = it.next();
+                CigarElement penultElement = it.next();
+                CigarElement thirdFromEnd = it.next();
+
+                if (lastElement.getOperator() == CigarOperator.S
+                        && penultElement.getOperator() == CigarOperator.M
+                        && (thirdFromEnd.getOperator() == CigarOperator.I || thirdFromEnd.getOperator() == CigarOperator.D)) { // If CIGAR ends with insertion or deletion, matched sequence and soft-clipping
+
+                    int tmid = penultElement.getLength();
+                    if (tmid <= 10) { // If matched sequence length is no more than 10, replace everything with soft-clipping
+                        int length = lastElement.getLength() + tmid;
+                        if(penultElement.getOperator() == CigarOperator.I) {
+                            length += thirdFromEnd.getLength();
+                        }
+                        CigarElement tslen = new CigarElement(length , CigarOperator.S);
+                        cigar.removeLast();
+                        cigar.removeLast();
+                        cigar.removeLast();
+                        cigar.addLast(tslen);
+                        flag = true;
+                    }
+                }
+            }
+            // The following two clauses to make indels at the end of reads as softly
+            // clipped reads and let VarDict's algorithm identify indels
+            if (cigar.size() > 2) { // If CIGAR starts with soft-clipping followed by matched sequence and insertion or deletion
+                Iterator<CigarElement> it = cigar.iterator();
+                CigarElement firstElem = it.next();
+                CigarElement secondElem = it.next();
+                CigarElement thirdElement = it.next();
+                if (firstElem.getOperator() == CigarOperator.M && firstElem.getLength() <= 8
+                        && thirdElement.getOperator() == CigarOperator.M
+                        && (secondElem.getOperator() == CigarOperator.I || secondElem.getOperator() == CigarOperator.D) ) { //If CIGAR starts with 1-9 bases long matched sequence, insertion or deletion and matched sequence
+
+                    /*
+                    If first matched sequence length is no more than 8, this sequence and insertion/deletion are
+                    replaced with soft-clipping up to 1st matching base in last matched sequence
+                    For deletion position is adjusted by deletion length
+                     */
+                    int tslen = firstElem.getLength();
+                    position += firstElem.getLength();
+                    if (secondElem.getOperator() == CigarOperator.I) {
+                        tslen += secondElem.getLength();
+                    } else {
+                        position += secondElem.getLength();
+                    }
+                    int n = 0;
+                    while (n < thirdElement.getLength()
+                            && isHasAndNotEquals(querySeq.charAt(tslen + n), ref, position + n)) {
+                        n++;
+                    }
+                    tslen += n;
+                    position += n;
+                    int mlen = thirdElement.getLength() - n;
+
+                    //Replaces digit-M-number-(I or D)-number-M with tslen + S + mlen + M
+                    cigar.removeFirst();
+                    cigar.removeFirst();
+                    cigar.removeFirst();
+                    cigar.addFirst(new CigarElement(mlen, CigarOperator.M));
+                    cigar.addFirst(new CigarElement(tslen, CigarOperator.S));
+                    flag = true;
+                }
+            }
+
+//            mm = NUMBER_IorD_DIGIT_M_END.matcher(cigarStr);
+//            if (mm.find()) { //If CIGAR ends with insertion or deletion and 1-9 bases long matched sequence
+//                int tmid = toInt(mm.group(3));
+//                if (tmid <= 8) { //If matched sequence length is no more than 8, insertion/deletion and matched sequence are replaced with soft-clipping
+//                    String tslen = tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+//                    Replacer r = NUMBER_IorD_DIGIT_M_END.replacer(tslen);
+//                    cigarStr = r.replace(cigarStr);
+//                    flag1 = true;
+//                }
+//            }
+
+            if (cigar.size() > 1) {
+                Iterator<CigarElement> it = cigar.descendingIterator();
+                CigarElement lastElement = it.next();
+                CigarElement penultElement = it.next();
+
+                if (lastElement.getOperator() == CigarOperator.M && lastElement.getLength() <= 8
+                        && (penultElement.getOperator() == CigarOperator.I
+                         || penultElement.getOperator() == CigarOperator.D)) { //If CIGAR ends with insertion or deletion and 1-9 bases long matched sequence
+
+                    int length = lastElement.getLength();
+                    if (penultElement.getOperator() == CigarOperator.I) {
+                        length += penultElement.getLength();
+                    }
+
+                    cigar.removeLast();
+                    cigar.removeLast();
+                    cigar.addLast(new CigarElement(length, CigarOperator.S));
+                    flag = true;
+                }
+
+            }
+
+            if (flag) {
+                cigarStr = cigarEncode(cigar);
+            }
+
+            boolean flag1 = false;
+
+            jregex.Matcher mm;
+//            jregex.Matcher mm = BEGIN_NUMBER_S_NUMBER_IorD.matcher(cigarStr);
+//            if (mm.find()) { // If CIGAR starts with soft-clipping followed by insertion or deletion
+//                /*
+//                If insertion follows soft-clipping, add the inserted sequence to soft-clipped start
+//                Otherwise increase position by number of deleted bases
+//                 */
+//                String tslen = toInt(mm.group(1)) + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0) + "S";
+//                //TODO: original string : $a[3] += $3 eq "D" ? $2 : 0;
+//                position = mm.group(3).equals("D") ? 2 : 0;
+//                //Regexp replaces found CIGAR sequence with tslen (number + S)
+//                Replacer r = BEGIN_NUMBER_S_NUMBER_IorD.replacer(tslen);
+//                cigarStr = r.replace(cigarStr);
+//                flag = true;
+//            }
+//            mm = NUMBER_IorD_NUMBER_S_END.matcher(cigarStr);
+//            if (mm.find()) { // If CIGAR ends with insertion or deletion followed by soft-clipping
+//                //Replace insertion or deletion with soft-clipping
+//                String tslen = toInt(mm.group(3)) + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+//                //Regexp replaces found CIGAR sequence with $tslen (number + S)
+//                Replacer r = NUMBER_IorD_NUMBER_S_END.replacer(tslen);
+//                cigarStr = r.replace(cigarStr);
+//                flag = true;
+//            }
+//            mm = BEGIN_NUMBER_S_NUMBER_M_NUMBER_IorD.matcher(cigarStr);
+//            if (mm.find()) { // If CIGAR starts with soft-clipping followed by matched sequence and insertion or deletion
+//                int tmid = toInt(mm.group(2));
+//                if (tmid <= 10) { // If matched sequence length is no more than 10, replace everything with soft-clipping
+//                    String tslen = toInt(mm.group(1)) + tmid + (mm.group(4).equals("I") ? toInt(mm.group(3)) : 0) + "S";
+//                    position += tmid + (mm.group(4).equals("D") ? toInt(mm.group(3)) : 0);
+//                    Replacer r = BEGIN_NUMBER_S_NUMBER_M_NUMBER_IorD.replacer(tslen);
+//                    cigarStr = r.replace(cigarStr);
+//                    flag = true;
+//                }
+//            }
+//
+//            mm = NUMBER_IorD_NUMBER_M_NUMBER_S_END.matcher(cigarStr);
+//            if (mm.find()) { // If CIGAR ends with insertion or deletion, matched sequence and soft-clipping
+//                int tmid = toInt(mm.group(3));
+//                if (tmid <= 10) { // If matched sequence length is no more than 10, replace everything with soft-clipping
+//                    String tslen = toInt(mm.group(4)) + tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+//                    Replacer r = NUMBER_IorD_NUMBER_M_NUMBER_S_END.replacer(tslen);
+//                    cigarStr = r.replace(cigarStr);
+//                    flag1 = true;
+//                }
+//            }
+//
+//            // The following two clauses to make indels at the end of reads as softly
+//            // clipped reads and let VarDict's algorithm identify indels
+//            mm = BEGIN_DIGIT_M_NUMBER_IorD_NUMBER_M.matcher(cigarStr); //If CIGAR starts with 1-9 bases long matched sequence, insertion or deletion and matched sequence
+//            if (mm.find()) {
+//                int tmid = toInt(mm.group(1));
+//                int mlen = toInt(mm.group(4));
+//                if (tmid <= 8) {
+//                    /*
+//                    If first matched sequence length is no more than 8, this sequence and insertion/deletion are
+//                    replaced with soft-clipping up to 1st matching base in last matched sequence
+//                    For deletion position is adjusted by deletion length
+//                     */
+//                    int tslen = tmid + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0);
+//                    position += tmid + (mm.group(3).equals("D") ? toInt(mm.group(2)) : 0);
+//                    int n = 0;
+//                    while (n < mlen
+//                            && isHasAndNotEquals(querySeq.charAt(tslen + n), ref, position + n)) {
+//                        n++;
+//                    }
+//                    tslen += n;
+//                    mlen -= n;
+//                    position += n;
+//                    //Regexp replaces digit-M-number-(I or D)-number-M with tslen + S + mlen + M
+//                    cigarStr = cigarStr.replaceFirst("^\\dM\\d+[ID]\\d+M", tslen + "S" + mlen + "M");
+//                    flag1 = true;
+//                }
+//            }
+//            mm = NUMBER_IorD_DIGIT_M_END.matcher(cigarStr);
+//            if (mm.find()) { //If CIGAR ends with insertion or deletion and 1-9 bases long matched sequence
+//                int tmid = toInt(mm.group(3));
+//                if (tmid <= 8) { //If matched sequence length is no more than 8, insertion/deletion and matched sequence are replaced with soft-clipping
+//                    String tslen = tmid + (mm.group(2).equals("I") ? toInt(mm.group(1)) : 0) + "S";
+//                    Replacer r = NUMBER_IorD_DIGIT_M_END.replacer(tslen);
+//                    cigarStr = r.replace(cigarStr);
+//                    flag1 = true;
+//                }
+//            }
+//
+            // Combine two deletions and insertion into one complex if they are close
+            mm = D_M_D_DD_M_D_I_D_M_D_DD.matcher(cigarStr);
+            if (mm.find()) { //If CIGAR string contains matched sequence, deletion, short (<=9 bases) matched sequence, insertion, short (<=9 bases) matched sequence and deletion
+                //length of internal matched sequences
+                int mid = toInt(mm.group(4)) + toInt(mm.group(6));
+                if (mid <= 10) {
+                    //length of both matched sequences and insertion
+                    int tslen = mid + toInt(mm.group(5));
+                    //length of deletions and internal matched sequences
+                    int dlen = toInt(mm.group(3)) + mid + toInt(mm.group(7));
+                    //prefix of CIGAR string before the M-D-M-I-M-D complex
+                    String ov5 = mm.group(1);
+                    //offset of first deletion in the read
+                    int rdoff = toInt(mm.group(2));
+                    //offset of first deletion in the reference sequence
+                    int refoff = position + rdoff;
+                    //offset of first deletion in the read corrected by possibly matching bases
+                    int RDOFF = rdoff;
+                    if (!ov5.isEmpty()) { //If the complex is not at start of CIGAR string
+                        rdoff += sum(globalFind(SOFT_CLIPPED, ov5)); // read position
+                        refoff += sum(globalFind(ALIGNED_LENGTH, ov5)); // reference position
+                    }
+                    //number of bases after refoff/rdoff that match in reference and read
+                    int rn = 0;
+                    while (rdoff + rn < querySeq.length()
+                            && isHasAndEquals(querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
+                        rn++;
+                    }
+                    RDOFF += rn;
+                    dlen -= rn;
+                    tslen -= rn;
+                    //If length of internal matched sequences is no more than 10, replace M-D-M-I-M-D complex with M-D-I
+                    cigarStr = D_M_D_DD_M_D_I_D_M_D_DD_prim.matcher(cigarStr).replaceFirst(RDOFF + "M" + dlen + "D" + tslen + "I");
+                    flag1 = true;
+                }
+            }
+            // Combine two close deletions (<10bp) into one
+            Matcher cm = DIG_D_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
+            if (cm.find()) { //If CIGAR string contains deletion, short (<= 9 bases) matched sequence, deletion and possibly insertion
+                int g2 = toInt(cm.group(2));
+                int g3 = toInt(cm.group(3));
+                String op = cm.group(4);
+
+                //length of both deletions and matched sequence
+                int dlen = toInt(cm.group(1)) + g2;
+                //matched sequence length
+                int ilen = g2;
+                if (op.equals("I")) {
+                    ilen += g3;
+                } else { // op == "D"
+                    dlen += g3;
+                    //insertion string
+                    String istr = cm.group(5);
+                    if (istr != null) { //If insertion is present after 2nd deletion, add its length to $ilen
+                        ilen += toInt(istr.substring(0, istr.length() - 1));
+                    }
+                }
+                //Replace D-M-D-I? complex with deletion and insertion
+                cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
+                flag1 = true;
+            }
+
+            // Combine two close indels (<10bp) into one
+            cm = DIG_I_dig_M_DIG_DI_DIGI.matcher(cigarStr);
+            if (cm.find()) { //If CIGAR string contains insertion, short (<=9 bases) matched sequence, deletion and possibly insertion
+                String op = cm.group(4);
+                int g2 = toInt(cm.group(2));
+                int g3 = toInt(cm.group(3));
+
+                //length of matched sequence and deletion
+                int dlen = g2;
+                //length of first insertion and matched sequence
+                int ilen = toInt(cm.group(1)) + g2;
+                if (op.equals("I")) {
+                    ilen += g3;
+                } else { // op == "D"
+                    dlen += g3;
+                    //last insertion string
+                    String istr = cm.group(5);
+                    if (istr != null) { //If insertion is present after deletion, add its length to ilen
+                        ilen += toInt(istr.substring(0, istr.length() - 1));
+                    }
+                }
+                //Replace I-M-D-I? complex with deletion and insertion
+                cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
+                flag1 = true;
+            }
+
+            if (flag1) {
+                cigar = new LinkedList<>(TextCigarCodec.decode(cigarStr).getCigarElements());
+            }
+            flag = flag || flag1;
+        }
+
+        //The following two clauses to capture sometimes mis-softly clipped reads by aligner
+        Matcher mtch = ANY_NUMBER_M_NUMBER_S_END.matcher(cigarStr);
+        if (mtch.find()) {
+            //prefix of CIGAR string before last matched sequence
+            String ov5 = mtch.group(1);
+            //length of matched sequence
+            int mch = toInt(mtch.group(2));
+            //length of soft-clipping
+            int soft = toInt(mtch.group(3));
+            //offset of soft-clipped sequence in the reference string (position + length of matched)
+            int refoff = position + mch;
+            //offset of soft-clipped sequence in the read
+            int rdoff = mch;
+            if (!ov5.isEmpty()) { //If prefix is present
+                //Add all matched, insertion and soft-clipped lengths to read position
+                rdoff += sum(globalFind(SOFT_CLIPPED, ov5)); // read position
+                //Add all matched and deletion lengths to reference position
+                refoff += sum(globalFind(ALIGNED_LENGTH, ov5)); // reference position
+            }
+            //number of bases after refoff/rdoff that match in reference and read sequences
+            int rn = 0;
+            while (rn + 1 < soft
+                    && isHasAndEquals(querySeq.charAt(rdoff + rn + 1), ref, refoff + rn + 1)
+                    && queryQual.charAt(rdoff + rn + 1) - 33 > lowqual) {
+                rn++;
+            }
+            if (rn > 3 || isHasAndEquals(querySeq.charAt(rdoff), ref, refoff)) { //If more than 3 bases match after refoff/rdoff or base at refoff/rdoff match
+                //Replace the M-S complex with either match or match-soft clip
+                mch += rn + 1;
+                soft -= rn + 1;
+                if (soft > 0) {
+                    cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M" + soft + "S");
+                } else {
+                    cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M");
+                }
+                rn++;
+            }
+            if (rn == 0) {
+                while (isHasAndNotEquals(querySeq.charAt(rdoff - rn - 1), ref, refoff - rn - 1)) {
+                    rn++;
+                }
+                if (rn > 0) {
+                    soft += rn;
+                    mch -= rn;
+                    cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M" + soft + "S");
+                }
+            }
+        }
+
+        mtch = D_S_D_M.matcher(cigarStr);
+        if (mtch.find()) {
+            //length of matched sequence
+            int mch = toInt(mtch.group(2));
+            //length of soft-clipping
+            int soft = toInt(mtch.group(1));
+            //number of bases before matched sequence that match in reference and read sequences
+            int rn = 0;
+            while (rn + 1 < soft && isHasAndEquals(querySeq.charAt(soft - rn - 2), ref, position - rn - 2)
+                    && queryQual.charAt(soft - rn - 2) - 33 > lowqual) {
+                rn++;
+            }
+            if (rn > 3 || isHasAndEquals(querySeq.charAt(soft - 1), ref, position - 1)) { //If more than 3 bases match before matched sequence or last base of clipped sequence matches
+                //Replace the S-M complex with either match or match-soft clip
+                mch += rn + 1;
+                soft -= rn + 1;
+                if (soft > 0) {
+                    cigarStr = mtch.replaceFirst(soft + "S" + mch + "M");
+                } else {
+                    cigarStr = mtch.replaceFirst(mch + "M");
+                }
+                position -= rn + 1;
+                rn++;
+            }
+            if (rn == 0) {
+                while (isHasAndNotEquals(querySeq.charAt(soft + rn), ref, position + rn)) {
+                    rn++;
+                }
+                if (rn > 0) {
+                    soft += rn;
+                    mch -= rn;
+                    cigarStr = mtch.replaceFirst(soft + "S" + mch + "M");
+                    position += rn;
+                }
+            }
+        }
+
+        return tuple(position, cigarStr);
+    }
+
+    private static String cigarEncode(final List<CigarElement> cigar) {
+        if (cigar.isEmpty()) {
+            return SAMRecord.NO_ALIGNMENT_CIGAR;
+        }
+        final StringBuilder ret = new StringBuilder();
+        for (final CigarElement cigarElement : cigar) {
+            ret.append(cigarElement.getLength());
+            ret.append(cigarElement.getOperator());
+        }
+        return ret.toString();
+    }
+
 }
