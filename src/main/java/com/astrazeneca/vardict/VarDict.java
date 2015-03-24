@@ -1287,7 +1287,7 @@ public class VarDict {
     /**
      * regexp finds if 'SA' tag (supplementary alignment) is present
      */
-    private static final jregex.Pattern SA_Z = new jregex.Pattern("\\tSA:Z:\\S+");
+    private static final jregex.Pattern SA_Z = new jregex.Pattern("\\tSA:Z:(\\S+)");
 
     private static class SamView implements AutoCloseable {
 
@@ -1408,7 +1408,6 @@ public class VarDict {
                         }
                     }
 
-                    final String line = record.getSAMString();
                     final Cigar readCigar = record.getCigar();
                     final int indel = getInsertionDeletionLenght(readCigar);
 
@@ -1421,7 +1420,7 @@ public class VarDict {
                         }
                     } else { //Skip the read if number of mismatches is not available
                         if (conf.y && !record.getCigarString().equals("*")) {
-                            System.err.println("No XM tag for mismatches. " + line);
+                            System.err.println("No XM tag for mismatches. " + record.getSAMString());
                         }
                         continue;
                     }
@@ -1494,7 +1493,7 @@ public class VarDict {
                         // to be implemented
                     } else {
                         if (isMrnmEqual) {
-                            if (SA_Z.matcher(line).find()) {
+                            if (record.getStringAttribute(SAMTag.SA.name()) != null) {
                                 if (flag.isSupplementaryAlignment()) { // the supplementary alignment
                                     continue; // Ignore the supplmentary for now so that it won't skew the coverage
                                 }
@@ -4636,12 +4635,10 @@ public class VarDict {
             try (SamView reader = new SamView(bam, "", region)) {
                 SAMRecord record;
                 while ((record = reader.read()) != null) {
-                    String line = record.getSAMString();
-                    String[] a = line.split("\t");
                     if (record.getCigarString().contains(dlenqr)) {
                         continue;
                     }
-                    int rs = toInt(a[3]);
+                    int rs = record.getAlignmentStart();
                     int rlen = getAlignedLenght(record.getCigar()); // The total aligned length, excluding soft-clipped bases and
                                                                       // insertions
                     int re = rs + rlen;
