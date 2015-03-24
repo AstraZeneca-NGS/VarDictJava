@@ -27,7 +27,7 @@ dependencies {
     compile('com.github.samtools:htsjdk:1.129') {
         transitive = false
     }
-    compile 'junit:junit:4.8.2' 
+    testCompile 'junit:junit:4.8.2' 
 }
 
 mainClassName = "com.astrazeneca.vardict.Main"
