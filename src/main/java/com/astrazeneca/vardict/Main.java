@@ -121,16 +121,18 @@ public class Main {
         }
         conf.y = cmd.hasOption("y");
 
-        int threads;
+        int threads = 1;
 
         if (cmd.hasOption("th")) {
-            threads = getIntValue(cmd, "th", 2);
-        } else {
-            threads = Runtime.getRuntime().availableProcessors();
+            Object value = cmd.getParsedOptionValue("th");
+            if (value == null) {
+                threads = Runtime.getRuntime().availableProcessors();
+            } else {
+                threads = ((Number)value).intValue();
+            }
         }
 
         conf.threads = Math.max(threads, 1);
-
 
         VarDict.start(conf);
 
@@ -386,7 +388,7 @@ public class Main {
                 .create('y'));
 
         options.addOption(OptionBuilder.withArgName("INT")
-                .hasArg(true)
+                .hasOptionalArg()
                 .withDescription("Threads count.")
                 .withType(Number.class)
                 .isRequired(false)
