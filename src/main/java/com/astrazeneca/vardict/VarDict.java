@@ -2148,9 +2148,11 @@ public class VarDict {
                             }
 
                             //variation string. Initialize to first base of the read sequence
-                            String s = String.valueOf(querySequence.charAt(n));
+                            final char ch1 = querySequence.charAt(n);
+                            String s = String.valueOf(ch1);
+                            boolean startWithDelition = false;
                             //skip if base is unknown
-                            if (s.equals("N")) {
+                            if (ch1 == 'N') {
                                 start++;
                                 n++;
                                 p++;
@@ -2251,11 +2253,12 @@ public class VarDict {
                                 s = s.replaceFirst("&", "");
                                 //prepend s with deletion of length of next CIGAR segment + '&' delimiter
                                 s = "-" + cigar.getCigarElement(ci + 1).getLength() + "&" + s;
+                                startWithDelition = true;
                                 ddlen = cigar.getCigarElement(ci + 1).getLength();
                                 ci += 1;
 
                                 //If CIGAR has insertion two segments ahead
-                                if (cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.D) {
+                                if (cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I) {
                                     //append '^' + next-next segment sequence
                                     s += "^" + substr(querySequence, n + 1, cigar.getCigarElement(ci + 1).getLength());
 
@@ -2339,7 +2342,7 @@ public class VarDict {
                                     }
 
                                     //If variation starts with a deletion ('-' character)
-                                    if (s.charAt(0) == '-') {
+                                    if (startWithDelition) {
                                         //add variation to deletions map
                                         increment(dels5, pos, s);
 
@@ -2352,7 +2355,7 @@ public class VarDict {
                             }
 
                             //If variation starts with a deletion ('-' character)
-                            if (s.charAt(0) == '-') {
+                            if (startWithDelition) {
                                 start += ddlen;
                             }
 
