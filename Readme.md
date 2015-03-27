@@ -117,7 +117,7 @@ The VarDictJava program follows the workflow:
 - `-3`   
      Indicate to move indels to 3-prime if alternative alignment can be achieved.
 - `-F bit`  
-     The hexical to filter reads using samtools. Default: `0x500` (filter 2nd alignments and duplicates).  Use `-F 0` to turn it off.
+     The hexical to filter reads. Default: `0x500` (filter 2nd alignments and duplicates).  Use `-F 0` to turn it off.
 - `-z 0/1`       
     Indicate whether the BED file contains zero-based cooridates, the same way as the Genome browser IGV does.  -z 1 indicates that coordinates in a BED file start from 0. -z 0 indicates that the coordinates start from 1. Default: `1` for a BED file or amplicon BED file.  Use `0` to turn it off. When using `-R` option, it is set to `0`
 - `-a int:float`    
