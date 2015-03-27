@@ -178,8 +178,8 @@ The VarDictJava program follows the workflow:
     The lowest frequency in a normal sample allowed for a putative somatic mutations.  Defaults to `0.05`
 - `-I INT`  
     The indel size.  Default: 120bp
-- `-th threads`  
-    Threads count. If omitted, the number of threads equals to number of processor cores.
+- `-th [threads]`  
+    Threads count. Default: 1 thread.  If 'threads' is omitted, the number of threads equals to number of processor cores.
 
 ##Output columns
 
