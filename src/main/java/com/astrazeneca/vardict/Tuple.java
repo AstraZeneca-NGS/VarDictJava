@@ -19,20 +19,12 @@ public final class Tuple {
 
     public static class Tuple2<T1, T2> {
 
-        private final T1 _f;
-        private final T2 _s;
+        public final T1 _1;
+        public final T2 _2;
 
         public Tuple2(T1 f, T2 s) {
-            _f = f;
-            _s = s;
-        }
-
-        public T1 _1() {
-            return _f;
-        }
-
-        public T2 _2() {
-            return _s;
+            _1 = f;
+            _2 = s;
         }
 
         public static <T1, T2> Tuple2<T1, T2> newTuple(T1 f, T2 s) {
@@ -42,26 +34,14 @@ public final class Tuple {
 
     public static class Tuple3<T1, T2, T3> {
 
-        private final T1 _f;
-        private final T2 _s;
-        private final T3 _t;
+        public final T1 _1;
+        public final T2 _2;
+        public final T3 _3;
 
         public Tuple3(T1 f, T2 s, T3 t) {
-            _f = f;
-            _s = s;
-            _t = t;
-        }
-
-        public T1 _1() {
-            return _f;
-        }
-
-        public T2 _2() {
-            return _s;
-        }
-
-        public T3 _3() {
-            return _t;
+            _1 = f;
+            _2 = s;
+            _3 = t;
         }
 
         public static <T1, T2, T3> Tuple3<T1, T2, T3> newTuple(T1 f, T2 s, T3 t) {
@@ -71,32 +51,16 @@ public final class Tuple {
 
     public static class Tuple4<T1, T2, T3, T4> {
 
-        private final T1 _f;
-        private final T2 _s;
-        private final T3 _t;
-        private final T4 _v;
+        public final T1 _1;
+        public final T2 _2;
+        public final T3 _3;
+        public final T4 _4;
 
         public Tuple4(T1 f, T2 s, T3 t, T4 v) {
-            _f = f;
-            _s = s;
-            _t = t;
-            _v = v;
-        }
-
-        public T1 _1() {
-            return _f;
-        }
-
-        public T2 _2() {
-            return _s;
-        }
-
-        public T3 _3() {
-            return _t;
-        }
-
-        public T4 _4() {
-            return _v;
+            _1 = f;
+            _2 = s;
+            _3 = t;
+            _4 = v;
         }
 
         public static <T1, T2, T3, T4> Tuple4<T1, T2, T3, T4> newTuple(T1 f, T2 s, T3 t, T4 v) {
