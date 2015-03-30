@@ -42,8 +42,8 @@ public class VarDict {
         }
 
         Tuple2<String, String> stpl = getSampleNames(conf.bam.getBamRaw(), conf.sampleName, conf.sampleNameRegexp);
-        String sample = stpl._1();
-        String samplem = stpl._2();
+        String sample = stpl._1;
+        String samplem = stpl._2;
 
         Map<String, Integer> chrs = readChr(conf.bam.getBamX());
 
@@ -52,9 +52,9 @@ public class VarDict {
             nonAmpVardict(singletonList(singletonList(region)), chrs, conf.ampliconBasedCalling, sample, samplem, conf);
         } else {
             Tuple3<String, Boolean, List<String>> tpl = readBedFile(conf);
-            String ampliconBasedCalling = tpl._1();
-            Boolean zeroBased = tpl._2();
-            List<String> segraw = tpl._3();
+            String ampliconBasedCalling = tpl._1;
+            Boolean zeroBased = tpl._2;
+            List<String> segraw = tpl._3;
 
             if (ampliconBasedCalling != null) {
                 List<List<Region>> segs = toRegions(segraw, chrs, zeroBased != null ? zeroBased : false, conf.delimiter);
@@ -245,8 +245,8 @@ public class VarDict {
 
         if (conf.bam.hasBam2()) {
             Tuple2<String, String> stpl = getSampleNames(sample, samplem, conf.bam.getBam1(), conf.bam.getBam2(), conf.sampleName, conf.sampleNameRegexp);
-            sample = stpl._1();
-            samplem = stpl._2();
+            sample = stpl._1;
+            samplem = stpl._2;
             if (conf.threads == 1)
                 somaticNotParallel(segs, chrs, ampliconBasedCalling, sample, samplem, conf);
             else
@@ -301,7 +301,7 @@ public class VarDict {
                 Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
                 final Set<String> splice = new HashSet<>();
                 Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), ref, chrs, splice, ampliconBasedCalling, 0, conf);
-                vardict(region, tpl._2(), sample, splice, conf, System.out);
+                vardict(region, tpl._2, sample, splice, conf, System.out);
             }
         }
     }
@@ -353,8 +353,8 @@ public class VarDict {
                 final Set<String> splice = new ConcurrentHashSet<>();
                 Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
                 Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region, conf.bam.getBam1(), ref, chrs, splice, ampliconBasedCalling, 0, conf);
-                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), ref, chrs, splice, ampliconBasedCalling, t1._1(), conf);
-                somdict(region, t1._2(), t2._2(), sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1(), t2._1()), conf, System.out);
+                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), ref, chrs, splice, ampliconBasedCalling, t1._1, conf);
+                somdict(region, t1._2, t2._2, sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1, t2._1), conf, System.out);
             }
         }
 
@@ -591,8 +591,8 @@ public class VarDict {
                             v2nt = new Variant();
                             v2.varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
                             Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
-                            rlen = tpl._1();
-                            String newtype = tpl._2();
+                            rlen = tpl._1;
+                            String newtype = tpl._2;
                             if ("FALSE".equals(newtype)) {
                                 n++;
                                 continue;
@@ -736,8 +736,8 @@ public class VarDict {
                     }
                     v1nt.cov = 0;
                     Tuple2<Integer, String> tpl = combineAnalysis(v2.varn.get(nt), v1nt, segs.chr, p, nt, chrs, splice, ampliconBasedCalling, rlen, conf);
-                    rlen = tpl._1();
-                    String newtype = tpl._2();
+                    rlen = tpl._1;
+                    String newtype = tpl._2;
                     if ("FALSE".equals(newtype)) {
                         continue;
                     }
@@ -815,8 +815,8 @@ public class VarDict {
         Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
         Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(), ref,
                 chrs, splice, ampliconBasedCalling, rlen, conf);
-        rlen = tpl._1();
-        Map<Integer, Vars> vars = tpl._2();
+        rlen = tpl._1;
+        Map<Integer, Vars> vars = tpl._2;
         Variant vref = getVarMaybe(vars, p, varn, nt);
         if (vref != null) {
             if (conf.y) {
@@ -1505,9 +1505,9 @@ public class VarDict {
                     // algorithm to figure out indels
                     Tuple2<Integer, String> mc = modifyCigar(indel, ref, record.getAlignmentStart(), record.getCigarString(), querySequence, queryQuality, conf.lowqual);
 
-                    final int position = mc._1();
+                    final int position = mc._1;
                     //CIGAR string as pairs of number-letter
-                    Cigar cigar = TextCigarCodec.decode(mc._2());
+                    Cigar cigar = TextCigarCodec.decode(mc._2);
 
                     //adjusted start position
                     int start = position;
@@ -1742,9 +1742,9 @@ public class VarDict {
                                     if (ci6 != 0 && cigar.getCigarElement(ci + 3).getOperator()  == CigarOperator.M) {
                                         Tuple4<Integer, String, String, Integer> tpl = finndOffset(start + multoffs,
                                                 n + m + multoffp, ci6, querySequence, queryQuality, ref, cov, conf.vext, conf.goodq);
-                                        offset = tpl._1();
-                                        ss = tpl._2();
-                                        q.append(tpl._3());
+                                        offset = tpl._1;
+                                        ss = tpl._2;
+                                        q.append(tpl._3);
                                     }
                                 } else {
                                     /*
@@ -2279,12 +2279,12 @@ public class VarDict {
                                 if (cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
                                     Tuple4<Integer, String, String, Integer> tpl =
                                             finndOffset(start + ddlen + 1, n + 1, cigar.getCigarElement(ci + 1).getLength(), querySequence, queryQuality, ref, cov, conf.vext, conf.goodq);
-                                    int toffset = tpl._1();
+                                    int toffset = tpl._1;
                                     if (toffset != 0) {
                                         moffset = toffset;
-                                        nmoff += tpl._4();
-                                        s += "&" + tpl._2();
-                                        String tq = tpl._3();
+                                        nmoff += tpl._4;
+                                        s += "&" + tpl._2;
+                                        String tq = tpl._3;
                                         for (int qi = 0; qi < tq.length(); qi++) {
                                             q += tq.charAt(qi) - 33;
                                             qibases++;
@@ -2487,10 +2487,10 @@ public class VarDict {
         Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer> parseTpl =
                 parseSAM(region, bam, chrs, SPLICE, ampliconBasedCalling, Rlen, ref, conf);
 
-        Map<Integer, Map<String, Variation>> hash = parseTpl._1();
-        Map<Integer, Map<String, Variation>> iHash = parseTpl._2();
-        Map<Integer, Integer> cov = parseTpl._3();
-        Rlen = parseTpl._4();
+        Map<Integer, Map<String, Variation>> hash = parseTpl._1;
+        Map<Integer, Map<String, Variation>> iHash = parseTpl._2;
+        Map<Integer, Integer> cov = parseTpl._3;
+        Rlen = parseTpl._4;
 
         //the variant structure
         Map<Integer, Vars> vars = new HashMap<>();
@@ -2789,15 +2789,15 @@ public class VarDict {
                             String tseq2 = joinRef(ref, p + 1, (p + 70 > x ? x : p + 70));
 
                             Tuple3<Double, Integer, String> tpl = findMSI(tseq1, tseq2, leftseq);
-                            msi = tpl._1();
-                            shift3 = tpl._2();
-                            msint = tpl._3();
+                            msi = tpl._1;
+                            shift3 = tpl._2;
+                            msint = tpl._3;
 
                             //Try to adjust for microsatellite instability
                             tpl = findMSI(leftseq, tseq2, null);
-                            double tmsi = tpl._1();
-                            int tshift3 = tpl._2();
-                            String tmsint = tpl._3();
+                            double tmsi = tpl._1;
+                            int tshift3 = tpl._2;
+                            String tmsint = tpl._3;
                             if (msi < tmsi) {
                                 msi = tmsi;
                                 shift3 = tshift3;
@@ -2830,14 +2830,14 @@ public class VarDict {
 
                         //Try to adjust for microsatellite instability
                         Tuple3<Double, Integer, String> tpl = findMSI(substr(tseq, 0, dellen), substr(tseq, dellen), leftseq);
-                        msi = tpl._1();
-                        shift3 = tpl._2();
-                        msint = tpl._3();
+                        msi = tpl._1;
+                        shift3 = tpl._2;
+                        msint = tpl._3;
 
                         tpl = findMSI(leftseq, substr(tseq, dellen), leftseq);
-                        double tmsi = tpl._1();
-                        int tshift3 = tpl._2();
-                        String tmsint = tpl._3();
+                        double tmsi = tpl._1;
+                        int tshift3 = tpl._2;
+                        String tmsint = tpl._3;
                         if (msi < tmsi) {
                             msi = tmsi;
                             shift3 = tshift3;
@@ -2869,9 +2869,9 @@ public class VarDict {
                         String tseq2 = joinRef(ref, p + 2, p + 70 > chr0 ? chr0 : p + 70);
 
                         Tuple3<Double, Integer, String> tpl = findMSI(tseq1, tseq2, null);
-                        msi = tpl._1();
-                        shift3 = tpl._2();
-                        msint = tpl._3();
+                        msi = tpl._1;
+                        shift3 = tpl._2;
+                        msint = tpl._3;
                         //reference allele is 1 base from reference sequence
                         refallele = ref.containsKey(p) ? ref.get(p).toString() : "";
                         //variant allele is same as description string
@@ -3206,17 +3206,17 @@ public class VarDict {
         Collections.sort(tmp3, COMP3);
 
         for (Tuple3<Integer, Sclip, Integer> t5 : tmp5) {
-            final int p5 = t5._1();
-            final Sclip sc5v = t5._2();
-            final int cnt5 = t5._3();
+            final int p5 = t5._1;
+            final Sclip sc5v = t5._2;
+            final int cnt5 = t5._3;
             if (sc5v.used) {
                 continue;
             }
 
             for (Tuple3<Integer, Sclip, Integer> t3 : tmp3) {
-                final int p3 = t3._1();
-                final Sclip sc3v = t3._2();
-                final int cnt3 = t3._3();
+                final int p3 = t3._1;
+                final Sclip sc3v = t3._2;
+                final int cnt3 = t3._3;
                 if (sc3v.used) {
                     continue;
                 }
@@ -3237,10 +3237,10 @@ public class VarDict {
                             p3, p5, seq3, cnt3, new StringBuilder(seq5).reverse(), cnt5);
                 }
                 Tuple3<Integer, Integer, Integer> tpl = find35match(seq5, seq3, p5, p3, ref);
-                int bp5 = tpl._1();
-                int bp3 = tpl._2();
+                int bp5 = tpl._1;
+                int bp3 = tpl._2;
                 //length of match
-                int score = tpl._3();
+                int score = tpl._3;
 
                 if (score == 0) {
                     continue;
@@ -3432,8 +3432,8 @@ public class VarDict {
         Collections.sort(tmp, COMP2);
 
         for (Tuple2<Integer, Sclip> t : tmp) {
-            int p = t._1();
-            Sclip sc5v = t._2();
+            int p = t._1;
+            Sclip sc5v = t._2;
             //already been used in
             if (sc5v.used) {
                 continue;
@@ -3455,8 +3455,8 @@ public class VarDict {
                 continue;
             }
             Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, -1, chr, chrs);
-            final int bi = tpl._1();
-            final String ins = tpl._2();
+            final int bi = tpl._1;
+            final String ins = tpl._2;
             if (bi == 0) {
                 continue;
             }
@@ -3514,8 +3514,8 @@ public class VarDict {
         }
         Collections.sort(tmp, COMP2);
         for (Tuple2<Integer, Sclip> t : tmp) {
-            final int p = t._1();
-            final Sclip sc3v = t._2();
+            final int p = t._1;
+            final Sclip sc3v = t._2;
             if (sc3v.used) {
                 continue;
             }
@@ -3536,9 +3536,9 @@ public class VarDict {
                 continue;
             }
             Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, 1, chr, chrs);
-            final int bi = tpl._1();
-            final String ins = tpl._2();
-//            final int be = tpl._3();
+            final int bi = tpl._1;
+            final String ins = tpl._2;
+//            final int be = tpl._3;
             if (bi == 0) {
                 continue;
             }
@@ -3658,9 +3658,9 @@ public class VarDict {
                         bi2 = p - 1;
                         if (extra.length() == 0) {
                             Tuple3<Integer, String, Integer> tpl = adjInsPos(bi, ins, ref);
-                            bi = tpl._1();
-                            ins = tpl._2();
-                            bi2 = tpl._3();
+                            bi = tpl._1;
+                            ins = tpl._2;
+                            bi2 = tpl._3;
                         }
                         return tuple(bi, ins, bi2);
                     } else if (i - mm > score) {
@@ -3690,9 +3690,9 @@ public class VarDict {
                         bi2 = p + s + extra.length();
                         if (extra.length() == 0) {
                             Tuple3<Integer, String, Integer> tpl = adjInsPos(bi, ins, ref);
-                            bi = tpl._1();
-                            ins = tpl._2();
-                            bi2 = tpl._3();
+                            bi = tpl._1;
+                            ins = tpl._2;
+                            bi2 = tpl._3;
                         }
                         return tuple(bi, ins, bi2);
                     } else if (i - mm > score) {
@@ -3706,8 +3706,8 @@ public class VarDict {
         }
         if (bi2 == bi && ins.length() > 0 && bi != 0) {
             Tuple3<Integer, String, Integer> tpl = adjInsPos(bi, ins, ref);
-            bi = tpl._1();
-            ins = tpl._2();
+            bi = tpl._1;
+            ins = tpl._2;
         }
         return tuple(bi, ins, bi2);
     }
@@ -3738,17 +3738,17 @@ public class VarDict {
     private static final Comparator<Tuple2<Integer, Sclip>> COMP2 = new Comparator<Tuple2<Integer, Sclip>>() {
         @Override
         public int compare(Tuple2<Integer, Sclip> o1, Tuple2<Integer, Sclip> o2) {
-            int f = Integer.compare(o2._2().cnt, o1._2().cnt);
+            int f = Integer.compare(o2._2.cnt, o1._2.cnt);
             if (f != 0)
                 return f;
-            return Integer.compare(o1._1(), o2._1());
+            return Integer.compare(o1._1, o2._1);
         }
     };
 
     private static final Comparator<Tuple3<Integer, Sclip, Integer>> COMP3 = new Comparator<Tuple3<Integer, Sclip, Integer>>() {
         @Override
         public int compare(Tuple3<Integer, Sclip, Integer> o1, Tuple3<Integer, Sclip, Integer> o2) {
-            return Integer.compare(o2._3(), o1._3());
+            return Integer.compare(o2._3, o1._3);
         }
     };
 
@@ -3790,9 +3790,9 @@ public class VarDict {
         }
         Collections.sort(tmp, COMP2);
         for (Tuple2<Integer, Sclip> t : tmp) {
-            int p = t._1();
-            Sclip sc5v = t._2();
-            int cnt = t._2().cnt;
+            int p = t._1;
+            Sclip sc5v = t._2;
+            int cnt = t._2.cnt;
             if (sc5v.used) {
                 continue;
             }
@@ -3904,8 +3904,8 @@ public class VarDict {
         }
         Collections.sort(tmp, COMP2);
         for (Tuple2<Integer, Sclip> t : tmp) {
-            int p = t._1();
-            final Sclip sc3v = t._2();
+            int p = t._1;
+            final Sclip sc3v = t._2;
             final int cnt = sc3v.cnt;
             if (sc3v.used) {
                 continue;
@@ -4267,11 +4267,11 @@ public class VarDict {
             Variation vref = getVariation(iHash, p, vn);
             for (Tuple3<String, Integer, Integer> tuple3 : mmm) {
                 //mismatch nucleotide
-                String mm = tuple3._1();
+                String mm = tuple3._1;
                 //start position of clip that constains mm
-                Integer mp = tuple3._2();
+                Integer mp = tuple3._2;
                 //end (3 or 5)
-                Integer me = tuple3._3();
+                Integer me = tuple3._3;
 
                 if (mm.length() > 1) {
                     mm = mm.charAt(0) + "&" + mm.substring(1);
@@ -4492,9 +4492,9 @@ public class VarDict {
             List<Tuple3<String, Integer, Integer>> mmm = new ArrayList<>(mm3);
             mmm.addAll(mm5);
             for (Tuple3<String, Integer, Integer> tuple : mmm) {
-                String mm = tuple._1();
-                Integer mp = tuple._2();
-                Integer me = tuple._3();
+                String mm = tuple._1;
+                Integer mp = tuple._2;
+                Integer me = tuple._3;
                 if (mm.length() > 1) {
                     mm = mm.charAt(0) + "&" + mm.substring(1);
                 }
@@ -5204,7 +5204,7 @@ public class VarDict {
             Tuple2<Integer, Map<Integer, Vars>> t1 = first.get();
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream out = new PrintStream(baos);
-            somdict(second.region, t1._2(), t2._2(), sample, second.chrs, second.splice, second.ampliconBasedCalling, Math.max(t1._1(), t2._1()), second.conf, out);
+            somdict(second.region, t1._2, t2._2, sample, second.chrs, second.splice, second.ampliconBasedCalling, Math.max(t1._1, t2._1), second.conf, out);
             out.close();
             return baos;
         }
@@ -5236,7 +5236,7 @@ public class VarDict {
             Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), ref, chrs, splice, ampliconBasedCalling, 0, conf);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream out = new PrintStream(baos);
-            vardict(region, tpl._2(), sample, splice, conf, out);
+            vardict(region, tpl._2, sample, splice, conf, out);
             out.close();
             return baos;
         }
@@ -5265,9 +5265,9 @@ public class VarDict {
             Tuple2<Integer, Map<Integer, Vars>> last = worker.call();
             List<Map<Integer, Vars>> vars = new ArrayList<>();
             for (Future<Tuple2<Integer, Map<Integer, Vars>>> future : workers) {
-                vars.add(future.get()._2());
+                vars.add(future.get()._2);
             }
-            vars.add(last._2());
+            vars.add(last._2);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream out = new PrintStream(baos);
             ampVardict(rg, vars, pos, sample, worker.splice, worker.conf, out);
@@ -5359,7 +5359,7 @@ public class VarDict {
                     }
                     list.add(tuple(j, region));
                 }
-                vars.add(toVars(region, bam1, getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend), chrs, splice, ampliconBasedCalling, 0, conf)._2());
+                vars.add(toVars(region, bam1, getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend), chrs, splice, ampliconBasedCalling, 0, conf)._2);
                 j++;
             }
             ampVardict(rg, vars, pos, sample, splice, conf, System.out);
@@ -5410,13 +5410,13 @@ public class VarDict {
             //An amplicon is a piece of DNA or RNA that is the source and/or product of
             //natural or artificial amplification or replication events.
             for (Tuple2<Integer, Region> amps : v) {
-                final int amp = amps._1();
+                final int amp = amps._1;
                 //chromosome name
-                final String chr = amps._2().chr;
+                final String chr = amps._2.chr;
                 //start index
-                final int S = amps._2().start;
+                final int S = amps._2.start;
                 //end index
-                final int E = amps._2().end;
+                final int E = amps._2.end;
 
                 Vars vtmp = vars.get(amp).get(p);
                 List<Variant> l = vtmp == null ? null : vtmp.var;
@@ -5463,7 +5463,7 @@ public class VarDict {
                 Collections.sort(gvs, new Comparator<Tuple2<Variant, String>>() {
                     @Override
                     public int compare(Tuple2<Variant, String> o1, Tuple2<Variant, String> o2) {
-                        return Double.compare(o2._1().freq, o1._1().freq);
+                        return Double.compare(o2._1.freq, o1._1.freq);
                     }
                 });
             }
@@ -5490,13 +5490,13 @@ public class VarDict {
                     continue;
                 }
             } else {
-                vref = gvs.get(0)._1();
+                vref = gvs.get(0)._1;
             }
             if (flag) { // different good variants detected in different amplicons
-                String gdnt = gvs.get(0)._1().n;
+                String gdnt = gvs.get(0)._1.n;
                 int gcnt = 0;
                 for (Tuple2<Integer, Region> amps : v) {
-                    int amp = amps._1();
+                    int amp = amps._1;
                     Variant var = getVarMaybe(vars.get(amp), p, varn, gdnt);
                     if (var != null && isGoodVar(var, getVarMaybe(vars.get(amp), p, VarsType.ref), vartype, splice, conf)) {
                         gcnt++;
@@ -5511,8 +5511,8 @@ public class VarDict {
             List<Tuple2<Variant, String>> badv = new ArrayList<>();
             int gvscnt = gvs.size();
             for (Tuple2<Integer, Region> amps : v) {
-                int amp = amps._1();
-                Region reg = amps._2();
+                int amp = amps._1;
+                Region reg = amps._2;
                 if (goodmap.contains(format("%s-%s-%s", amp, vref.refallele, vref.varallele))) {
                     continue;
                 }
@@ -5541,18 +5541,18 @@ public class VarDict {
                 adjComplex(vref);
             }
             out.print(join("\t", sample, rg.gene, rg.chr,
-                    joinVar1(vref, "\t"), gvs.get(0)._2(), vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
+                    joinVar1(vref, "\t"), gvs.get(0)._2, vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
             if (conf.debug) {
                 out.print("\t" + vref.DEBUG);
             }
             if (conf.y) {
                 for (int gvi = 0; gvi < gvs.size(); gvi++) {
                     Tuple2<Variant, String> tp = gvs.get(gvi);
-                    out.print("\tGood" + gvi + " " + join(" ", joinVar2(tp._1(), " "), tp._2()));
+                    out.print("\tGood" + gvi + " " + join(" ", joinVar2(tp._1, " "), tp._2));
                 }
                 for (int bvi = 0; bvi < badv.size(); bvi++) {
                     Tuple2<Variant, String> tp = badv.get(bvi);
-                    out.print("\tBad" + bvi + " " + join(" ", joinVar2(tp._1(), " "), tp._2()));
+                    out.print("\tBad" + bvi + " " + join(" ", joinVar2(tp._1, " "), tp._2));
                 }
             }
             out.println();
