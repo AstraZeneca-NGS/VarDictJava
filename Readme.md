@@ -178,8 +178,7 @@ The VarDictJava program follows the workflow:
 - `-I INT`  
     The indel size.  Default: 120bp
 - `-th [threads]`  
-    Threads count. Default: 1 thread.  If 'threads' is omitted, the number of threads equals to number of processor cores.
-
+    If this parameter is missing, then the mode is one-thread. If you add the     -th parameter, the number of threads equals to the number of processor cores. The parameter -th threads sets the number of threads explicitly.
 ##Output columns
 
 1. Sample - sample name
