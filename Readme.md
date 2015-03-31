@@ -13,10 +13,9 @@ VarDictJava can run in single sample (see Single sample mode section), paired sa
 
 ##Requirements
 1. JDK 1.7 or later
-2. Samtools (must be in path)
-3. R language (uses /usr/bin/env R)
-4. Perl (uses /usr/bin/env perl)
-3. Internet connection to download dependencies using gradle.
+2. R language (uses /usr/bin/env R)
+3. Perl (uses /usr/bin/env perl)
+4. Internet connection to download dependencies using gradle.
 
 ##Getting started
 ###Getting source code
