@@ -5702,7 +5702,7 @@ public class VarDict {
     static boolean isGoodVar(Variant vref, Variant rref, String type,
             Set<String> splice,
             Configuration conf) {
-        if (vref == null || vref.refallele == null ||vref.refallele.isEmpty())
+        if (vref == null || vref.refallele == null || vref.refallele.isEmpty())
             return false;
 
         if (type == null || type.isEmpty()) {
