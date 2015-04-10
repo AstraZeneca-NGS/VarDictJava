@@ -4950,34 +4950,41 @@ public class VarDict {
 
             for (Map.Entry<String, Integer> en : v.entrySet()) {
                 final String vn = en.getKey();
-                if (!hash.containsKey(p) && !hash.get(p).containsKey(vn)) { // The variant is likely already been used by indel
-                                                                            // realignment
+                final Map<String, Variation> hashP = hash.get(p);
+                if (hashP == null) {
                     continue;
                 }
-                String mnt = vn.replaceFirst("&", "");
-                Variation vref = hash.get(p).get(vn);
+                final Variation vref = hashP.get(vn);
+                if (vref == null ) { // The variant is likely already been used by indel realignment
+                    continue;
+                }
+                final String mnt = vn.replaceFirst("&", "");
                 for (int i = 0; i < mnt.length() - 1; i++) {
                     String left = substr(mnt, 0, i + 1);
                     String right = substr(mnt, -(mnt.length() - i - 1));
-                    if (hash.containsKey(p) && hash.get(p).containsKey(left)) {
-                        Variation tref = hash.get(p).get(left);
-                        if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= i + 1) {
-                            if (conf.y) {
-                                System.err.printf(" AdjMnt Left: %s %s %s\n", p, vn, tref.cnt);
+                    {
+                        Variation tref = hashP.get(left);
+                        if (tref != null) {
+                            if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= i + 1) {
+                                if (conf.y) {
+                                    System.err.printf(" AdjMnt Left: %s %s %s\n", p, vn, tref.cnt);
+                                }
+                                adjCnt(vref, tref, conf);
+                                hashP.remove(left);
                             }
-                            adjCnt(vref, tref, conf);
-                            hash.get(p).remove(left);
                         }
                     }
-                    if (hash.containsKey(p + i + 1) && hash.get(p + i + 1).containsKey(right)) {
+                    if (hash.containsKey(p + i + 1)) {
                         Variation tref = hash.get(p + i + 1).get(right);
-                        if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= mnt.length() - i - 1) {
-                            if (conf.y) {
-                                System.err.printf(" AdjMnt Right: %s %s %s\n", p, vn, tref.cnt);
+                        if (tref != null) {
+                            if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= mnt.length() - i - 1) {
+                                if (conf.y) {
+                                    System.err.printf(" AdjMnt Right: %s %s %s\n", p, vn, tref.cnt);
+                                }
+                                adjCnt(vref, tref, conf);
+                                incCnt(cov, p, tref.cnt);
+                                hash.get(p + i + 1).remove(right);
                             }
-                            adjCnt(vref, tref, conf);
-                            incCnt(cov, p, tref.cnt);
-                            hash.get(p + i + 1).remove(right);
                         }
                     }
 
@@ -5667,7 +5674,7 @@ public class VarDict {
     static boolean isGoodVar(Variant vref, Variant rref, String type,
             Set<String> splice,
             Configuration conf) {
-        if (vref == null || vref.refallele.isEmpty())
+        if (vref == null || vref.refallele == null || vref.refallele.isEmpty())
             return false;
 
         if (type == null || type.isEmpty()) {
