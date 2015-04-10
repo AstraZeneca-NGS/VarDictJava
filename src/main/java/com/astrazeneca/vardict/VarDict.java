@@ -218,7 +218,7 @@ public class VarDict {
                 }
                 if (a == null) {
                     String[] ampl = line.split(conf.delimiter);
-                    if (ampl.length == 8) {
+                    if (ampl.length > 7) {
                         try {
                             int a1 = toInt(ampl[1]);
                             int a2 = toInt(ampl[2]);
