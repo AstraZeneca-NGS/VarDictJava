@@ -13,10 +13,9 @@ VarDictJava can run in single sample (see Single sample mode section), paired sa
 
 ##Requirements
 1. JDK 1.7 or later
-2. Samtools (must be in path)
-3. R language (uses /usr/bin/env R)
-4. Perl (uses /usr/bin/env perl)
-3. Internet connection to download dependencies using gradle.
+2. R language (uses /usr/bin/env R)
+3. Perl (uses /usr/bin/env perl)
+4. Internet connection to download dependencies using gradle.
 
 ##Getting started
 ###Getting source code
@@ -179,8 +178,7 @@ The VarDictJava program follows the workflow:
 - `-I INT`  
     The indel size.  Default: 120bp
 - `-th [threads]`  
-    Threads count. Default: 1 thread.  If 'threads' is omitted, the number of threads equals to number of processor cores.
-
+    If this parameter is missing, then the mode is one-thread. If you add the     -th parameter, the number of threads equals to the number of processor cores. The parameter -th threads sets the number of threads explicitly.
 ##Output columns
 
 1. Sample - sample name
