@@ -214,3 +214,10 @@ The VarDictJava program follows the workflow:
 22. 3pFlankSeq - neighboring reference sequence to 3' end
 23. SEGMENT:CHR_START_END - position description
 24. VARTYPE - variant type
+
+License
+-------
+
+The code is freely available under the `MIT license`_.
+
+.. _MIT license: http://www.opensource.org/licenses/mit-license.html
