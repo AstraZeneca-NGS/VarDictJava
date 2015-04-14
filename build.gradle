@@ -20,7 +20,6 @@ afterEvaluate {
     }
 }
 
-
 dependencies {
     compile 'commons-cli:commons-cli:1.2' 
     compile 'com.edropple.jregex:jregex:1.2_01'
@@ -31,6 +30,20 @@ dependencies {
 }
 
 mainClassName = "com.astrazeneca.vardict.Main"
+
+
+startScripts {
+    doLast {
+        unixScript.text = unixScript.text.replaceAll(/(DEFAULT_JVM_OPTS=.*)/){ all, group -> 
+"""${group}
+if [ -n "\$VAR_DICT_OPTS" ] ; then
+    DEFAULT_JVM_OPTS=''
+fi
+"""
+        }
+    }
+}
+
 
 javadoc {
     options.noQualifiers 'java.lang:java.io:java.util'
