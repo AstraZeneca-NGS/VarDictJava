@@ -897,7 +897,7 @@ public class VarDict {
             }
 
         }
-        return tuple(rlen, "");
+        return tuple(rlen, "FALSE");
     }
 
     /**
@@ -910,8 +910,9 @@ public class VarDict {
      *         than 3 reads
      */
     static boolean isNoise(Variant vref, double goodq, double lofreq) {
-        if (((vref.qual < 4.5d || (vref.qual < 12 && !vref.qstd)) && vref.cov <= 3)
-                || (vref.qual < goodq && vref.freq < 2 * lofreq && vref.cov <= 1)) {
+        final double qual = vref.qual;
+        if (((qual < 4.5d || (qual < 12 && !vref.qstd)) && vref.cov <= 3)
+                || (qual < goodq && vref.freq < 2 * lofreq && vref.cov <= 1)) {
 
             vref.tcov -= vref.cov;
             vref.cov = 0;
@@ -2554,7 +2555,7 @@ public class VarDict {
                 //strand bias flag (0, 1 or 2)
                 int bias = strandBias(fwd, rev, conf.bias, conf.minb);
                 //mean base quality for variant
-                double vqual = cnt.qmean / cnt.cnt; // base quality
+                double vqual = round(cnt.qmean / cnt.cnt, 1); // base quality
                 //mean mapping quality for variant
                 double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
                 //number of high-quality reads for variant
@@ -2579,7 +2580,7 @@ public class VarDict {
                 tvref.rev = rev;
                 tvref.bias = String.valueOf(bias);
                 tvref.freq = cnt.cnt / (double)ttcov;
-                tvref.pmean = cnt.pmean / (double)cnt.cnt;
+                tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
                 tvref.pstd = cnt.pstd;
                 tvref.qual = vqual;
                 tvref.qstd = cnt.qstd;
@@ -2630,7 +2631,7 @@ public class VarDict {
                     //strand bias flag (0, 1 or 2)
                     int bias = strandBias(fwd, rev, conf.bias, conf.minb);
                     //mean base quality for variant
-                    double vqual = cnt.qmean / cnt.cnt; // base quality
+                    double vqual = round(cnt.qmean / cnt.cnt, 1); // base quality
                     //mean mapping quality for variant
                     double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
                     //number of high-quality reads for variant
@@ -2654,7 +2655,7 @@ public class VarDict {
                     tvref.rev = rev;
                     tvref.bias = String.valueOf(bias);
                     tvref.freq = cnt.cnt / (double)ttcov;
-                    tvref.pmean = cnt.pmean / (double)cnt.cnt;
+                    tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
                     tvref.pstd = cnt.pstd;
                     tvref.qual = vqual;
                     tvref.qstd = cnt.qstd;
@@ -4149,7 +4150,13 @@ public class VarDict {
                 return f;
             x1 = (Integer)o1[0];
             x2 = (Integer)o2[0];
-            return Integer.compare(x1, x2);
+            f =  Integer.compare(x1, x2);
+            if (f != 0)
+                return f;
+            String s1 = (String)o1[1];
+            String s2 = (String)o2[1];
+            return s2.compareTo(s1);
+
         }
     };
 
@@ -4595,7 +4602,7 @@ public class VarDict {
                     && pe - p < rlen - 10
                     && h != null && h.cnt != 0
                     && noPassingReads(chr, p, pe, bams, conf)
-                    && vref.cnt > 2 * h.cnt * (1 - (pe - p / (double)rlen))) {
+                    && vref.cnt > 2 * h.cnt * (1 - (pe - p) / (double)rlen)) {
 
                 adjCnt(vref, h, h, conf);
             }
