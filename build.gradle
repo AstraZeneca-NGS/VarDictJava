@@ -36,7 +36,8 @@ startScripts {
     doLast {
         unixScript.text = unixScript.text.replaceAll(/(DEFAULT_JVM_OPTS=.*)/){ all, group -> 
 """${group}
-if [ -n "\$VAR_DICT_OPTS" ] ; then
+
+if [ -n "\$${optsEnvironmentVar}" ] ; then
     DEFAULT_JVM_OPTS=''
 fi
 """
