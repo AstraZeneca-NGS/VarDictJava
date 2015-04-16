@@ -457,56 +457,69 @@ public class VarDict {
             String vartype = "";
 
             if (v1 == null) { // no coverage for sample 1
-
-                if (v2.var.size() > 0) {
-                    Variant var = v2.var.get(0);
-                    vartype = varType(var.refallele, var.varallele);
-                    if (!isGoodVar(var, v2.ref, vartype, splice, conf)) {
-                        continue;
-                    }
-                    if (vartype.equals("Complex")) {
-                        adjComplex(var);
-                    }
-                    out.println(join("\t", sample, segs.gene, segs.chr,
-                            var.sp, var.ep, var.refallele, var.varallele,
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                            var.sp, var.ep, var.refallele, var.varallele,
-                            var.shift3,
-                            var.msi == 0 ? 0 : format("%.3f", var.msi),
-                            var.msint, var.leftseq, var.rightseq,
-                            segs.chr + ":" + segs.start + "-" + segs.end,
-                            "Deletion", vartype));
+                if (v2.var.isEmpty()) {
+                    continue;
                 }
+                Variant var = v2.var.get(0);
+
+                vartype = varType(var.refallele, var.varallele);
+                if (!isGoodVar(var, v2.ref, vartype, splice, conf)) {
+                    continue;
+                }
+                if (vartype.equals("Complex")) {
+                    adjComplex(var);
+                }
+                out.println(join("\t", sample, segs.gene, segs.chr,
+                        var.sp,
+                        var.ep,
+                        var.refallele,
+                        var.varallele,
+
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+
+                        joinVar2(var, "\t"),
+                        format("%.1f", var.nm),
+
+                        var.shift3,
+                        var.msi == 0 ? 0 : format("%.3f", var.msi),
+                        var.msint,
+                        var.leftseq,
+                        var.rightseq,
+
+                        segs.chr + ":" + segs.start + "-" + segs.end,
+                        "Deletion", vartype));
             } else if (v2 == null) { // no coverage for sample 2
-                if (v1.var.size() > 0) {
-                    Variant var = v1.var.get(0);
-                    vartype = varType(var.refallele, var.varallele);
-                    if (!isGoodVar(var, v1.ref, vartype, splice, conf)) {
-                        continue;
-                    }
-                    if (vartype.equals("Complex")) {
-                        adjComplex(var);
-                    }
-                    out.println(join("\t", sample, segs.gene, segs.chr,
-
-                            var.sp,
-                            var.ep,
-                            var.refallele,
-                            var.varallele,
-
-                            joinVar2(var, "\t"),
-                            format("%.1f", var.nm),
-
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                            var.shift3,
-                            var.msi == 0 ? 0 : format("%.3f", var.msi),
-                            var.msint,
-                            var.leftseq,
-                            var.rightseq,
-
-                            segs.chr + ":" + segs.start + "-" + segs.end,
-                            "SampleSpecific", vartype));
+                if (v1.var.isEmpty()) {
+                    continue;
                 }
+                Variant var = v1.var.get(0);
+                vartype = varType(var.refallele, var.varallele);
+                if (!isGoodVar(var, v1.ref, vartype, splice, conf)) {
+                    continue;
+                }
+                if (vartype.equals("Complex")) {
+                    adjComplex(var);
+                }
+                out.println(join("\t", sample, segs.gene, segs.chr,
+
+                        var.sp,
+                        var.ep,
+                        var.refallele,
+                        var.varallele,
+
+                        joinVar2(var, "\t"),
+                        format("%.1f", var.nm),
+
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+
+                        var.shift3,
+                        var.msi == 0 ? 0 : format("%.3f", var.msi),
+                        var.msint,
+                        var.leftseq,
+                        var.rightseq,
+
+                        segs.chr + ":" + segs.start + "-" + segs.end,
+                        "SampleSpecific", vartype));
 
             } else { // both samples have coverage
                 if (v1.var.isEmpty() && v2.var.isEmpty()) {
@@ -583,6 +596,7 @@ public class VarDict {
                                     v2nt.msint,
                                     v2nt.leftseq,
                                     v2nt.rightseq,
+
                                     segs.chr + ":" + segs.start + "-" + segs.end,
                                     type, vartype));
 
@@ -625,6 +639,7 @@ public class VarDict {
                                         vref.msint,
                                         vref.leftseq,
                                         vref.rightseq,
+
                                         segs.chr + ":" + segs.start + "-" + segs.end,
                                         "StrongSomatic", vartype));
                             } else {
@@ -671,7 +686,11 @@ public class VarDict {
                                 adjComplex(v1nt);
                             }
                             out.println(join("\t", sample, segs.gene, segs.chr,
-                                    v1nt.sp, v1nt.ep, v1nt.refallele, v1nt.varallele,
+                                    v1nt.sp,
+                                    v1nt.ep,
+                                    v1nt.refallele,
+                                    v1nt.varallele,
+
                                     joinVar2(v1nt, "\t"),
                                     format("%.1f", v1nt.nm),
 
@@ -683,6 +702,7 @@ public class VarDict {
                                     v2var.msint,
                                     v2var.leftseq,
                                     v2var.rightseq,
+
                                     segs.chr + ":" + segs.start + "-" + segs.end,
                                     type, varType(v1nt.refallele, v1nt.varallele)
                                     ));
@@ -715,6 +735,7 @@ public class VarDict {
                                     v2var.msint,
                                     v2var.leftseq,
                                     v2var.rightseq,
+
                                     segs.chr + ":" + segs.start + "-" + segs.end,
                                     "StrongLOH", vartype
                                     ));
@@ -876,7 +897,7 @@ public class VarDict {
             }
 
         }
-        return tuple(rlen, "");
+        return tuple(rlen, "FALSE");
     }
 
     /**
@@ -889,8 +910,9 @@ public class VarDict {
      *         than 3 reads
      */
     static boolean isNoise(Variant vref, double goodq, double lofreq) {
-        if (((vref.qual < 4.5d || (vref.qual < 12 && !vref.qstd)) && vref.cov <= 3)
-                || (vref.qual < goodq && vref.freq < 2 * lofreq && vref.cov <= 1)) {
+        final double qual = vref.qual;
+        if (((qual < 4.5d || (qual < 12 && !vref.qstd)) && vref.cov <= 3)
+                || (qual < goodq && vref.freq < 2 * lofreq && vref.cov <= 1)) {
 
             vref.tcov -= vref.cov;
             vref.cov = 0;
@@ -1351,6 +1373,7 @@ public class VarDict {
         if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) { //remove prefix 'chr' if option -C is set
             chr = region.chr.substring("chr".length());
         }
+
         for (String bami : bams) {
             String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : conf.samfilter;
             try (SamView reader =  new SamView(bami, samfilter, region)) {
@@ -2039,6 +2062,7 @@ public class VarDict {
                                                 }
                                                 if (isNotEquals(seqCh, refCh)) {
                                                     offset = vi + 1;
+                                                    nmoff++;
                                                     vsn = 0;
                                                 } else {
                                                     vsn++;
@@ -2062,9 +2086,13 @@ public class VarDict {
                                 }
 
                                 //quality of first matched base after deletion
-                                char q2 = queryQuality.charAt(n + offset);
                                 //append best of $q1 and $q2
-                                q.append(q1 > q2 ? q1 : q2);
+                                if (n + offset >= queryQuality.length()) {
+                                    q.append(q1);
+                                } else {
+                                    char q2 = queryQuality.charAt(n + offset);
+                                    q.append(q1 > q2 ? q1 : q2);
+                                }
 
                                 //If reference position is inside region of interest
                                 if (start >= region.start && start <= region.end) {
@@ -2552,7 +2580,7 @@ public class VarDict {
                 //strand bias flag (0, 1 or 2)
                 int bias = strandBias(fwd, rev, conf.bias, conf.minb);
                 //mean base quality for variant
-                double vqual = cnt.qmean / cnt.cnt; // base quality
+                double vqual = round(cnt.qmean / cnt.cnt, 1); // base quality
                 //mean mapping quality for variant
                 double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
                 //number of high-quality reads for variant
@@ -2577,7 +2605,7 @@ public class VarDict {
                 tvref.rev = rev;
                 tvref.bias = String.valueOf(bias);
                 tvref.freq = cnt.cnt / (double)ttcov;
-                tvref.pmean = cnt.pmean / (double)cnt.cnt;
+                tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
                 tvref.pstd = cnt.pstd;
                 tvref.qual = vqual;
                 tvref.qstd = cnt.qstd;
@@ -2628,7 +2656,7 @@ public class VarDict {
                     //strand bias flag (0, 1 or 2)
                     int bias = strandBias(fwd, rev, conf.bias, conf.minb);
                     //mean base quality for variant
-                    double vqual = cnt.qmean / cnt.cnt; // base quality
+                    double vqual = round(cnt.qmean / cnt.cnt, 1); // base quality
                     //mean mapping quality for variant
                     double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
                     //number of high-quality reads for variant
@@ -2652,7 +2680,7 @@ public class VarDict {
                     tvref.rev = rev;
                     tvref.bias = String.valueOf(bias);
                     tvref.freq = cnt.cnt / (double)ttcov;
-                    tvref.pmean = cnt.pmean / (double)cnt.cnt;
+                    tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
                     tvref.pstd = cnt.pstd;
                     tvref.qual = vqual;
                     tvref.qstd = cnt.qstd;
@@ -4128,7 +4156,7 @@ public class VarDict {
                 tmp.add(new Object[] { p, vn, cnt, /* ecnt */});
             }
         }
-        Collections.sort(tmp, COMP1);
+        Collections.sort(tmp, REALIGNDEL_COMPARATOR);
         return tmp;
     }
 
@@ -4144,7 +4172,7 @@ public class VarDict {
     private static final Pattern ATGSs_AMP_ATGSs_END = Pattern.compile("(\\+[ATGC]+)&[ATGC]+$");
 //    private static final jregex.Pattern BEGIN_ATGC_AMP_ATGCs_END = new jregex.Pattern("^[ATGC]&[ATGC]+$");
 
-    private static final Comparator<Object[]> COMP1 = new Comparator<Object[]>() {
+    private static final Comparator<Object[]> REALIGNDEL_COMPARATOR = new Comparator<Object[]>() {
         @Override
         public int compare(Object[] o1, Object[] o2) {
             int x1 = (Integer)o1[2];
@@ -4154,7 +4182,13 @@ public class VarDict {
                 return f;
             x1 = (Integer)o1[0];
             x2 = (Integer)o2[0];
-            return Integer.compare(x1, x2);
+            f =  Integer.compare(x1, x2);
+            if (f != 0)
+                return f;
+            String s1 = (String)o1[1];
+            String s2 = (String)o2[1];
+            return s2.compareTo(s1);
+
         }
     };
 
@@ -4600,7 +4634,7 @@ public class VarDict {
                     && pe - p < rlen - 10
                     && h != null && h.cnt != 0
                     && noPassingReads(chr, p, pe, bams, conf)
-                    && vref.cnt > 2 * h.cnt * (1 - (pe - p / (double)rlen))) {
+                    && vref.cnt > 2 * h.cnt * (1 - (pe - p) / (double)rlen)) {
 
                 adjCnt(vref, h, h, conf);
             }

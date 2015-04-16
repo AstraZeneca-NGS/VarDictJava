@@ -1,7 +1,7 @@
 apply plugin: 'java'
 apply plugin:'application'
 
-version = '1.1'
+version = '1.2.2'
 
 
 repositories { 
@@ -20,7 +20,6 @@ afterEvaluate {
     }
 }
 
-
 dependencies {
     compile 'commons-cli:commons-cli:1.2' 
     compile 'com.edropple.jregex:jregex:1.2_01'
@@ -31,6 +30,19 @@ dependencies {
 }
 
 mainClassName = "com.astrazeneca.vardict.Main"
+
+startScripts {
+    doLast {
+        unixScript.text = unixScript.text.replaceAll(/(DEFAULT_JVM_OPTS=.*)/){ all, group -> 
+"""${group}
+
+if [ -n "\$${optsEnvironmentVar}" ] ; then
+    DEFAULT_JVM_OPTS=''
+fi
+"""
+        }
+    }
+}
 
 javadoc {
     options.noQualifiers 'java.lang:java.io:java.util'

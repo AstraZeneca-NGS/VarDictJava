@@ -13,10 +13,9 @@ VarDictJava can run in single sample (see Single sample mode section), paired sa
 
 ##Requirements
 1. JDK 1.7 or later
-2. Samtools (must be in path)
-3. R language (uses /usr/bin/env R)
-4. Perl (uses /usr/bin/env perl)
-3. Internet connection to download dependencies using gradle.
+2. R language (uses /usr/bin/env R)
+3. Perl (uses /usr/bin/env perl)
+4. Internet connection to download dependencies using gradle.
 
 ##Getting started
 ###Getting source code
@@ -117,7 +116,7 @@ The VarDictJava program follows the workflow:
 - `-3`   
      Indicate to move indels to 3-prime if alternative alignment can be achieved.
 - `-F bit`  
-     The hexical to filter reads using samtools. Default: `0x500` (filter 2nd alignments and duplicates).  Use `-F 0` to turn it off.
+     The hexical to filter reads. Default: `0x500` (filter 2nd alignments and duplicates).  Use `-F 0` to turn it off.
 - `-z 0/1`       
     Indicate whether the BED file contains zero-based cooridates, the same way as the Genome browser IGV does.  -z 1 indicates that coordinates in a BED file start from 0. -z 0 indicates that the coordinates start from 1. Default: `1` for a BED file or amplicon BED file.  Use `0` to turn it off. When using `-R` option, it is set to `0`
 - `-a int:float`    
@@ -178,9 +177,8 @@ The VarDictJava program follows the workflow:
     The lowest frequency in a normal sample allowed for a putative somatic mutations.  Defaults to `0.05`
 - `-I INT`  
     The indel size.  Default: 120bp
-- `-th threads`  
-    Threads count. If omitted, the number of threads equals to number of processor cores.
-
+- `-th [threads]`  
+    If this parameter is missing, then the mode is one-thread. If you add the     -th parameter, the number of threads equals to the number of processor cores. The parameter -th threads sets the number of threads explicitly.
 ##Output columns
 
 1. Sample - sample name
@@ -216,3 +214,10 @@ The VarDictJava program follows the workflow:
 22. 3pFlankSeq - neighboring reference sequence to 3' end
 23. SEGMENT:CHR_START_END - position description
 24. VARTYPE - variant type
+
+License
+-------
+
+The code is freely available under the `MIT license`_.
+
+.. _MIT license: http://www.opensource.org/licenses/mit-license.html

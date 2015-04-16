@@ -134,7 +134,6 @@ public class Main {
 
         conf.threads = Math.max(threads, 1);
 
-
         VarDict.start(conf);
 
     }
