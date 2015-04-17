@@ -218,6 +218,14 @@ The VarDictJava program follows the workflow:
 License
 -------
 
-The code is freely available under the `MIT license`_.
+The code is freely available under the [MIT license](http://www.opensource.org/licenses/mit-license.html).
 
-.. _MIT license: http://www.opensource.org/licenses/mit-license.html
+Contributors
+------------
+
+Java port of [VarDict](https://github.com/AstraZeneca-NGS/VarDict) implemented based on the original Perl version ([Zhongwu Lai](https://github.com/zhongwulai)) by:
+
+- [Viktor Kirst](https://github.com/vkirst)
+
+- [Zaal Lyanov](https://github.com/jabbarish)
+
