@@ -2970,7 +2970,7 @@ public class VarDict {
                         genotype1 = genotype1.replaceFirst("#", "m").replaceFirst("\\^", "i");
                         genotype2 = genotype2.replaceFirst("#", "m").replaceFirst("\\^", "i");
                     }
-                    mtch = CARET_ATGC.matcher(vn); // for deletion followed directly by insertion in novolign
+                    mtch = CARET_ATGNC.matcher(vn); // for deletion followed directly by insertion in novolign
                     if (mtch.find()) {
                         //remove '^' sign from varallele
                         varallele = varallele.replaceFirst("\\^", "");
