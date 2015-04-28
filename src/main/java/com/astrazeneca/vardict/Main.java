@@ -311,6 +311,13 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("INT")
                 .hasArg(true)
+                .withDescription("If set, reads with mapping quality less than INT will be filtered and ignored")
+                .withType(Number.class)
+                .isRequired(false)
+                .create('Q'));
+
+        options.addOption(OptionBuilder.withArgName("INT")
+                .hasArg(true)
                 .withDescription("The phred score for a base to be considered a good call.  Default: 25 (for Illumina)\n"
                         + "For PGM, set it to ~15, as PGM tends to under estimate base quality.")
                 .withType(Number.class)
