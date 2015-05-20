@@ -14,9 +14,9 @@ sourceCompatibility = "1.7"
 
 afterEvaluate {
     if(project.hasProperty("hprof")) {
-        applicationDefaultJvmArgs = ["-Xrunhprof:cpu=times,depth=10", "-Xmx512m"]
+        applicationDefaultJvmArgs = ["-Xrunhprof:cpu=times,depth=10", "-Xmx768m"]
     } else {
-        applicationDefaultJvmArgs = ["-Xmx512m"]
+        applicationDefaultJvmArgs = ["-Xms768m", "-Xmx8g"]
     }
 }
 
