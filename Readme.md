@@ -105,6 +105,8 @@ The VarDictJava program follows the workflow:
     Print help page
 - `-h`   
     Print a header row decribing columns
+- `-i`
+    Output splicing read counts
 - `-p`   
     Do pileup regarless the frequency
 - `-C`    
@@ -177,6 +179,10 @@ The VarDictJava program follows the workflow:
     The lowest frequency in a normal sample allowed for a putative somatic mutations.  Defaults to `0.05`
 - `-I INT`  
     The indel size.  Default: 120bp
+- `-M INT`
+    The minimum matches for a read to be considered.  If, after soft-clipping, the matched bp is less than INT, then the 
+    read is discarded.  It's meant for PCR based targeted sequencing where there's no insert and the matching is only the primers.
+    Default: 0, or no filtering
 - `-th [threads]`  
     If this parameter is missing, then the mode is one-thread. If you add the     -th parameter, the number of threads equals to the number of processor cores. The parameter -th threads sets the number of threads explicitly.
 ##Output columns
