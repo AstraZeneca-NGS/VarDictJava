@@ -130,6 +130,12 @@ public class Configuration {
      */
     double lofreq = 0.05d; // -V default to 0.05
     final int lowqual = 10;
+
+    int minmatch = 0; // -M The minimum matches for a read to be considered
+    boolean outputSplicing = false; // -i Output splicing read counts
+
+
+
     /**
      * Threads count
      */

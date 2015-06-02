@@ -42,7 +42,6 @@ public class Main {
         Configuration conf = new Configuration();
 
         // -v is not used
-        // -M is not used
 
         String[] args = cmd.getArgs();
         if (args.length > 0) {
@@ -113,13 +112,17 @@ public class Main {
         conf.indelsize = getIntValue(cmd, "I", 120);
 
 
-
         if (cmd.hasOption("p")) {
             conf.doPileup = true;
             conf.freq = -1;
             conf.minr = 0;
         }
         conf.y = cmd.hasOption("y");
+        conf.outputSplicing = cmd.hasOption('i');
+
+        if (cmd.hasOption('M')) {
+            conf.minmatch = ((Number)cmd.getParsedOptionValue("M")).intValue();
+        }
 
         int threads = 1;
 
@@ -158,10 +161,11 @@ public class Main {
         options.addOption("H", false, "Print this help page");
         options.addOption("h", false, "Print a header row decribing columns");
         options.addOption("v", false, "VCF format output");
+        options.addOption("i", false, "Output splicing read counts");
         options.addOption("p", false, "Do pileup regarless the frequency");
         options.addOption("C", false, "Indicate the chromosome names are just numbers, such as 1, 2, not chr1, chr2");
         options.addOption("D", false, "Debug mode.  Will print some error messages and append full genotype at the end.");
-        options.addOption("M", false, "Similar to -D, but will append individual quality and position data instead of mean");
+//        options.addOption("M", false, "Similar to -D, but will append individual quality and position data instead of mean");
         options.addOption("t", false, "Indicate to remove duplicated reads.  Only one pair with same start positions will be kept");
         options.addOption("3", false, "Indicate to move indels to 3-prime if alternative alignment can be achieved.");
 
@@ -183,7 +187,7 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("0/1")
                 .hasOptionalArgs(1)
-                .withDescription("Indicate whether to perform local realignment.  Default: 1 or yes.  Set to 0 to disable it.")
+                .withDescription("Indicate whether to perform local realignment.  Default: 1.  Set to 0 to disable it.  For Ion or PacBio, 0 is recommended.")
                 .withType(Number.class)
                 .isRequired(false)
                 .create('k'));
@@ -401,6 +405,14 @@ public class Main {
                 .isRequired(false)
                 .create("th"));
 
+        options.addOption(OptionBuilder.withArgName("INT")
+                .hasArg(true)
+                .withDescription("The minimum matches for a read to be considered. If, after soft-clipping, the matched bp is less than INT, then the "
+                        + "read is discarded. It's meant for PCR based targeted sequencing where there's no insert and the matching is only the primers. "
+                        + "Default: 0, or no filtering")
+                .withType(String.class)
+                .isRequired(false)
+                .create('M'));
 
         return options;
     }
