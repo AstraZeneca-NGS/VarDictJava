@@ -185,6 +185,13 @@ The VarDictJava program follows the workflow:
     Default: 0, or no filtering
 - `-th [threads]`  
     If this parameter is missing, then the mode is one-thread. If you add the     -th parameter, the number of threads equals to the number of processor cores. The parameter -th threads sets the number of threads explicitly.
+- `-VS` STRICT | LENIENT | SILENT
+    How strict to be when reading a SAM or BAM.
+     STRICT   - throw an exception if something looks wrong.
+     LENIENT  - Emit warnings but keep going if possible.
+     SILENT   - Like LENIENT, only don't emit warning messages.
+    Default: LENIENT
+
 ##Output columns
 
 1. Sample - sample name
