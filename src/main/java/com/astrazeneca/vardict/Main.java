@@ -415,7 +415,7 @@ public class Main {
                 .withDescription("The minimum matches for a read to be considered. If, after soft-clipping, the matched bp is less than INT, then the "
                         + "read is discarded. It's meant for PCR based targeted sequencing where there's no insert and the matching is only the primers.\n"
                         + "Default: 0, or no filtering")
-                .withType(String.class)
+                .withType(Number.class)
                 .isRequired(false)
                 .create('M'));
 
