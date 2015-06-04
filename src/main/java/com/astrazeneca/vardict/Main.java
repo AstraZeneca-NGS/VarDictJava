@@ -390,7 +390,7 @@ public class Main {
         options.addOption(OptionBuilder.withArgName("INT")
                 .hasArg(true)
                 .withDescription("The indel size.  Default: 120bp")
-                .withType(String.class)
+                .withType(Number.class)
                 .isRequired(false)
                 .create('I'));
 
