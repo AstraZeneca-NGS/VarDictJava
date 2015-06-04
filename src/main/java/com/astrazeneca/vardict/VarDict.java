@@ -1314,8 +1314,8 @@ public class VarDict {
         private SamReader reader;
         private int filter = 0;
 
-        public SamView(String file, String samfilter, Region region) {
-            reader = SamReaderFactory.makeDefault().open(new File(file));
+        public SamView(String file, String samfilter, Region region, ValidationStringency stringency) {
+            reader = SamReaderFactory.makeDefault().validationStringency(stringency).open(new File(file));
             iterator = reader.queryOverlapping(region.chr, region.start, region.end);
             if (!"".equals(samfilter)) {
                 filter = Integer.decode(samfilter);
@@ -1377,7 +1377,7 @@ public class VarDict {
 
         for (String bami : bams) {
             String samfilter = conf.samfilter == null || conf.samfilter.isEmpty() ? "" : conf.samfilter;
-            try (SamView reader =  new SamView(bami, samfilter, region)) {
+            try (SamView reader =  new SamView(bami, samfilter, region, conf.validationStringency)) {
                 //dup contains already seen reads. For each seen read dup contains either POS-RNEXT-PNEXT or POS-CIGAR (if next segment in template is unmapped).
                 Set<String> dup = new HashSet<>();
                 //position of first matching base (POS in SAM)
@@ -4727,7 +4727,7 @@ public class VarDict {
         String dlenqr = dlen + "D";
         Region region = new Region(chr, s, e, "");
         for (String bam : bams) {
-            try (SamView reader = new SamView(bam, "", region)) {
+            try (SamView reader = new SamView(bam, "", region, conf.validationStringency)) {
                 SAMRecord record;
                 while ((record = reader.read()) != null) {
                     if (record.getCigarString().contains(dlenqr)) {

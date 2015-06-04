@@ -1,5 +1,7 @@
 package com.astrazeneca.vardict;
 
+import htsjdk.samtools.ValidationStringency;
+
 import com.astrazeneca.vardict.VarDict.BedRowFormat;
 
 public class Configuration {
@@ -133,6 +135,8 @@ public class Configuration {
 
     int minmatch = 0; // -M The minimum matches for a read to be considered
     boolean outputSplicing = false; // -i Output splicing read counts
+
+    ValidationStringency validationStringency = ValidationStringency.LENIENT;
 
 
 

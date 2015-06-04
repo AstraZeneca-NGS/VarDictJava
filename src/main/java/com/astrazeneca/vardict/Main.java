@@ -1,6 +1,7 @@
 package com.astrazeneca.vardict;
 
 import static com.astrazeneca.vardict.VarDict.DEFAULT_BED_ROW_FORMAT;
+import htsjdk.samtools.ValidationStringency;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -122,6 +123,10 @@ public class Main {
 
         if (cmd.hasOption('M')) {
             conf.minmatch = ((Number)cmd.getParsedOptionValue("M")).intValue();
+        }
+
+        if (cmd.hasOption("VS")) {
+            conf.validationStringency = ValidationStringency.valueOf(cmd.getParsedOptionValue("VS").toString());
         }
 
         int threads = 1;
@@ -408,11 +413,22 @@ public class Main {
         options.addOption(OptionBuilder.withArgName("INT")
                 .hasArg(true)
                 .withDescription("The minimum matches for a read to be considered. If, after soft-clipping, the matched bp is less than INT, then the "
-                        + "read is discarded. It's meant for PCR based targeted sequencing where there's no insert and the matching is only the primers. "
+                        + "read is discarded. It's meant for PCR based targeted sequencing where there's no insert and the matching is only the primers.\n"
                         + "Default: 0, or no filtering")
                 .withType(String.class)
                 .isRequired(false)
                 .create('M'));
+
+        options.addOption(OptionBuilder.withArgName("STRICT | LENIENT | SILENT")
+                .hasArg(true)
+                .withDescription("How strict to be when reading a SAM or BAM.\n"
+                        + "STRICT\t- throw an exception if something looks wrong.\n"
+                        + "LENIENT\t- Emit warnings but keep going if possible.\n"
+                        + "SILENT\t- Like LENIENT, only don't emit warning messages.\n"
+                        + "Default: LENIENT")
+                .withType(String.class)
+                .isRequired(false)
+                .create("VS"));
 
         return options;
     }
