@@ -1,0 +1,9 @@
+Version 1.4
+	- Fixed error #15 and improved local realignment 
+
+Version 1.3
+
+	- Increased the size of the heap by default to 8g in start script
+	- Added last Zhongwu's improvements in variant amplicon
+	- Fixed a bug: Option 'I' had a wrong type
+	- Fixed issue #13: Added command-line option 'VS'
