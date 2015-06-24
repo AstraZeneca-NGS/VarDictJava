@@ -531,31 +531,31 @@ public class VarDict {
                             && isGoodVar(v1.var.get(n), v1.ref, varType(v1.var.get(n).refallele, v1.var.get(n).varallele), splice, conf)) {
                         final Variant vref = v1.var.get(n);
                         final String nt = vref.n;
-                        if (nt.length() > 1
-                                && vref.refallele.length() == vref.varallele.length()
-                                && (!isGoodVar(getVarMaybe(vars2, p, varn, nt), null, null, splice, conf))
-                                && !vref.genotype.contains("-")
-                                && !vref.genotype.contains("m")
-                                && !vref.genotype.contains("i")) {
-
-                            String fnt = substr(nt, 0, -1).replaceFirst("&$", "");
-                            String lnt = substr(nt, 1).replaceFirst("^&", "");
-                            if (lnt.length() > 1) {
-                                lnt = lnt.charAt(0) + "&" + lnt.substring(1);
-                            }
-                            Variant vf = getVarMaybe(v2, varn, fnt);
-                            Variant vl = getVarMaybe(vars2, p + nt.length() - 2, varn, lnt);
-                            if (vf != null && isGoodVar(vf, v2.ref, null, splice, conf)) {
-                                vref.sp += vref.refallele.length() - 1;
-                                vref.refallele = substr(vref.refallele, -1);
-                                vref.varallele = substr(vref.varallele, -1);
-                            } else if (vl != null && isGoodVar(vl, getVarMaybe(vars2, p + nt.length() - 2, VarsType.ref), null, splice, conf)) {
-                                vref.ep += vref.refallele.length() - 1;
-                                vref.refallele = substr(vref.refallele, 0, -1);
-                                vref.varallele = substr(vref.varallele, 0, -1);
-                            }
-
-                        }
+//                        if (nt.length() > 1
+//                                && vref.refallele.length() == vref.varallele.length()
+//                                && (!isGoodVar(getVarMaybe(vars2, p, varn, nt), null, null, splice, conf))
+//                                && !vref.genotype.contains("-")
+//                                && !vref.genotype.contains("m")
+//                                && !vref.genotype.contains("i")) {
+//
+//                            String fnt = substr(nt, 0, -1).replaceFirst("&$", "");
+//                            String lnt = substr(nt, 1).replaceFirst("^&", "");
+//                            if (lnt.length() > 1) {
+//                                lnt = lnt.charAt(0) + "&" + lnt.substring(1);
+//                            }
+//                            Variant vf = getVarMaybe(v2, varn, fnt);
+//                            Variant vl = getVarMaybe(vars2, p + nt.length() - 2, varn, lnt);
+//                            if (vf != null && isGoodVar(vf, v2.ref, null, splice, conf)) {
+//                                vref.sp += vref.refallele.length() - 1;
+//                                vref.refallele = substr(vref.refallele, -1);
+//                                vref.varallele = substr(vref.varallele, -1);
+//                            } else if (vl != null && isGoodVar(vl, getVarMaybe(vars2, p + nt.length() - 2, VarsType.ref), null, splice, conf)) {
+//                                vref.ep += vref.refallele.length() - 1;
+//                                vref.refallele = substr(vref.refallele, 0, -1);
+//                                vref.varallele = substr(vref.varallele, 0, -1);
+//                            }
+//
+//                        }
                         vartype = varType(vref.refallele, vref.varallele);
                         if (vartype.equals("Complex")) {
                             adjComplex(vref);
@@ -1748,7 +1748,7 @@ public class VarDict {
                                 4). CIGAR string has one more entry after next one
                                 5). this entry is insertion or deletion
                                  */
-                                if (cigar.numCigarElements() > ci + 2
+                                if (conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
                                         && cigar.getCigarElement(ci + 1).getLength() <= conf.vext
                                         && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
                                         && (cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.I
@@ -1774,8 +1774,6 @@ public class VarDict {
                                     multoffs += mLen + (indelOperator == CigarOperator.D ? indelLen : 0);
                                     multoffp += mLen + (indelOperator == CigarOperator.I ? indelLen : 0);
 
-                                    //skip 2 CIGAR segments
-                                    ci += 2;
                                     int ci6 = cigar.numCigarElements() > ci + 3 ? cigar.getCigarElement(ci + 3).getLength() : 0;
                                     if (ci6 != 0 && cigar.getCigarElement(ci + 3).getOperator()  == CigarOperator.M) {
                                         Tuple4<Integer, String, String, Integer> tpl = finndOffset(start + multoffs,
@@ -1784,13 +1782,15 @@ public class VarDict {
                                         ss = tpl._2;
                                         q.append(tpl._3);
                                     }
+                                    //skip 2 CIGAR segments
+                                    ci += 2;
                                 } else {
                                     /*
                                     Condition:
                                     1). CIGAR string has next entry
                                     2). next CIGAR segment is matched
                                      */
-                                    if (cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
+                                    if (conf.performLocalRealignment && cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
                                         int vsn = 0;
                                         //Loop over next CIGAR segment (no more than conf.vext bases ahead)
                                         for (int vi = 0; vsn <= conf.vext && vi < cigar.getCigarElement(ci + 1).getLength(); vi++) {
@@ -1914,8 +1914,8 @@ public class VarDict {
                                 p += m + offset + multoffp;
                                 //adjust reference position by offset + multoffs
                                 start += offset + multoffs;
-                            }
                                 continue;
+                            }
                             case D: { //deletion
                                 offset = 0;
                                 //description string of deleted segment
@@ -1942,7 +1942,7 @@ public class VarDict {
                                 4). CIGAR string has one more entry after next one
                                 5). this entry is insertion or deletion
                                  */
-                                if (cigar.numCigarElements() > ci + 2
+                                if (conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
                                         && cigar.getCigarElement(ci + 1).getLength() <= conf.vext
                                         && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
                                         && (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
@@ -1999,7 +1999,7 @@ public class VarDict {
                                     }
                                     // skip next 2 CIGAR segments
                                     ci += 2;
-                                } else if (cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I) {
+                                } else if (conf.performLocalRealignment && cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I) {
                                     /*
                                     Condition:
                                     1). CIGAR string has next entry
@@ -2055,7 +2055,7 @@ public class VarDict {
                                     1). CIGAR string has next entry
                                     2). next CIGAR segment is matched
                                      */
-                                    if (cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
+                                    if (conf.performLocalRealignment && cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
                                         int mLen = cigar.getCigarElement(ci + 1).getLength();
                                         int vsn = 0;
                                         //Loop over next CIGAR segment (no more than conf.vext bases ahead)
@@ -2271,7 +2271,7 @@ public class VarDict {
                             5). either multi-nucleotide mismatch is found or read base at $n does not match reference base
                             6). read base at $n has good quality
                              */
-                            if (m - i <= conf.vext
+                            if (conf.performLocalRealignment && m - i <= conf.vext
                                     && cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.D
                                     && ref.containsKey(start)
                                     && (ss.length() > 0 || isNotEquals(querySequence.charAt(n), ref.get(start)))
@@ -2451,7 +2451,7 @@ public class VarDict {
             realignlgins30(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
         }
 
-        adjMNP(hash, mnp, cov, conf);
+        adjMNP(hash, mnp, cov, ref, sclip3, sclip5, conf);
 
         return tuple(hash, iHash, cov, rlen);
     }
@@ -2547,6 +2547,10 @@ public class VarDict {
         for (Entry<Integer, Map<String, Variation>> entH : hash.entrySet()) {
             final int p = entH.getKey();
             Map<String, Variation> v = entH.getValue();
+
+            if(v.isEmpty()) {
+                continue;
+            }
 
             //Skip if position is outside region of interest
             if (p < region.start || p > region.end) {
@@ -3408,6 +3412,7 @@ public class VarDict {
                     adjCnt(vref, sc3v, conf);
                     adjCnt(vref, sc5v, conf);
                 }
+                break;
             }
 
         }
@@ -5042,11 +5047,14 @@ public class VarDict {
      * @param hash map of variants produced by parseSAM method
      * @param mnp map of MNP variants
      * @param cov coverage
+     * @param ref
+     * @param sclip5
+     * @param sclip3
      * @param conf configuration
      */
     static void adjMNP(Map<Integer, Map<String, Variation>> hash,
             Map<Integer, Map<String, Integer>> mnp,
-            Map<Integer, Integer> cov, Configuration conf) {
+            Map<Integer, Integer> cov, Map<Integer, Character> ref, Map<Integer, Sclip> sclip3, Map<Integer, Sclip> sclip5, Configuration conf) {
 
         for (Map.Entry<Integer, Map<String, Integer>> entry : mnp.entrySet()) {
             final Integer p = entry.getKey();
@@ -5093,9 +5101,53 @@ public class VarDict {
                     }
 
                 }
+                if (sclip3.containsKey(p)) {
+                    final Sclip sc3v = sclip3.get(p);
+                    if (!sc3v.used) {
+                        final String seq = findconseq(sc3v, conf.y);
+                        if (seq.startsWith(mnt)) {
+                            if(seq.length() == mnt.length() || ismatchref(seq.substring(mnt.length()), ref, p + mnt.length(), 1, conf.y)) {
+                                adjCnt(hash.get(p).get(vn), sc3v, conf);
+                                incCnt(cov, p, sc3v.cnt);
+                                sc3v.used = true;
+                            }
+                        }
+                    }
+                }
+                if (sclip5.containsKey(p + mnt.length())) {
+                    final Sclip sc5v = sclip5.get(p + mnt.length());
+                    if (!sc5v.used) {
+                        String seq =  findconseq(sc5v, conf.y);
+                        if (!seq.isEmpty() && seq.length() >= mnt.length()) {
+                            seq =  new StringBuffer(seq).reverse().toString();
+                            if (seq.endsWith(mnt)) {
+                                if (seq.length() == mnt.length() || ismatchref(seq.substring(0, seq.length() - mnt.length()), ref, p - 1, -1, conf.y)) {
+                                    adjCnt(hash.get(p).get(vn), sc5v, conf);
+                                    incCnt(cov, p, sc5v.cnt);
+                                    sc5v.used = true;
+                                }
+                            }
+                        }
+
+                    }
+                }
             }
         }
 
+    }
+
+    private static boolean ismatchref(String seq, Map<Integer, Character> ref, int p, int dir, boolean debugLog) {
+        if (debugLog) {
+            System.err.println(format("      Matching REF %s %s %s", seq, p, dir));
+        }
+        int mm = 0;
+        for (int n = 0; n < seq.length(); n++) {
+            final Character refCh = ref.get(p + dir * n);
+            if (refCh == null || charAt(seq, dir == 1 ? n : dir * n - 1) != refCh) {
+                mm++;
+            }
+        }
+        return mm <= 3 && mm / (double)seq.length() < 0.15;
     }
 
     /**

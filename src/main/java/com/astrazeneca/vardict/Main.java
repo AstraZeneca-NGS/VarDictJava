@@ -126,11 +126,17 @@ public class Main {
         }
 
         if (cmd.hasOption("VS")) {
-            conf.validationStringency = ValidationStringency.valueOf(cmd.getParsedOptionValue("VS").toString());
+            conf.validationStringency = ValidationStringency.valueOf(cmd.getParsedOptionValue("VS").toString().toUpperCase());
         }
 
-        int threads = 1;
+        conf.threads = Math.max(readThreadsCount(cmd), 1);
 
+        VarDict.start(conf);
+
+    }
+
+    private int readThreadsCount(CommandLine cmd) throws ParseException {
+        int threads = 0;
         if (cmd.hasOption("th")) {
             Object value = cmd.getParsedOptionValue("th");
             if (value == null) {
@@ -139,11 +145,7 @@ public class Main {
                 threads = ((Number)value).intValue();
             }
         }
-
-        conf.threads = Math.max(threads, 1);
-
-        VarDict.start(conf);
-
+        return threads;
     }
 
     private static int getIntValue(CommandLine cmd, String opt, int defaultValue) throws ParseException {
@@ -161,6 +163,7 @@ public class Main {
         return  value == null ? defaultValue : ((Number)value).intValue() - 1;
     }
 
+    @SuppressWarnings("static-access")
     private static Options buildOptions() {
         Options options = new Options();
         options.addOption("H", false, "Print this help page");
