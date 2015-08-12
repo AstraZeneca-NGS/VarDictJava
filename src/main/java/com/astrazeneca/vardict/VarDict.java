@@ -14,6 +14,7 @@ import htsjdk.samtools.reference.IndexedFastaSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequence;
 
 import java.io.*;
+import java.text.DecimalFormat;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.*;
@@ -1004,8 +1005,8 @@ public class VarDict {
                         format("%.1f", vref.nm),
                         vref.hicnt,
                         vref.hicov,
-                        vref.leftseq,
-                        vref.rightseq,
+                        vref.leftseq.isEmpty() ? "0" : vref.leftseq,
+                        vref.rightseq.isEmpty() ? "0" : vref.rightseq,
                         region.chr + ":" + region.start + "-" + region.end, vartype
                         ));
                 if (conf.debug) {
@@ -6251,6 +6252,11 @@ public class VarDict {
             default:
                 return false;
         }
+
+    }
+
+    public static void main(String[] args) {
+        System.err.println(new DecimalFormat("#.##").format(12.357));
     }
 
 }
