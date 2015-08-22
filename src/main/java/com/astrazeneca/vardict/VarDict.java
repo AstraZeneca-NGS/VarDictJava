@@ -960,7 +960,7 @@ public class VarDict {
                 Variant rref = getVarMaybe(vars, p, ref);
                 for (int i = 0; i < vvar.size(); i++) {
                     Variant vref = vvar.get(i);
-                    if (vref.refallele.contains("N")) {
+                    if (vref.refallele.contains("N") || vref.refallele.length() == 0) {
                         continue;
                     }
                     String vartype = varType(vref.refallele, vref.varallele);
