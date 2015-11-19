@@ -23,7 +23,7 @@ afterEvaluate {
 dependencies {
     compile 'commons-cli:commons-cli:1.2' 
     compile 'com.edropple.jregex:jregex:1.2_01'
-    compile('com.github.samtools:htsjdk:1.129') {
+    compile('com.github.samtools:htsjdk:1.140') {
         transitive = false
     }
     testCompile 'junit:junit:4.8.2' 
