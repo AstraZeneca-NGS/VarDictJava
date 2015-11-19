@@ -4824,7 +4824,9 @@ public class VarDict {
             }
             total += tt;
             match += max;
-            seq.append(mnt);
+            if (mnt != null) {
+                seq.append(mnt);
+            }
         }
 
         Integer ntSize = scv.nt.lastKey();
