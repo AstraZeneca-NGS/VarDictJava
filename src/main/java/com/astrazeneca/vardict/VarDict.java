@@ -5902,6 +5902,8 @@ public class VarDict {
     private static String varType(String ref, String var) {
         if (ref.length() == 1 && var.length() == 1) {
             return "SNV";
+        } else if (ref.length() == 0 || var.length() == 0) { //issue #19
+            return "Complex";
         } else if (ref.charAt(0) != var.charAt(0)) {
             return "Complex";
         } else if (ref.length() == 1 && var.length() > 1 && var.startsWith(ref)) {
