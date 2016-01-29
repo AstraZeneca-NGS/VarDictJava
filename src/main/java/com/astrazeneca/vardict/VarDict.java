@@ -4786,7 +4786,7 @@ public class VarDict {
 
     /**
      * Find the consensus sequence in soft-clipped reads. Consensus is called if
-     * the matched nucleotides are >90% of all softly clipped nucleotides.
+     * the matched nucleotides are &gt;90% of all softly clipped nucleotides.
      * @param scv soft-clipped sequences
      * @param debugLog print debug message if true
      * @return consensus sequence
@@ -5511,7 +5511,7 @@ public class VarDict {
      *            region
      * @param vars
      *            result of {@link #toVars} calling
-     * @param positions map of positon => (list of (region number, region))
+     * @param positions map of positon =&gt; (list of (region number, region))
      * @param sample sample name
      * @param splice set of strings representing spliced regions
      * @param conf configuration
@@ -5787,7 +5787,7 @@ public class VarDict {
     }
 
     /**
-     * VARN - array of variants, REF - reference variant, VAR - map of (variant description string => variant)
+     * VARN - array of variants, REF - reference variant, VAR - map of (variant description string =&gt; variant)
      */
     static enum VarsType {
         varn, ref, var,
@@ -5951,7 +5951,6 @@ public class VarDict {
      * @param querySeq Base sequence
      * @param queryQual
      * @param lowqual
-     * @param performLocalRealignment
      * @return Tuple of (adjusted position of first matched base, modified CIGAR string)
      */
     static Tuple2<Integer, String> modifyCigar(int indel, Map<Integer, Character> ref,

@@ -14,7 +14,7 @@ public class Variant {
      * 4). ... # sequence                  - for insertion/deletion variants followed by short matched sequence
      * 5). ... ^ sequence                  - followed by insertion
      * 6). ... ^ number                    - followed by deletion
-     * 7). ... & sequence                  - for insertion/deletion variants followed by matched sequence
+     * 7). ... &amp; sequence                  - for insertion/deletion variants followed by matched sequence
      */
     String n;
 
@@ -89,7 +89,7 @@ public class Variant {
     int shift3;
 
     /**
-     * msi. > 1 indicates Microsatellite instability
+     * msi. &gt; 1 indicates Microsatellite instability
      */
     double msi;
 
