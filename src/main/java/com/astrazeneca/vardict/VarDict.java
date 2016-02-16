@@ -103,7 +103,7 @@ public class VarDict {
         BedRowFormat format = conf.bedRowFormat;
         for (String seg : segraw) {
             String[] splitA = seg.split(conf.delimiter);
-            if (!conf.isColumnForChromosomeSet() && splitA.length == 4) {
+            if (!conf.isColumnForChromosomeSet() && splitA.length == 6) {
                 try {
                     int a1 = toInt(splitA[1]);
                     int a2 = toInt(splitA[2]);
@@ -5270,7 +5270,7 @@ public class VarDict {
     }
 
     public static final BedRowFormat DEFAULT_BED_ROW_FORMAT = new BedRowFormat(2, 6, 7, 9, 10, 12);
-    private static final BedRowFormat CUSTOM_BED_ROW_FORMAT = new BedRowFormat(0, 1, 2, 3, 1, 2);
+    private static final BedRowFormat CUSTOM_BED_ROW_FORMAT = new BedRowFormat(0, 1, 2, 1, 2, 3);
 
     static class BedRowFormat {
         public final int chrColumn;
