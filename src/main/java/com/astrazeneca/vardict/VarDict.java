@@ -5977,19 +5977,20 @@ public class VarDict {
          * flag is set to true if CIGAR string is modified and should be looked at again
          */
         boolean flag = true;
-        // if CIGAR starts with deletion cut off it
+        // if CIGAR starts with deletion cut it off
         jregex.Matcher mm = BEGIN_NUMBER_D.matcher(cigarStr);
         if ( mm.find()) {
             position += toInt(mm.group(1));
             Replacer r = BEGIN_NUMBER_D.replacer("");
             cigarStr = r.replace(cigarStr);
         }
-        mm  =  BEGIN_NUMBER_I.matcher();
+        // replace insertion at the beggining and end with soft clipping
+        mm  =  BEGIN_NUMBER_I.matcher(cigarStr);
         if (mm.find()) {
         Replacer r = BEGIN_NUMBER_I.replacer(toInt(mm.group(1))+ "S");
             cigarStr = r.replace(cigarStr);
         }
-        mm  =  END_NUMBER_I.matcher();
+        mm  =  END_NUMBER_I.matcher(cigarStr);
         if (mm.find()) {
             Replacer r = END_NUMBER_I.replacer(toInt(mm.group(1))+ "S");
             cigarStr = r.replace(cigarStr);
