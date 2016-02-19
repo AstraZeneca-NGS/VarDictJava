@@ -1,17 +1,12 @@
 package com.astrazeneca.vardict;
 
-import static com.astrazeneca.vardict.Tuple.tuple;
-import static com.astrazeneca.vardict.Utils.*;
-import static com.astrazeneca.vardict.VarDict.VarsType.ref;
-import static com.astrazeneca.vardict.VarDict.VarsType.var;
-import static com.astrazeneca.vardict.VarDict.VarsType.varn;
-import static java.lang.Math.abs;
-import static java.lang.String.format;
-import static java.util.Collections.singletonList;
-import static java.util.Collections.singletonMap;
+import com.astrazeneca.vardict.Tuple.Tuple2;
+import com.astrazeneca.vardict.Tuple.Tuple3;
+import com.astrazeneca.vardict.Tuple.Tuple4;
 import htsjdk.samtools.*;
 import htsjdk.samtools.reference.IndexedFastaSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequence;
+import jregex.Replacer;
 
 import java.io.*;
 import java.text.DecimalFormat;
@@ -21,11 +16,13 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import jregex.Replacer;
-
-import com.astrazeneca.vardict.Tuple.Tuple2;
-import com.astrazeneca.vardict.Tuple.Tuple3;
-import com.astrazeneca.vardict.Tuple.Tuple4;
+import static com.astrazeneca.vardict.Tuple.tuple;
+import static com.astrazeneca.vardict.Utils.*;
+import static com.astrazeneca.vardict.VarDict.VarsType.*;
+import static java.lang.Math.abs;
+import static java.lang.String.format;
+import static java.util.Collections.singletonList;
+import static java.util.Collections.singletonMap;
 
 public class VarDict {
 
@@ -605,15 +602,17 @@ public class VarDict {
                             String type = "StrongSomatic";
                             v2nt = new Variant();
                             v2.varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
-                            Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, segs.chr, p, nt, chrs, sample, splice, ampliconBasedCalling, rlen, conf);
-                            rlen = tpl._1;
-                            String newtype = tpl._2;
-                            if ("FALSE".equals(newtype)) {
-                                n++;
-                                continue;
-                            }
-                            if (newtype.length() > 0) {
-                                type = newtype;
+                            if (vref.cov < conf.minr + 3) {
+                                Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, segs.chr, p, nt, chrs, sample, splice, ampliconBasedCalling, rlen, conf);
+                                rlen = tpl._1;
+                                String newtype = tpl._2;
+                                if ("FALSE".equals(newtype)) {
+                                    n++;
+                                    continue;
+                                }
+                                if (newtype.length() > 0) {
+                                    type = newtype;
+                                }
                             }
                             if (type.equals("StrongSomatic")) {
                                 String tvf;
@@ -757,11 +756,14 @@ public class VarDict {
                         v1.varn.put(nt, v1nt);
                     }
                     v1nt.cov = 0;
-                    Tuple2<Integer, String> tpl = combineAnalysis(v2.varn.get(nt), v1nt, segs.chr, p, nt, chrs, sample, splice, ampliconBasedCalling, rlen, conf);
-                    rlen = tpl._1;
-                    String newtype = tpl._2;
-                    if ("FALSE".equals(newtype)) {
-                        continue;
+                    String newtype = "";
+                    if (v2.varn.get(nt).cov < conf.minr + 3) {
+                        Tuple2<Integer, String> tpl = combineAnalysis(v2.varn.get(nt), v1nt, segs.chr, p, nt, chrs, sample, splice, ampliconBasedCalling, rlen, conf);
+                        rlen = tpl._1;
+                        newtype = tpl._2;
+                        if ("FALSE".equals(newtype)) {
+                            continue;
+                        }
                     }
                     String th1;
                     if (newtype.length() > 0) {
@@ -1307,6 +1309,18 @@ public class VarDict {
      * ^(.*?) captures everything before M-S complex
      */
     private static final Pattern ANY_NUMBER_M_NUMBER_S_END = Pattern.compile("^(.*?)(\\d+)M(\\d+)S$");
+    /**
+     * Regexp finds number followed by D at the start of string
+     */
+    private static final jregex.Pattern BEGIN_NUMBER_D = new jregex.Pattern("^(\\d+)D");
+    /**
+     * Regexp finds number followed by I at the start of string
+     */
+    private static final jregex.Pattern BEGIN_NUMBER_I = new jregex.Pattern("^(\\d+)I");
+    /**
+     * Regexp finds number followed by I at the end of string
+     */
+    private static final jregex.Pattern END_NUMBER_I = new jregex.Pattern("(\\d+)I$");
     private static final Pattern START_DIG = Pattern.compile("^-(\\d+)");
 
     private static class SamView implements AutoCloseable {
@@ -5963,9 +5977,26 @@ public class VarDict {
          * flag is set to true if CIGAR string is modified and should be looked at again
          */
         boolean flag = true;
+        // if CIGAR starts with deletion cut off it
+        jregex.Matcher mm = BEGIN_NUMBER_D.matcher(cigarStr);
+        if ( mm.find()) {
+            position += toInt(mm.group(1));
+            Replacer r = BEGIN_NUMBER_D.replacer("");
+            cigarStr = r.replace(cigarStr);
+        }
+        mm  =  BEGIN_NUMBER_I.matcher();
+        if (mm.find()) {
+        Replacer r = BEGIN_NUMBER_I.replacer(toInt(mm.group(1))+ "S");
+            cigarStr = r.replace(cigarStr);
+        }
+        mm  =  END_NUMBER_I.matcher();
+        if (mm.find()) {
+            Replacer r = END_NUMBER_I.replacer(toInt(mm.group(1))+ "S");
+            cigarStr = r.replace(cigarStr);
+        }
         while (flag && indel > 0) {
             flag = false;
-            jregex.Matcher mm = BEGIN_NUMBER_S_NUMBER_IorD.matcher(cigarStr);
+            mm = BEGIN_NUMBER_S_NUMBER_IorD.matcher(cigarStr);
             if (mm.find()) { // If CIGAR starts with soft-clipping followed by insertion or deletion
                 /*
                 If insertion follows soft-clipping, add the inserted sequence to soft-clipped start
