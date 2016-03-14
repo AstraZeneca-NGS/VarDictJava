@@ -5438,7 +5438,7 @@ public class VarDict {
     private static void ampVardictParallel(final List<List<Region>> segs, final Map<String, Integer> chrs, final String ampliconBasedCalling,
             final String bam1, final String sample, final Configuration conf) throws IOException {
 
-        final ExecutorService executor = new ForkJoinPool(); //Executors.newFixedThreadPool(conf.threads);
+        final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(21);
 
         executor.submit(new Runnable() {
