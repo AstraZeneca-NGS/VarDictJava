@@ -5682,6 +5682,7 @@ public class VarDict {
             if (flag && gvscnt < gvs.size()) {
                 flag = false;
             }
+            vartype = varType(vref.refallele, vref.varallele);
             if (vartype.equals("Complex")) {
                 adjComplex(vref);
             }
