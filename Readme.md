@@ -7,7 +7,13 @@ The original Perl VarDict is a sensitive variant caller for both single and pair
 sequencing experiments, rescue of long indels by realigning bwa soft clipped reads and better scalability
 than Java based variant callers.
 
-Original code by Zhongwu Lai 2014.
+Please cite VarDict:
+
+Lai Z, Markovets A, Ahdesmaki M, Chapman B, Hofmann O, McEwen R, Johnson J, Dougherty B, Barrett JC, and Dry JR.  VarDict: a novel and versatile variant caller for next-generation sequencing in cancer research. Nucleic Acids Res. 2016, pii: gkw227.
+
+The link to is article can be accessed through: http://nar.oxfordjournals.org/cgi/content/full/gkw227?ijkey=Tk8eKQcYwNlQRNU&keytype=ref
+
+Original coded by Zhongwu Lai 2014.
 
 VarDictJava can run in single sample (see Single sample mode section), paired sample (see Paired variant calling section), or amplicon bias aware modes. As input, VarDictJava takes reference genomes in FASTA format, aligned reads in BAM format, and target regions in BED format.
 
