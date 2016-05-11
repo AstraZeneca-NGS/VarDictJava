@@ -6207,7 +6207,7 @@ public class VarDict {
                     cigarStr = D_M_D_S_END.matcher(cigarStr).replaceFirst(mch + "M");
                 }
             }
-            if (rn == 0) {
+            else if (rn == 0) {
                 while (rn < mch && isHasAndNotEquals(ref, refoff - rn - 1, querySeq, rdoff - rn - 1)) {
                     rn++;
                 }
