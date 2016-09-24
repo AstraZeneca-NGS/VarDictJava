@@ -565,7 +565,11 @@ public class VarDict {
                                 if (vref.freq > (1 - conf.lofreq) && v2nt.freq < 0.8d && v2nt.freq > 0.2d) {
                                     type = "LikelyLOH";
                                 } else {
-                                    type = "Germline";
+				    if (v2nt.freq < conf.lofreq || v2nt.cov <= 1) {
+					type = "LikelySomatic";
+				    } else {
+					type = "Germline";
+				    }
                                 }
                             } else {
                                 if (v2nt.freq < conf.lofreq || v2nt.cov <= 1) {
@@ -1286,8 +1290,8 @@ public class VarDict {
      * Regexp finds number-M-number-D-digit-M-number-I-digit-M-number-D.
      * ^(.*?) captures everything before the M-D-M-I-M-D complex
      */
-    private static final jregex.Pattern D_M_D_DD_M_D_I_D_M_D_DD = new jregex.Pattern("^(.*?)(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
-    private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD_prim = Pattern.compile("(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D");
+    private static final jregex.Pattern D_M_D_DD_M_D_I_D_M_D_DD = new jregex.Pattern("^(.*?)(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D(\\d+)M");
+    private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD_prim = Pattern.compile("(\\d+)M(\\d+)D(\\d)M(\\d+)I(\\d)M(\\d+)D(\\d+)M");
     /**
      * Regexp finds number-D-digit-M-number-D and optionally number-I
      */
@@ -1457,9 +1461,9 @@ public class VarDict {
                         }
                     } else { //Skip the read if number of mismatches is not available
                         if (conf.y && !record.getCigarString().equals("*")) {
-                            System.err.println("No XM tag for mismatches. " + record.getSAMString());
+                            System.err.println("No NM tag for mismatches. " + record.getSAMString());
                         }
-                        continue;
+                        //continue;
                     }
 
 
@@ -2445,7 +2449,7 @@ public class VarDict {
             for (Entry<String, int[]> entry : spliceCnt.entrySet()) {
                 System.out.printf("%s\t%s\t%s\t%s\n", sample, region.chr, entry.getKey(), entry.getValue()[0]);
             }
-            System.exit(0);
+            return null;
         }
 
         if (conf.performLocalRealignment) {
@@ -6098,6 +6102,7 @@ public class VarDict {
                     int refoff = position + rdoff;
                     //offset of first deletion in the read corrected by possibly matching bases
                     int RDOFF = rdoff;
+		    int rm = toInt(mm.group(8));
                     if (!ov5.isEmpty()) { //If the complex is not at start of CIGAR string
                         rdoff += sum(globalFind(SOFT_CLIPPED, ov5)); // read position
                         refoff += sum(globalFind(ALIGNED_LENGTH, ov5)); // reference position
@@ -6111,8 +6116,16 @@ public class VarDict {
                     RDOFF += rn;
                     dlen -= rn;
                     tslen -= rn;
+		    String newCigarStr = RDOFF + "M";
+		    if ( tslen <= 0 ) {
+		        dlen -= tslen;
+			rm += tslen;
+			newCigarStr += dlen + "D" + rm + "M";
+		    } else {
+		        newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
+		    }
                     //If length of internal matched sequences is no more than 10, replace M-D-M-I-M-D complex with M-D-I
-                    cigarStr = D_M_D_DD_M_D_I_D_M_D_DD_prim.matcher(cigarStr).replaceFirst(RDOFF + "M" + dlen + "D" + tslen + "I");
+                    cigarStr = D_M_D_DD_M_D_I_D_M_D_DD_prim.matcher(cigarStr).replaceFirst(newCigarStr);
                     flag = true;
                 }
             }
