@@ -5,7 +5,7 @@ VarDictJava is a variant discovery program written in Java and Perl. It is a par
 
 The original Perl VarDict is a sensitive variant caller for both single and paired sample variant calling from BAM files. VarDict implements several novel features such as amplicon bias aware variant calling from targeted
 sequencing experiments, rescue of long indels by realigning bwa soft clipped reads and better scalability
-than Java based variant callers.
+than many other Java based variant callers. The Java port is around 10x faster than the original Perl implementation.
 
 Please cite VarDict:
 
@@ -33,7 +33,7 @@ To load the project, execute the following command:
 git clone --recursive https://github.com/AstraZeneca-NGS/VarDictJava.git
 ```
 
-Note that original VardDict project is placed in this repository as submodule and it's contents can be found in sub-directory VarDict in VarDictJava working folder. So when you use `teststrandbias.R` and `var2vcf_valid.pl.` (see details and examples below), you have to add prefix VarDict: `VarDict/teststrandbias.R` and `VarDict/var2vcf_valid.pl.`
+Note that the original VardDict project is placed in this repository as a submodule and its contents can be found in the sub-directory VarDict in VarDictJava working folder. So when you use `teststrandbias.R` and `var2vcf_valid.pl.` (see details and examples below), you have to add prefix VarDict: `VarDict/teststrandbias.R` and `VarDict/var2vcf_valid.pl.`
 
 ###Compiling
 The project uses [Gradle](http://gradle.org/) and already includes a gradlew script.
@@ -72,14 +72,14 @@ In single sample mode, output columns contain a description and statistical info
 
 ###Paired variant calling
 
-To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 (see the Program Workflow section) using `testsomatic.R` and `var2vcf_somatic.pl`.
+To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 (see the Program Workflow section) using `testsomatic.R` and `var2vcf_paired.pl`.
 
 In this mode, the number of statistics columns in the output is doubled: one set of columns is for the first sample, the other - for second sample.
 
 The following is an example command to run in paired mode:
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/testsomatic.R | VarDict/var2vcf_somatic.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/testsomatic.R | VarDict/var2vcf_paired.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
 
 ##Program Workflow
@@ -96,12 +96,12 @@ The VarDictJava program follows the workflow:
 	c. Calculate statistics for the variant, filter out some bad ones, if any.
 	d. Assign a type to each variant.
 	e. Output variants in an intermediate internal format (tabular). Columns of the table are described in the Output Columns section.     
-          **Note**: To perform Steps 1 and 2, use the Java program VarDict.
+          **Note**: To perform Steps 1 and 2, use Java VarDict.
 
 3.	Perform a statistical test for strand bias using an R script.  
     **Note**: Use R script for this step.
 4.	Transform the intermediate tabular format to VCF. Output the variants with filtering and statistical data.  
-     **Note**: Use the Perl scripts `var2vcf_valid.pl` or `var2vcf_somatic.pl` for this step.
+     **Note**: Use the Perl scripts `var2vcf_valid.pl` or `var2vcf_paired.pl` for this step.
 
 
 
