@@ -1479,7 +1479,9 @@ public class VarDict {
                         if (conf.y && !record.getCigarString().equals("*")) {
                             System.err.println("No NM tag for mismatches. " + record.getSAMString());
                         }
-                        //continue;
+                        if (record.getReadUnmappedFlag() || record.getCigarString().equals(SAMRecord.NO_ALIGNMENT_CIGAR)) {
+                            continue;
+                        }
                     }
 
 
