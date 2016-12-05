@@ -31,6 +31,22 @@ public class VarDict {
     final static Pattern SN = Pattern.compile("\\s+SN:(\\S+)");
     final static Pattern LN = Pattern.compile("\\sLN:(\\d+)");
 
+    private static ThreadLocal<Map<String, SamReader>> threadReaders = new ThreadLocal<Map<String, SamReader>>() {
+        @Override
+        protected Map<String, SamReader> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    synchronized private static SamReader grabReader(String file, ValidationStringency stringency) {
+        final Map<String, SamReader> fileReaders = threadReaders.get();
+        if (!fileReaders.containsKey(file)) {
+            SamReader reader = SamReaderFactory.makeDefault().validationStringency(stringency).open(SamInputResource.of(file));
+            fileReaders.put(file, reader);
+        }
+        return fileReaders.get(file);
+    }
+
     public static void start(Configuration conf) throws IOException {
         if (conf.printHeader) {
             System.out.println(join("\t",
@@ -1327,19 +1343,19 @@ public class VarDict {
     private static final jregex.Pattern END_NUMBER_I = new jregex.Pattern("(\\d+)I$");
     private static final Pattern START_DIG = Pattern.compile("^-(\\d+)");
 
+    //To avoid performance issues only one SameView object on the same file can be opened per thread
     private static class SamView implements AutoCloseable {
 
         private SAMRecordIterator iterator;
-        private SamReader reader;
         private int filter = 0;
 
         public SamView(String file, String samfilter, Region region, ValidationStringency stringency) {
-            reader = SamReaderFactory.makeDefault().validationStringency(stringency).open(new File(file));
-            iterator = reader.queryOverlapping(region.chr, region.start, region.end);
+
+            iterator = grabReader(file, stringency)
+                    .queryOverlapping(region.chr, region.start, region.end);
             if (!"".equals(samfilter)) {
                 filter = Integer.decode(samfilter);
             }
-
         }
 
         public SAMRecord read() throws IOException {
@@ -1356,7 +1372,7 @@ public class VarDict {
 
         @Override
         public void close() throws IOException {
-            reader.close();
+            iterator.close();
         }
     }
 
