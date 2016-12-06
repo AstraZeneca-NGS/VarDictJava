@@ -1,7 +1,7 @@
 apply plugin: 'java'
 apply plugin:'application'
 
-version = '1.4.6'
+version = '1.4.7'
 
 
 repositories { 
