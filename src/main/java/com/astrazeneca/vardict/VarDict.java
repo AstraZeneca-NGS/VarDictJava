@@ -47,6 +47,27 @@ public class VarDict {
         return fileReaders.get(file);
     }
 
+    private static ThreadLocal<Map<String, IndexedFastaSequenceFile>> threaFasta = new ThreadLocal<Map<String, IndexedFastaSequenceFile>>() {
+        @Override
+        protected Map<String, IndexedFastaSequenceFile> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    synchronized private static IndexedFastaSequenceFile grabFasta(String file) {
+        final Map<String, IndexedFastaSequenceFile> fileReaders = threaFasta.get();
+        if (!fileReaders.containsKey(file)) {
+            IndexedFastaSequenceFile fasta = null;
+            try {
+                fasta = new IndexedFastaSequenceFile(new File((file)));
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
+            fileReaders.put(file, fasta);
+        }
+        return fileReaders.get(file);
+    }
+
     public static void start(Configuration conf) throws IOException {
         if (conf.printHeader) {
             System.out.println(join("\t",
@@ -1040,11 +1061,10 @@ public class VarDict {
     }
 
     private static String[] retriveSubSeq(String fasta, String chr, int start, int end) throws IOException {
-        try (IndexedFastaSequenceFile idx = new IndexedFastaSequenceFile(new File(fasta))) {
-            ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
-            byte[] bases = seq.getBases();
-            return new String[] { ">" + chr + ":" + start + "-" + end, bases != null ? new String(bases) : "" };
-        }
+        IndexedFastaSequenceFile idx = grabFasta(fasta);
+        ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
+        byte[] bases = seq.getBases();
+        return new String[] { ">" + chr + ":" + start + "-" + end, bases != null ? new String(bases) : "" };
     }
 
     private static final jregex.Pattern SOFT_CLIPPED = new jregex.Pattern("(\\d+)[MIS]");
