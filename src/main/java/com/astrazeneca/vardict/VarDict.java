@@ -57,13 +57,12 @@ public class VarDict {
     synchronized private static IndexedFastaSequenceFile grabFasta(String file) {
         final Map<String, IndexedFastaSequenceFile> fileReaders = threaFasta.get();
         if (!fileReaders.containsKey(file)) {
-            IndexedFastaSequenceFile fasta = null;
             try {
-                fasta = new IndexedFastaSequenceFile(new File((file)));
+                IndexedFastaSequenceFile fasta = new IndexedFastaSequenceFile(new File((file)));
+                fileReaders.put(file, fasta);
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
             }
-            fileReaders.put(file, fasta);
         }
         return fileReaders.get(file);
     }
