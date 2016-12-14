@@ -18,7 +18,7 @@ Original coded by Zhongwu Lai 2014.
 VarDictJava can run in single sample (see Single sample mode section), paired sample (see Paired variant calling section), or amplicon bias aware modes. As input, VarDictJava takes reference genomes in FASTA format, aligned reads in BAM format, and target regions in BED format.
 
 ##Requirements
-1. JDK 1.7 or later
+1. JDK 1.8 or later
 2. R language (uses /usr/bin/env R)
 3. Perl (uses /usr/bin/env perl)
 4. Internet connection to download dependencies using gradle.
