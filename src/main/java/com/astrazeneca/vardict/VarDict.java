@@ -31,40 +31,28 @@ public class VarDict {
     final static Pattern SN = Pattern.compile("\\s+SN:(\\S+)");
     final static Pattern LN = Pattern.compile("\\sLN:(\\d+)");
 
-    private static ThreadLocal<Map<String, SamReader>> threadReaders = new ThreadLocal<Map<String, SamReader>>() {
-        @Override
-        protected Map<String, SamReader> initialValue() {
-            return new HashMap<>();
-        }
-    };
+    private static ThreadLocal<Map<String, SamReader>> threadLocalSAMReaders = ThreadLocal.withInitial(HashMap::new);
 
-    synchronized private static SamReader grabReader(String file, ValidationStringency stringency) {
-        final Map<String, SamReader> fileReaders = threadReaders.get();
-        if (!fileReaders.containsKey(file)) {
-            SamReader reader = SamReaderFactory.makeDefault().validationStringency(stringency).open(SamInputResource.of(file));
-            fileReaders.put(file, reader);
-        }
-        return fileReaders.get(file);
+    synchronized private static SamReader fetchReader(String file, ValidationStringency stringency) {
+        return threadLocalSAMReaders.get().computeIfAbsent(
+                file,
+                (f) -> SamReaderFactory.makeDefault().validationStringency(stringency).open(SamInputResource.of(f))
+        );
     }
 
-    private static ThreadLocal<Map<String, IndexedFastaSequenceFile>> threaFasta = new ThreadLocal<Map<String, IndexedFastaSequenceFile>>() {
-        @Override
-        protected Map<String, IndexedFastaSequenceFile> initialValue() {
-            return new HashMap<>();
-        }
-    };
+    private static ThreadLocal<Map<String, IndexedFastaSequenceFile>> threadLocalFastaFiles = ThreadLocal.withInitial(HashMap::new);
 
-    synchronized private static IndexedFastaSequenceFile grabFasta(String file) {
-        final Map<String, IndexedFastaSequenceFile> fileReaders = threaFasta.get();
-        if (!fileReaders.containsKey(file)) {
-            try {
-                IndexedFastaSequenceFile fasta = new IndexedFastaSequenceFile(new File((file)));
-                fileReaders.put(file, fasta);
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
-            }
-        }
-        return fileReaders.get(file);
+    synchronized private static IndexedFastaSequenceFile fetchFasta(String file) {
+        return threadLocalFastaFiles.get().computeIfAbsent(
+                file,
+                (f) -> {
+                    try {
+                        return new IndexedFastaSequenceFile(new File((f)));
+                    } catch (FileNotFoundException e) {
+                        throw new IllegalArgumentException("Couldn't open reference file: " + f, e);
+                    }
+                }
+        );
     }
 
     public static void start(Configuration conf) throws IOException {
@@ -1060,7 +1048,7 @@ public class VarDict {
     }
 
     private static String[] retriveSubSeq(String fasta, String chr, int start, int end) throws IOException {
-        IndexedFastaSequenceFile idx = grabFasta(fasta);
+        IndexedFastaSequenceFile idx = fetchFasta(fasta);
         ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
         byte[] bases = seq.getBases();
         return new String[] { ">" + chr + ":" + start + "-" + end, bases != null ? new String(bases) : "" };
@@ -1370,7 +1358,7 @@ public class VarDict {
 
         public SamView(String file, String samfilter, Region region, ValidationStringency stringency) {
 
-            iterator = grabReader(file, stringency)
+            iterator = fetchReader(file, stringency)
                     .queryOverlapping(region.chr, region.start, region.end);
             if (!"".equals(samfilter)) {
                 filter = Integer.decode(samfilter);

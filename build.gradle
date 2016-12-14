@@ -1,15 +1,15 @@
 apply plugin: 'java'
 apply plugin:'application'
 
-version = '1.4.7'
+version = '1.4.8'
 
 
 repositories { 
     mavenCentral() 
 }
 
-targetCompatibility = "1.7"
-sourceCompatibility = "1.7"
+targetCompatibility = "1.8"
+sourceCompatibility = "1.8"
 
 
 afterEvaluate {
