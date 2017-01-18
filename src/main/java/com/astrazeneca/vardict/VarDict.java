@@ -1596,6 +1596,10 @@ public class VarDict {
                         rlen = rlen2;
                     }
 
+                    int mateAlignmentStart = record.getMateAlignmentStart();
+                    boolean readsOverlap = isReadsOverlap(record);
+
+                    processReadCigar:
                     //Loop over CIGAR records
                     for (int ci = 0; ci < cigar.numCigarElements(); ci++) {
 
@@ -2208,13 +2212,14 @@ public class VarDict {
                                 //adjust read position by m (CIGAR segment length) + offset + multoffp
                                 n += offset + multoffp;
                                 p += offset + multoffp;
+
+                                if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                                 continue;
                             }
                             default:
                                 break;
                         }
                         //End branch on CIGAR segment type
-
                         // Now dealing with matching part
                         int nmoff = 0;
                         int moffset = 0;
@@ -2243,6 +2248,7 @@ public class VarDict {
                                 start++;
                                 n++;
                                 p++;
+                                if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                                 continue;
                             }
 
@@ -2295,6 +2301,7 @@ public class VarDict {
                                     //shift reference position by 1
                                     start++;
                                     nmoff++;
+                                    if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                                 } else { //if bases match, exit loop
                                     break;
                                 }
@@ -2334,6 +2341,7 @@ public class VarDict {
                                     n++;
                                     p++;
                                     start++;
+                                    if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                                 }
 
                                 //remove '&' delimiter from s
@@ -2444,11 +2452,13 @@ public class VarDict {
                             //If variation starts with a deletion ('-' character)
                             if (startWithDelition) {
                                 start += ddlen;
+                                if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                             }
 
                             //Shift reference position by 1 if CIGAR segment is not insertion
                             if (operator != CigarOperator.I) {
                                 start++;
+                                if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                             }
                             //Shift read position by 1 if CIGAR segment is not deletion
                             if (operator != CigarOperator.D) {
@@ -2461,6 +2471,7 @@ public class VarDict {
                             n += moffset;
                             start += moffset;
                             p += moffset;
+                            if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                         }
                         if (start > region.end) { //end if reference position is outside region of interest
                             break;
@@ -2498,6 +2509,17 @@ public class VarDict {
         adjMNP(hash, mnp, cov, ref, sclip3, sclip5, conf);
 
         return tuple(hash, iHash, cov, rlen);
+    }
+
+    private static boolean isPositionOverlapMate(int start, int mateAlignmentStart, boolean readsOverlap) {
+        return readsOverlap && start >= mateAlignmentStart;
+    }
+
+    private static boolean isReadsOverlap(SAMRecord record) {
+        return !record.getReadNegativeStrandFlag()
+                && record.getMateNegativeStrandFlag()
+                && record.getMateReferenceName().equals(record.getReferenceName())
+                && record.getMateAlignmentStart() <= record.getAlignmentEnd();
     }
 
     private static CigarOperator getCigarOperator(Cigar cigar, int ci) {
