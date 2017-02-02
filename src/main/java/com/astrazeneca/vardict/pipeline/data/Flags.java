@@ -1,4 +1,4 @@
-package com.astrazeneca.vardict;
+package com.astrazeneca.vardict.pipeline.data;
 
 /**
  * Class for holding bitwise flag in SAM/BAM record

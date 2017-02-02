@@ -18,7 +18,7 @@ Original coded by Zhongwu Lai 2014.
 VarDictJava can run in single sample (see Single sample mode section), paired sample (see Paired variant calling section), or amplicon bias aware modes. As input, VarDictJava takes reference genomes in FASTA format, aligned reads in BAM format, and target regions in BED format.
 
 ##Requirements
-1. JDK 1.7 or later
+1. JDK 1.8 or later
 2. R language (uses /usr/bin/env R)
 3. Perl (uses /usr/bin/env perl)
 4. Internet connection to download dependencies using gradle.
@@ -49,7 +49,6 @@ To generate Javadoc, in the build/docs/javadoc folder, run the following command
 ```
 ./gradlew clean javadoc
 ```
-
 
 ###Single sample mode
 
@@ -103,7 +102,11 @@ The VarDictJava program follows the workflow:
 4.	Transform the intermediate tabular format to VCF. Output the variants with filtering and statistical data.  
      **Note**: Use the Perl scripts `var2vcf_valid.pl` or `var2vcf_paired.pl` for this step.
 
+###BAM caching
 
+For enabling bam caching feature append the VARDICT_OPT parameter with:
+-Dsamjdk.bam_caching=true
+-Dsamjdk.cache_size=[value] (default value = 128, measured in MB).
 
 ##Program Options
 
@@ -220,6 +223,7 @@ The VarDictJava program follows the workflow:
 18. PStd - flag for read position standard deviation
 19. QMean - mean base quality
 20. QStd - flag for base quality standard deviation
+21. Mapq - Mean mapping quality
 23. QRATIO - ratio of high quality reads to low-quality reads
 24. HIFREQ - variant frequency for high-quality reads
 25. EXTRAFR - Adjusted AF for indels due to local realignment

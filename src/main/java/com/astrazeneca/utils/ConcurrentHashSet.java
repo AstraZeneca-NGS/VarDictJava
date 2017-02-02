@@ -1,4 +1,4 @@
-package com.astrazeneca.vardict;
+package com.astrazeneca.utils;
 
 import java.util.Collection;
 import java.util.Iterator;

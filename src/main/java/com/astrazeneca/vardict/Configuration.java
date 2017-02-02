@@ -2,148 +2,184 @@ package com.astrazeneca.vardict;
 
 import htsjdk.samtools.ValidationStringency;
 
-import com.astrazeneca.vardict.VarDict.BedRowFormat;
+import com.astrazeneca.vardict.RegionBuilder.BedRowFormat;
 
 public class Configuration {
     /**
      * Print a header row decribing columns
      */
-    boolean printHeader; //-h
+    public boolean printHeader; //-h
+
     /**
      * The delimiter for split region_info
      */
-    String delimiter; // -d
-    String bed;
+    public String delimiter; // -d
+
+    public String bed;
+
     /**
      * The number of nucleotide to extend for each segment
      */
-    int numberNucleotideToExtend; // -x
+    public int numberNucleotideToExtend; // -x
+
     /**
      * Indicate wehther is zero-based cooridates, as IGV does
      * When use -R option, it's set to false
      */
-    Boolean zeroBased; // -z,  default true if set -R
+    public Boolean zeroBased; // -z,  default true if set -R
+
     /**
      * Indicate it's amplicon based calling.  Reads don't map to the amplicon will be skipped.  A read pair is considered belonging
      * the amplicon if the edges are less than int bp to the amplicon, and overlap fraction is at least float.  Default: 10:0.95
      */
-    String ampliconBasedCalling; //-a
-    int columnForChromosome = -1;
-    BedRowFormat bedRowFormat;
+    public String ampliconBasedCalling; //-a
+
+    public int columnForChromosome = -1;
+
+    public BedRowFormat bedRowFormat;
+
     /**
      * The regular expression to extract sample name from bam filenames.
      */
-    String sampleNameRegexp; // -n
+    public String sampleNameRegexp; // -descriptionString
+
     /**
      * The sample name to be used directly
      */
-    String sampleName; //-N
+    public String sampleName; //-N
+
     /**
      * The the reference fasta
      */
-    String fasta; // -G
+    public String fasta; // -G
+
     /**
      * The indexed BAM file name(s)
      */
-    BamNames bam;
+    public BamNames bam;
+
     /**
      * For downsampling fraction
      */
-    Double downsampling;
-    boolean chromosomeNameIsNumber; // -C
+    public Double downsampling;
+
+    public boolean chromosomeNameIsNumber; // -C
+
     /**
      * If set, reads with mapping quality less than INT will be filtered and ignored
      */
-    Integer mappingQuality;//-Q
+    public Integer mappingQuality;//-Q
+
     /**
      * Indicate to remove duplicated reads
      */
-    boolean removeDuplicatedReads; //-t
+    public boolean removeDuplicatedReads; //-t
+
     /**
      * If set, reads with mismatches more than INT will be filtered and ignored
      */
-    int mismatch; //-m, default = 8
-    boolean y; //-y TODO ???
+    public int mismatch; //-m, default = 8
+
+    public boolean y; //-y TODO ???
+
     /**
      * The phred score for a base to be considered a good call
      */
-    int goodq; // -q, default = 23
-    final int buffer = 200;
+    public int goodq; // -q, default = 23
+
+    public final int buffer = 200;
+
     /**
      * Extension of bp to look for mismatches after insersion or deletion
      */
-    int vext = 3; // -X, default 3
+    public int vext = 3; // -X, default 3
+
     /**
      * Trim bases after [INT] bases in the reads
      */
-    int trimBasesAfter = 0; // -T
+    public int trimBasesAfter = 0; // -T
+
     /**
      * Indicate whether to perform local realignment
      */
-    boolean performLocalRealignment; // -k, default false
+    public boolean performLocalRealignment; // -k, default false
+
     /**
      * The indel size
      */
-    int indelsize = 120; // -I, default 120
+    public int indelsize = 120; // -I, default 120
+
     /**
-     * The cutoff to decide whether a positin has read strand bias
+     * The cutoff to decide whether a position has read strand strandBiasFlag
      */
-    double bias = 0.05d;
+    public double bias = 0.05d;
+
     /**
-     * The minimum reads for bias calculation
+     * The minimum reads for strandBiasFlag calculation
      */
-    int minb = 2; // -B, default 2.
+    public int minb = 2; // -B, default 2.
+
     /**
      * The minimum # of variance reads
      */
-    int minr = 2; // -r, default 2 //TODO -p
-    boolean debug = false; // -D
+    public int minr = 2; // -r, default 2 //TODO -p
+
+    public boolean debug = false; // -D
+
     /**
      * The threshold for allele frequency
      */
-    double freq = 0.5; // -f and -p
+    public double freq = 0.5; // -f and -p
+
     /**
      * Indicate to move indels to 3-prime if alternative alignment can be achieved
      */
-    boolean  moveIndelsTo3 = false; //-3
-    String samfilter = "0x500"; //-F
+    public boolean moveIndelsTo3 = false; //-3
+
+    public String samfilter = "0x500"; //-F
+
     /**
      * chr:start[-end]
      */
-    String regionOfInterest; //-R
+    public String regionOfInterest; //-R
+
     /**
      * The read position filter
      */
-    int readPosFilter = 5; // -P default 5
+    public int readPosFilter = 5; // -P default 5
+
     /**
      * The Qratio of (good_quality_reads)/(bad_quality_reads+0.5)
      */
-    double qratio = 1.5; //-o
+    public double qratio = 1.5; //-o
+
     /**
      * The minimun mean mapping quality to be considered
      */
-    double mapq = 0; // -O  default 0
+    public double mapq = 0; // -O  default 0
+
     /**
      * Do pileup regarless the frequency
      */
-    boolean doPileup = false; // -p
+    public boolean doPileup = false; // -p
+
     /**
      * The lowest frequency in normal sample allowed for a putative somatic mutations
      */
-    double lofreq = 0.05d; // -V default to 0.05
-    final int lowqual = 10;
+    public double lofreq = 0.05d; // -V default to 0.05
 
-    int minmatch = 0; // -M The minimum matches for a read to be considered
-    boolean outputSplicing = false; // -i Output splicing read counts
+    public final int lowqual = 10;
 
-    ValidationStringency validationStringency = ValidationStringency.LENIENT;
+    public int minmatch = 0; // -M The minimum matches for a read to be considered
 
+    public boolean outputSplicing = false; // -i Output splicing read counts
 
+    public ValidationStringency validationStringency = ValidationStringency.LENIENT;
 
     /**
      * Threads count
      */
-    int threads;
+    public int threads;
 
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;

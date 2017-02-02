@@ -1,4 +1,4 @@
-package com.astrazeneca.vardict;
+package com.astrazeneca.utils;
 
 import java.util.*;
 
@@ -139,4 +139,11 @@ public final class Utils {
     }
 
 
+    public static boolean isEquals(Character ch1, Character ch2) {
+        if (ch1 == null && ch2 == null)
+            return true;
+        if (ch1 == null || ch2 == null)
+            return false;
+        return ch1.equals(ch2);
+    }
 }

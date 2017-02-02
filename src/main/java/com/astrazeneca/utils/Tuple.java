@@ -1,4 +1,4 @@
-package com.astrazeneca.vardict;
+package com.astrazeneca.utils;
 
 
 public final class Tuple {

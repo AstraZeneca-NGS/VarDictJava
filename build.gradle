@@ -1,15 +1,33 @@
-apply plugin: 'java'
-apply plugin:'application'
+plugins {
+    id 'java'
+    id 'application'
+    id 'jacoco'
+    id "org.sonarqube" version "2.2"
+}
 
-version = '1.4.8'
+version = '2.0b'
 
 
 repositories { 
-    mavenCentral() 
+    mavenCentral()
+    jcenter()
+    //for building custom htsjdk with bam caching from our fork repo
+    maven { url "https://jitpack.io" }
 }
 
 targetCompatibility = "1.8"
 sourceCompatibility = "1.8"
+
+sourceSets {
+    integrationTest {
+        java {
+            compileClasspath += main.output + test.output
+            runtimeClasspath += main.output + test.output
+            srcDir file('src/integration-test/java')
+        }
+        resources.srcDir file('src/integration-test/resources')
+    }
+}
 
 
 afterEvaluate {
@@ -20,13 +38,22 @@ afterEvaluate {
     }
 }
 
+configurations {
+    integrationTestCompile.extendsFrom testCompile
+    integrationTestRuntime.extendsFrom testRuntime
+}
+
 dependencies {
     compile 'commons-cli:commons-cli:1.2' 
     compile 'com.edropple.jregex:jregex:1.2_01'
-    compile('com.github.samtools:htsjdk:2.8.0') {
-        transitive = false
-    }
-    testCompile 'junit:junit:4.8.2'
+    compile 'com.github.EpamLifeSciencesTeam:htsjdk:epam-ls_BAM_cache-SNAPSHOT'
+    // https://mvnrepository.com/artifact/org.powermock/powermock-module-junit4
+    testCompile group: 'org.powermock', name: 'powermock-api-mockito', version: '1.6.6'
+    testCompile group: 'org.powermock', name: 'powermock-module-testng', version: '1.6.6'
+    testCompile'org.testng:testng:6.9.13.6'
+
+    integrationTestCompile 'org.testng:testng:6.9.13.6'
+
 }
 
 mainClassName = "com.astrazeneca.vardict.Main"
@@ -50,7 +77,39 @@ javadoc {
     exclude '**/ConcurrentHashSet*'
     exclude '**/Utils*'
     exclude '**/Tuple*'
-    exclude '**/Main*'
 }
 
+
+task integrationTest(type: Test) {
+    testClassesDir = sourceSets.integrationTest.output.classesDir
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useTestNG()
+}
+
+task integrationTestCoverageReport(type:JacocoReport) {
+    dependsOn integrationTest
+    executionData integrationTest
+    sourceSets sourceSets.main
+}
+
+test {
+    // enable TestNG support (default is JUnit)
+    useTestNG()
+
+    // show standard out and standard error of the test JVM(s) on the console
+    testLogging.showStandardStreams = true
+
+    // set JVM arguments for the test JVM(s)
+    jvmArgs '-XX:MaxPermSize=256m'
+
+    // listen to events in the test execution lifecycle
+    beforeTest { descriptor ->
+        logger.lifecycle("Running test: " + descriptor)
+    }
+
+    // listen to standard out and standard error of the test JVM(s)
+    onOutput { descriptor, event ->
+        logger.lifecycle("Test: " + descriptor + " produced standard out/err: " + event.message )
+    }
+}
 
