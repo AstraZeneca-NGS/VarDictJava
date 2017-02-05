@@ -2516,7 +2516,7 @@ public class VarDict {
     }
 
     private static boolean isReadsOverlap(SAMRecord record) {
-        return !record.getReadNegativeStrandFlag()
+        return record.getReadPairedFlag() && !record.getReadNegativeStrandFlag()
                 && record.getMateNegativeStrandFlag()
                 && record.getMateReferenceName().equals(record.getReferenceName())
                 && record.getMateAlignmentStart() <= record.getAlignmentEnd();
