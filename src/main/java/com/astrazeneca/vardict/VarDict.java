@@ -5602,6 +5602,7 @@ public class VarDict {
             String vartype = "SNV";
             boolean flag = false;
             Variant vref;
+            List<Variant> vrefList = new ArrayList<>();
             //DNA sequencing coverage
             int nocov = 0;
             //max DNA sequencing coverage (max depth)
@@ -5625,23 +5626,24 @@ public class VarDict {
                 List<Variant> l = vtmp == null ? null : vtmp.var;
                 Variant refAmpP = vtmp == null ? null : vtmp.ref;
                 if (l != null && !l.isEmpty()) {
-                    Variant tv = l.get(0);
-                    vcovs.add(tv.tcov);
-                    if (tv.tcov > maxcov) {
-                        maxcov = tv.tcov;
-                    }
-                    vartype = varType(tv.refallele, tv.varallele);
-                    if (isGoodVar(tv, refAmpP, vartype, splice, conf)) {
-                        gvs.add(tuple(tv, chr + ":" + S + "-" + E));
-                        if (nt != null && !tv.n.equals(nt)) {
-                            flag = true;
+                    for (Variant tv : l) {
+                        vcovs.add(tv.tcov);
+                        if (tv.tcov > maxcov) {
+                            maxcov = tv.tcov;
                         }
-                        if (tv.freq > maxaf) {
-                            maxaf = tv.freq;
-                            nt = tv.n;
-                            vref = tv;
+                        vartype = varType(tv.refallele, tv.varallele);
+                        if (isGoodVar(tv, refAmpP, vartype, splice, conf)) {
+                            gvs.add(tuple(tv, chr + ":" + S + "-" + E));
+                            if (nt != null && !tv.n.equals(nt)) {
+                                flag = true;
+                            }
+                            if (tv.freq > maxaf) {
+                                maxaf = tv.freq;
+                                nt = tv.n;
+                                vref = tv;
+                            }
+                            goodmap.add(format("%s-%s-%s", amp, tv.refallele, tv.varallele));
                         }
-                        goodmap.add(format("%s-%s-%s", amp, tv.refallele, tv.varallele));
                     }
                 } else if (refAmpP != null) {
                     vcovs.add(refAmpP.tcov);
@@ -5671,7 +5673,7 @@ public class VarDict {
             if (gvs.isEmpty()) { // Only referenece
                 if (conf.doPileup) {
                     if (!ref.isEmpty()) {
-                        vref = ref.get(0);
+                        vrefList.add(ref.get(0));
                     } else {
                         out.println(join("\t", sample, rg.gene, rg.chr, p, p, "", "", 0, 0, 0, 0, 0, 0, "", 0,
                                 "0;0", 0, 0, 0, 0, 0, "", 0, 0, 0, 0, 0, 0, "", "", 0, 0,
@@ -5682,77 +5684,83 @@ public class VarDict {
                     continue;
                 }
             } else {
-                vref = gvs.get(0)._1;
+                for (Tuple2<Variant, String> goodVariant : gvs) {
+                    vrefList.add(goodVariant._1);
+                }
             }
-            if (flag) { // different good variants detected in different amplicons
-                String gdnt = gvs.get(0)._1.n;
-                List<Tuple2<Variant, String>> gcnt = new ArrayList<>();
-                for (Tuple2<Integer, Region> amps : v) {
-                    final Vars vtmp = vars.get(amps._1).get(p);
-                    final Variant variant = vtmp == null ? null : vtmp.varn.get(gdnt);
-                    if (variant != null && isGoodVar(variant, vtmp.ref, null, splice, conf)) {
-                        gcnt.add(tuple(variant, amps._2.chr + ":" + amps._2.start + "-" + amps._2.end));
+            List<Tuple2<Variant, String>> goodVariants = gvs;
+            for (int i = 0; i < vrefList.size(); i++) {
+                vref = vrefList.get(i);
+                if (flag) { // different good variants detected in different amplicons
+                    String gdnt = gvs.get(i)._1.n;
+                    List<Tuple2<Variant, String>> gcnt = new ArrayList<>();
+                    for (Tuple2<Integer, Region> amps : v) {
+                        final Vars vtmp = vars.get(amps._1).get(p);
+                        final Variant variant = vtmp == null ? null : vtmp.varn.get(gdnt);
+                        if (variant != null && isGoodVar(variant, vtmp.ref, null, splice, conf)) {
+                            gcnt.add(tuple(variant, amps._2.chr + ":" + amps._2.start + "-" + amps._2.end));
+                        }
+                    }
+                    if (gcnt.size() == gvs.size()) {
+                        flag = false;
+                    }
+                    Collections.sort(gcnt, GVS_COMPARATOR);
+                    goodVariants = gcnt;
+                }
+
+                //bad variants
+                List<Tuple2<Variant, String>> badv = new ArrayList<>();
+                int gvscnt = goodVariants.size();
+                if (gvscnt != v.size() || flag) {
+                    for (Tuple2<Integer, Region> amps : v) {
+                        int amp = amps._1;
+                        Region reg = amps._2;
+                        if (goodmap.contains(format("%s-%s-%s", amp, vref.refallele, vref.varallele))) {
+                            continue;
+                        }
+                        // my $tref = $vars[$amp]->{ $p }->{ VAR }->[0]; ???
+                        if (vref.sp >= reg.istart && vref.ep <= reg.iend) {
+
+                            String regStr = reg.chr + ":" + reg.start + "-" + reg.end;
+
+                            if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).var.size() > 0) {
+                                badv.add(tuple(vars.get(amp).get(p).var.get(0), regStr));
+                            } else if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).ref != null) {
+                                badv.add(tuple(vars.get(amp).get(p).ref, regStr));
+                            } else {
+                                badv.add(tuple((Variant) null, regStr));
+                            }
+                        } else if ((vref.sp < reg.iend && reg.iend < vref.ep)
+                                || (vref.sp < reg.istart && reg.istart < vref.ep)) { // the variant overlap with amplicon's primer
+                            if (gvscnt > 1)
+                                gvscnt--;
+                        }
                     }
                 }
-                if (gcnt.size() == gvs.size()) {
+                if (flag && gvscnt < goodVariants.size()) {
                     flag = false;
                 }
-                Collections.sort(gcnt, GVS_COMPARATOR);
-                gvs = gcnt;
-            }
-
-            //bad variants
-            List<Tuple2<Variant, String>> badv = new ArrayList<>();
-            int gvscnt = gvs.size();
-            if (gvscnt != v.size() || flag) {
-                for (Tuple2<Integer, Region> amps : v) {
-                    int amp = amps._1;
-                    Region reg = amps._2;
-                    if (goodmap.contains(format("%s-%s-%s", amp, vref.refallele, vref.varallele))) {
-                        continue;
+                vartype = varType(vref.refallele, vref.varallele);
+                if (vartype.equals("Complex")) {
+                    adjComplex(vref);
+                }
+                out.print(join("\t", sample, rg.gene, rg.chr,
+                        joinVar1(vref, "\t"), goodVariants.get(0)._2, vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
+                if (conf.debug) {
+                    out.print("\t" + vref.DEBUG);
+                }
+                if (conf.debug) {
+                    for (int gvi = 0; gvi < goodVariants.size(); gvi++) {
+                        Tuple2<Variant, String> tp = goodVariants.get(gvi);
+                        out.print("\tGood" + gvi + " " + join(" ", joinVar2(tp._1, " "), tp._2));
                     }
-                    // my $tref = $vars[$amp]->{ $p }->{ VAR }->[0]; ???
-                    if (vref.sp >= reg.istart && vref.ep <= reg.iend) {
-
-                        String regStr = reg.chr + ":" + reg.start + "-" + reg.end;
-
-                        if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).var.size() > 0) {
-                            badv.add(tuple(vars.get(amp).get(p).var.get(0), regStr));
-                        } else if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).ref != null) {
-                            badv.add(tuple(vars.get(amp).get(p).ref, regStr));
-                        } else {
-                            badv.add(tuple((Variant)null, regStr));
-                        }
-                    } else if ((vref.sp < reg.iend && reg.iend < vref.ep)
-                            || (vref.sp < reg.istart && reg.istart < vref.ep)) { // the variant overlap with amplicon's primer
-                        if (gvscnt > 1)
-                            gvscnt--;
+                    for (int bvi = 0; bvi < badv.size(); bvi++) {
+                        Tuple2<Variant, String> tp = badv.get(bvi);
+                        out.print("\tBad" + bvi + " " + join(" ", joinVar2(tp._1, " "), tp._2));
                     }
                 }
+                out.println();
             }
-            if (flag && gvscnt < gvs.size()) {
-                flag = false;
-            }
-            vartype = varType(vref.refallele, vref.varallele);
-            if (vartype.equals("Complex")) {
-                adjComplex(vref);
-            }
-            out.print(join("\t", sample, rg.gene, rg.chr,
-                    joinVar1(vref, "\t"), gvs.get(0)._2, vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
-            if (conf.debug) {
-                out.print("\t" + vref.DEBUG);
-            }
-            if (conf.debug) {
-                for (int gvi = 0; gvi < gvs.size(); gvi++) {
-                    Tuple2<Variant, String> tp = gvs.get(gvi);
-                    out.print("\tGood" + gvi + " " + join(" ", joinVar2(tp._1, " "), tp._2));
-                }
-                for (int bvi = 0; bvi < badv.size(); bvi++) {
-                    Tuple2<Variant, String> tp = badv.get(bvi);
-                    out.print("\tBad" + bvi + " " + join(" ", joinVar2(tp._1, " "), tp._2));
-                }
-            }
-            out.println();
         }
     }
 
