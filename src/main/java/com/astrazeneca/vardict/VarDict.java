@@ -464,6 +464,8 @@ public class VarDict {
             int rlen,
             Configuration conf, PrintStream out) throws IOException {
 
+//        out = new PrintStream(new ByteArrayOutputStream());
+
         Set<Integer> ps = new HashSet<>(vars1.keySet());
         ps.addAll(vars2.keySet());
         List<Integer> pp = new ArrayList<>(ps);
@@ -482,66 +484,76 @@ public class VarDict {
                 if (v2.var.isEmpty()) {
                     continue;
                 }
-                Variant var = v2.var.get(0);
+//                Variant var = v2.var.get(0);
+//                if (v2.var.size() > 1) {
+//                    System.err.println("No coverage for sample 1 " + "Size " + v2.var.size() + " Region: " + segs);
+//                }
+                for (Variant variant : v2.var) {
+                    vartype = varType(variant.refallele, variant.varallele);
+                    if (!isGoodVar(variant, v2.ref, vartype, splice, conf)) {
+                        continue;
+                    }
+                    if (vartype.equals("Complex")) {
+                        adjComplex(variant);
+                    }
+                    out.println(join("\t", sample, segs.gene, segs.chr,
+                            variant.sp,
+                            variant.ep,
+                            variant.refallele,
+                            variant.varallele,
 
-                vartype = varType(var.refallele, var.varallele);
-                if (!isGoodVar(var, v2.ref, vartype, splice, conf)) {
-                    continue;
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+
+                            joinVar2(variant, "\t"),
+                            format("%.1f", variant.nm),
+
+                            variant.shift3,
+                            variant.msi == 0 ? 0 : format("%.3f", variant.msi),
+                            variant.msint,
+                            variant.leftseq,
+                            variant.rightseq,
+
+                            segs.chr + ":" + segs.start + "-" + segs.end,
+                            "Deletion", vartype));
                 }
-                if (vartype.equals("Complex")) {
-                    adjComplex(var);
-                }
-                out.println(join("\t", sample, segs.gene, segs.chr,
-                        var.sp,
-                        var.ep,
-                        var.refallele,
-                        var.varallele,
 
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-
-                        joinVar2(var, "\t"),
-                        format("%.1f", var.nm),
-
-                        var.shift3,
-                        var.msi == 0 ? 0 : format("%.3f", var.msi),
-                        var.msint,
-                        var.leftseq,
-                        var.rightseq,
-
-                        segs.chr + ":" + segs.start + "-" + segs.end,
-                        "Deletion", vartype));
             } else if (v2 == null) { // no coverage for sample 2
                 if (v1.var.isEmpty()) {
                     continue;
                 }
-                Variant var = v1.var.get(0);
-                vartype = varType(var.refallele, var.varallele);
-                if (!isGoodVar(var, v1.ref, vartype, splice, conf)) {
-                    continue;
+//                Variant var = v1.var.get(0);
+//                if (v1.var.size() > 1) {
+//                    System.err.println("No coverage for sample 2 " + "Size " + v1.var.size() + " Region: " + segs);
+//                }
+                for (Variant variant : v1.var) {
+                    vartype = varType(variant.refallele, variant.varallele);
+                    if (!isGoodVar(variant, v1.ref, vartype, splice, conf)) {
+                        continue;
+                    }
+                    if (vartype.equals("Complex")) {
+                        adjComplex(variant);
+                    }
+                    out.println(join("\t", sample, segs.gene, segs.chr,
+
+                            variant.sp,
+                            variant.ep,
+                            variant.refallele,
+                            variant.varallele,
+
+                            joinVar2(variant, "\t"),
+                            format("%.1f", variant.nm),
+
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+
+                            variant.shift3,
+                            variant.msi == 0 ? 0 : format("%.3f", variant.msi),
+                            variant.msint,
+                            variant.leftseq,
+                            variant.rightseq,
+
+                            segs.chr + ":" + segs.start + "-" + segs.end,
+                            "SampleSpecific", vartype));
                 }
-                if (vartype.equals("Complex")) {
-                    adjComplex(var);
-                }
-                out.println(join("\t", sample, segs.gene, segs.chr,
-
-                        var.sp,
-                        var.ep,
-                        var.refallele,
-                        var.varallele,
-
-                        joinVar2(var, "\t"),
-                        format("%.1f", var.nm),
-
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-
-                        var.shift3,
-                        var.msi == 0 ? 0 : format("%.3f", var.msi),
-                        var.msint,
-                        var.leftseq,
-                        var.rightseq,
-
-                        segs.chr + ":" + segs.start + "-" + segs.end,
-                        "SampleSpecific", vartype));
 
             } else { // both samples have coverage
                 if (v1.var.isEmpty() && v2.var.isEmpty()) {
@@ -700,138 +712,148 @@ public class VarDict {
                         if (v2.var.isEmpty()) {
                             continue;
                         }
-                        Variant v2var = v2.var.get(0);
+//                        Variant v2var = v2.var.get(0);
+//                        if (v2.var.size() > 1) {
+//                            System.err.println("n == 0 " + "Size " + v2.var.size() + " Region: " + segs);
+//                        }
+                        for (Variant v2var : v2.var) {
+                            vartype = varType(v2var.refallele, v2var.varallele);
+                            if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
+                                continue;
+                            }
+                            // potentail LOH
+                            String nt = v2var.n;
+                            Variant v1nt = getVarMaybe(v1, varn, nt);
+                            if (v1nt != null) {
+                                String type = v1nt.freq < conf.lofreq ? "LikelyLOH" : "Germline";
+                                if ("Complex".equals(vartype)) {
+                                    adjComplex(v1nt);
+                                }
+                                out.println(join("\t", sample, segs.gene, segs.chr,
+                                        v1nt.sp,
+                                        v1nt.ep,
+                                        v1nt.refallele,
+                                        v1nt.varallele,
+
+                                        joinVar2(v1nt, "\t"),
+                                        format("%.1f", v1nt.nm),
+
+                                        joinVar2(v2var, "\t"),
+                                        format("%.1f", v2var.nm),
+
+                                        v2var.shift3,
+                                        v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
+                                        v2var.msint,
+                                        v2var.leftseq,
+                                        v2var.rightseq,
+
+                                        segs.chr + ":" + segs.start + "-" + segs.end,
+                                        type, varType(v1nt.refallele, v1nt.varallele)
+                                ));
+                            } else {
+                                String th1;
+                                Variant v1ref = v1.ref;
+                                if (v1ref != null) {
+                                    th1 = join("\t",
+                                            joinVar2(v1ref, "\t"),
+                                            format("%.1f", v1ref.nm)
+                                    );
+                                } else {
+                                    th1 = join("\t", v1.var.get(0).tcov, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                                }
+                                if ("Complex".equals(vartype)) {
+                                    adjComplex(v2var);
+                                }
+                                out.println(join("\t", sample, segs.gene, segs.chr,
+                                        v2var.sp,
+                                        v2var.ep,
+                                        v2var.refallele,
+                                        v2var.varallele,
+                                        th1,
+
+                                        joinVar2(v2var, "\t"),
+                                        format("%.1f", v2var.nm),
+
+                                        v2var.shift3,
+                                        v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
+                                        v2var.msint,
+                                        v2var.leftseq,
+                                        v2var.rightseq,
+
+                                        segs.chr + ":" + segs.start + "-" + segs.end,
+                                        "StrongLOH", vartype
+                                ));
+                            }
+                        }
+                    }
+                } else if (v2.var.size() > 0) { // sample 1 has only reference
+//                    Variant v2var = v2.var.get(0);
+//                    if (v2.var.size() > 1) {
+//                        System.err.println("sample 1 has only reference " + "Size " + v2.var.size() + " Region: " + segs);
+//                    }
+                    for (Variant v2var : v2.var) {
                         vartype = varType(v2var.refallele, v2var.varallele);
                         if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
                             continue;
                         }
-                        // potentail LOH
+                        // potential LOH
                         String nt = v2var.n;
-                        Variant v1nt = getVarMaybe(v1, varn, nt);
-                        if (v1nt != null) {
-                            String type = v1nt.freq < conf.lofreq ? "LikelyLOH" : "Germline";
-                            if ("Complex".equals(vartype)) {
-                                adjComplex(v1nt);
+                        String type = "StrongLOH";
+                        Variant v1nt = v1.varn.get(nt);
+                        if (v1nt == null) {
+                            v1nt = new Variant();
+                            v1.varn.put(nt, v1nt);
+                        }
+                        v1nt.cov = 0;
+                        String newtype = "";
+                        if (v2.varn.get(nt).cov < conf.minr + 3) {
+                            Tuple2<Integer, String> tpl = combineAnalysis(v2.varn.get(nt), v1nt, segs.chr, p, nt, chrs, sample, splice, ampliconBasedCalling, rlen, conf);
+                            rlen = tpl._1;
+                            newtype = tpl._2;
+                            if ("FALSE".equals(newtype)) {
+                                continue;
                             }
-                            out.println(join("\t", sample, segs.gene, segs.chr,
-                                    v1nt.sp,
-                                    v1nt.ep,
-                                    v1nt.refallele,
-                                    v1nt.varallele,
-
+                        }
+                        String th1;
+                        if (newtype.length() > 0) {
+                            type = newtype;
+                            th1 = join("\t",
                                     joinVar2(v1nt, "\t"),
-                                    format("%.1f", v1nt.nm),
-
-                                    joinVar2(v2var, "\t"),
-                                    format("%.1f", v2var.nm),
-
-                                    v2var.shift3,
-                                    v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
-                                    v2var.msint,
-                                    v2var.leftseq,
-                                    v2var.rightseq,
-
-                                    segs.chr + ":" + segs.start + "-" + segs.end,
-                                    type, varType(v1nt.refallele, v1nt.varallele)
-                                    ));
+                                    format("%.1f", v1nt.nm)
+                            );
                         } else {
-                            String th1;
                             Variant v1ref = v1.ref;
-                            if (v1ref != null) {
-                                th1 = join("\t",
-                                        joinVar2(v1ref, "\t"),
-                                        format("%.1f", v1ref.nm)
-                                        );
-                            } else {
-                                th1 = join("\t", v1.var.get(0).tcov, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-                            }
-                            if ("Complex".equals(vartype)) {
-                                adjComplex(v2var);
-                            }
-                            out.println(join("\t", sample, segs.gene, segs.chr,
-                                    v2var.sp,
-                                    v2var.ep,
-                                    v2var.refallele,
-                                    v2var.varallele,
-                                    th1,
-
-                                    joinVar2(v2var, "\t"),
-                                    format("%.1f", v2var.nm),
-
-                                    v2var.shift3,
-                                    v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
-                                    v2var.msint,
-                                    v2var.leftseq,
-                                    v2var.rightseq,
-
-                                    segs.chr + ":" + segs.start + "-" + segs.end,
-                                    "StrongLOH", vartype
-                                    ));
+                            th1 = join("\t",
+                                    joinVar2(v1ref, "\t"),
+                                    format("%.1f", v1ref.nm)
+                            );
                         }
-                    }
-                } else if (v2.var.size() > 0) { // sample 1 has only reference
-                    Variant v2var = v2.var.get(0);
-                    vartype = varType(v2var.refallele, v2var.varallele);
-                    if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
-                        continue;
-                    }
-                    // potential LOH
-                    String nt = v2var.n;
-                    String type = "StrongLOH";
-                    Variant v1nt = v1.varn.get(nt);
-                    if (v1nt == null) {
-                        v1nt = new Variant();
-                        v1.varn.put(nt, v1nt);
-                    }
-                    v1nt.cov = 0;
-                    String newtype = "";
-                    if (v2.varn.get(nt).cov < conf.minr + 3) {
-                        Tuple2<Integer, String> tpl = combineAnalysis(v2.varn.get(nt), v1nt, segs.chr, p, nt, chrs, sample, splice, ampliconBasedCalling, rlen, conf);
-                        rlen = tpl._1;
-                        newtype = tpl._2;
-                        if ("FALSE".equals(newtype)) {
-                            continue;
+
+                        if ("Complex".equals(vartype)) {
+                            adjComplex(v2var);
                         }
+                        out.println(join("\t", sample, segs.gene, segs.chr,
+                                v2var.sp,
+                                v2var.ep,
+                                v2var.refallele,
+                                v2var.varallele,
+
+                                th1,
+
+                                joinVar2(v2var, "\t"),
+                                format("%.1f", v2var.nm),
+
+                                v2var.shift3,
+                                v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
+                                v2var.msint,
+                                v2var.leftseq,
+                                v2var.rightseq,
+
+                                segs.chr + ":" + segs.start + "-" + segs.end,
+                                type, vartype
+
+                        ));
                     }
-                    String th1;
-                    if (newtype.length() > 0) {
-                        type = newtype;
-                        th1 = join("\t",
-                                joinVar2(v1nt, "\t"),
-                                format("%.1f", v1nt.nm)
-                                );
-                    } else {
-                        Variant v1ref = v1.ref;
-                        th1 = join("\t",
-                                joinVar2(v1ref, "\t"),
-                                format("%.1f", v1ref.nm)
-                                );
-                    }
-
-                    if ("Complex".equals(vartype)) {
-                        adjComplex(v2var);
-                    }
-                    out.println(join("\t", sample, segs.gene, segs.chr,
-                            v2var.sp,
-                            v2var.ep,
-                            v2var.refallele,
-                            v2var.varallele,
-
-                            th1,
-
-                            joinVar2(v2var, "\t"),
-                            format("%.1f", v2var.nm),
-
-                            v2var.shift3,
-                            v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
-                            v2var.msint,
-                            v2var.leftseq,
-                            v2var.rightseq,
-
-                            segs.chr + ":" + segs.start + "-" + segs.end,
-                            type, vartype
-
-                            ));
                 }
             }
         }
