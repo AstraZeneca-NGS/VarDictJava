@@ -167,10 +167,10 @@ public class Main {
     private static Options buildOptions() {
         Options options = new Options();
         options.addOption("H", false, "Print this help page");
-        options.addOption("h", false, "Print a header row decribing columns");
+        options.addOption("h", false, "Print a header row describing columns");
         options.addOption("v", false, "VCF format output");
         options.addOption("i", false, "Output splicing read counts");
-        options.addOption("p", false, "Do pileup regarless the frequency");
+        options.addOption("p", false, "Do pileup regardless of the frequency");
         options.addOption("C", false, "Indicate the chromosome names are just numbers, such as 1, 2, not chr1, chr2");
         options.addOption("D", false, "Debug mode.  Will print some error messages and append full genotype at the end.");
 //        options.addOption("M", false, "Similar to -D, but will append individual quality and position data instead of mean");
@@ -187,8 +187,8 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("0/1")
                 .hasOptionalArgs(1)
-                .withDescription("Indicate wehther is zero-based cooridates, as IGV does.  Default: 1 for BED file or amplicon BED file.\n"
-                        + "Use 0 to turn it off. When use -R option, it's set to 0")
+                .withDescription("Indicate whether coordinates are zero-based, as IGV uses.  Default: 1 for BED file or amplicon BED file.\n"
+                        + "Use 0 to turn it off. When using the -R option, it's set to 0")
                 .withType(Number.class)
                 .isRequired(false)
                 .create('z'));
@@ -202,8 +202,8 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("int:float")
                 .hasArg(true)
-                .withDescription("Indicate it's amplicon based calling.  Reads don't map to the amplicon will be skipped.  A read pair is considered belonging "
-                        + " the amplicon if the edges are less than int bp to the amplicon, and overlap fraction is at least float.  Default: 10:0.95")
+                .withDescription("Indicate it's amplicon based calling.  Reads that don't map to the amplicon will be skipped.  A read pair is considered belonging "
+                        + " to the amplicon if the edges are less than int bp to the amplicon, and overlap fraction is at least float.  Default: 10:0.95")
                 .withType(Number.class)
                 .isRequired(false)
                 .create('a'));
@@ -217,8 +217,8 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("Genome fasta")
                 .hasArg(true)
-                .withDescription("The the reference fasta. Should be indexed (.fai).\n"
-                        + "Default to: /ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa")
+                .withDescription("The reference fasta. Should be indexed (.fai).\n"
+                        + "Defaults to: /ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa")
                 .withType(String.class)
                 .isRequired(false)
                 .create('G'));
@@ -239,7 +239,7 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("regular_expression")
                 .hasArg(true)
-                .withDescription("The regular expression to extract sample name from bam filenames.  Default to: /([^\\/\\._]+?)_[^\\/]*.bam/")
+                .withDescription("The regular expression to extract sample name from BAM filenames.  Default to: /([^\\/\\._]+?)_[^\\/]*.bam/")
                 .withType(String.class)
                 .isRequired(false)
                 .create('n'));
@@ -309,7 +309,7 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("minimum reads")
                 .hasArg(true)
-                .withDescription("The minimum # of variance reads, default 2")
+                .withDescription("The minimum # of variant reads, default 2")
                 .withType(Number.class)
                 .isRequired(false)
                 .create('r'));
@@ -390,7 +390,7 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("freq")
                 .hasArg(true)
-                .withDescription("The lowest frequency in normal sample allowed for a putative somatic mutations.  Default to 0.05")
+                .withDescription("The lowest frequency in the normal sample allowed for a putative somatic mutation.  Defaults to 0.05")
                 .withType(Number.class)
                 .isRequired(false)
                 .create('V'));
