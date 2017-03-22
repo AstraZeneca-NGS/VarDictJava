@@ -464,8 +464,6 @@ public class VarDict {
             int rlen,
             Configuration conf, PrintStream out) throws IOException {
 
-//        out = new PrintStream(new ByteArrayOutputStream());
-
         Set<Integer> ps = new HashSet<>(vars1.keySet());
         ps.addAll(vars2.keySet());
         List<Integer> pp = new ArrayList<>(ps);
@@ -484,10 +482,6 @@ public class VarDict {
                 if (v2.var.isEmpty()) {
                     continue;
                 }
-//                Variant var = v2.var.get(0);
-//                if (v2.var.size() > 1) {
-//                    System.err.println("No coverage for sample 1 " + "Size " + v2.var.size() + " Region: " + segs);
-//                }
                 for (Variant variant : v2.var) {
                     vartype = varType(variant.refallele, variant.varallele);
                     if (!isGoodVar(variant, v2.ref, vartype, splice, conf)) {
@@ -521,10 +515,6 @@ public class VarDict {
                 if (v1.var.isEmpty()) {
                     continue;
                 }
-//                Variant var = v1.var.get(0);
-//                if (v1.var.size() > 1) {
-//                    System.err.println("No coverage for sample 2 " + "Size " + v1.var.size() + " Region: " + segs);
-//                }
                 for (Variant variant : v1.var) {
                     vartype = varType(variant.refallele, variant.varallele);
                     if (!isGoodVar(variant, v1.ref, vartype, splice, conf)) {
@@ -712,10 +702,6 @@ public class VarDict {
                         if (v2.var.isEmpty()) {
                             continue;
                         }
-//                        Variant v2var = v2.var.get(0);
-//                        if (v2.var.size() > 1) {
-//                            System.err.println("n == 0 " + "Size " + v2.var.size() + " Region: " + segs);
-//                        }
                         for (Variant v2var : v2.var) {
                             vartype = varType(v2var.refallele, v2var.varallele);
                             if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
@@ -787,10 +773,6 @@ public class VarDict {
                         }
                     }
                 } else if (v2.var.size() > 0) { // sample 1 has only reference
-//                    Variant v2var = v2.var.get(0);
-//                    if (v2.var.size() > 1) {
-//                        System.err.println("sample 1 has only reference " + "Size " + v2.var.size() + " Region: " + segs);
-//                    }
                     for (Variant v2var : v2.var) {
                         vartype = varType(v2var.refallele, v2var.varallele);
                         if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
