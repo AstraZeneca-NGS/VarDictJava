@@ -1446,6 +1446,7 @@ public class VarDict {
                         continue;
                     }
 
+                    cleanupCigar(record);
 
                     final String mrnm = getMrnm(record);
 
@@ -2520,6 +2521,58 @@ public class VarDict {
                 && record.getMateNegativeStrandFlag()
                 && record.getMateReferenceName().equals(record.getReferenceName())
                 && record.getMateAlignmentStart() <= record.getAlignmentEnd();
+    }
+
+    /**
+     * Attempts to clean up a CIGAR string so that edge cases are avoided in the rest of the code.
+     * Specifically this method will remove leading or trailing hard-clips, and then convert
+     * leading or trailing insertions into soft-clips.
+     */
+    private static void cleanupCigar(final SAMRecord rec) {
+        if (rec.getCigar() != null) {
+            final List<CigarElement> elems = new ArrayList<>(rec.getCigar().getCigarElements());
+
+            // First leading elements
+            {
+                final ListIterator<CigarElement> iterator = elems.listIterator();
+                boolean noMatchesYet = true;
+                while (iterator.hasNext() && noMatchesYet) {
+                    final CigarElement elem = iterator.next();
+                    if (elem.getOperator() == CigarOperator.INSERTION) {
+                        final CigarElement replacement = new CigarElement(elem.getLength(), CigarOperator.SOFT_CLIP);
+                        iterator.set(replacement);
+                    }
+                    else if (elem.getOperator() == CigarOperator.HARD_CLIP) {
+                        iterator.remove();
+                    }
+                    else if (elem.getOperator().consumesReadBases() && elem.getOperator().consumesReferenceBases()) {
+                        noMatchesYet = false;
+                    }
+                }
+            }
+
+            // Then trailing elements
+            {
+                final ListIterator<CigarElement> iterator = elems.listIterator(elems.size());
+                boolean noMatchesYet = true;
+                while (iterator.hasPrevious() && noMatchesYet) {
+                    final CigarElement elem = iterator.previous();
+                    if (elem.getOperator() == CigarOperator.INSERTION) {
+                        final CigarElement replacement = new CigarElement(elem.getLength(), CigarOperator.SOFT_CLIP);
+                        iterator.set(replacement);
+                    }
+                    else if (elem.getOperator() == CigarOperator.HARD_CLIP) {
+                        iterator.remove();
+                    }
+                    else if (elem.getOperator().consumesReadBases() && elem.getOperator().consumesReferenceBases()) {
+                        noMatchesYet = false;
+                    }
+                }
+            }
+
+            // And lastly replace the cigar
+            rec.setCigar(new Cigar(elems));
+        }
     }
 
     private static CigarOperator getCigarOperator(Cigar cigar, int ci) {
