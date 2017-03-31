@@ -77,7 +77,7 @@ public final class Utils {
 
     public static String substr(String string, int idx) {
         if (idx >= 0) {
-            return string.substring(idx);
+            return string.substring(Math.min(string.length(), idx));
         } else {
             return string.substring(Math.max(0, string.length() + idx));
         }
