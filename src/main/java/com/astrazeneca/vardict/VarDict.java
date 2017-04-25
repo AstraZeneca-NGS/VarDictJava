@@ -5,7 +5,6 @@ import com.astrazeneca.vardict.Tuple.Tuple3;
 import com.astrazeneca.vardict.Tuple.Tuple4;
 import htsjdk.samtools.*;
 import htsjdk.samtools.reference.IndexedFastaSequenceFile;
-import htsjdk.samtools.reference.ReferenceSequence;
 import jregex.Replacer;
 
 import java.io.*;
@@ -16,6 +15,7 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.astrazeneca.vardict.ReferenceResource.getREF;
 import static com.astrazeneca.vardict.Tuple.tuple;
 import static com.astrazeneca.vardict.Utils.*;
 import static com.astrazeneca.vardict.VarDict.VarsType.*;
@@ -37,21 +37,6 @@ public class VarDict {
         return threadLocalSAMReaders.get().computeIfAbsent(
                 file,
                 (f) -> SamReaderFactory.makeDefault().validationStringency(stringency).open(SamInputResource.of(f))
-        );
-    }
-
-    private static ThreadLocal<Map<String, IndexedFastaSequenceFile>> threadLocalFastaFiles = ThreadLocal.withInitial(HashMap::new);
-
-    synchronized private static IndexedFastaSequenceFile fetchFasta(String file) {
-        return threadLocalFastaFiles.get().computeIfAbsent(
-                file,
-                (f) -> {
-                    try {
-                        return new IndexedFastaSequenceFile(new File((f)));
-                    } catch (FileNotFoundException e) {
-                        throw new IllegalArgumentException("Couldn't open reference file: " + f, e);
-                    }
-                }
         );
     }
 
@@ -347,7 +332,7 @@ public class VarDict {
                         }
                     }
                     toSamdict.put(NULL_FUTURE);
-                } catch (IOException | InterruptedException e) {
+                } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }
@@ -1049,13 +1034,6 @@ public class VarDict {
             }
 
         }
-    }
-
-    private static String[] retriveSubSeq(String fasta, String chr, int start, int end) throws IOException {
-        IndexedFastaSequenceFile idx = fetchFasta(fasta);
-        ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
-        byte[] bases = seq.getBases();
-        return new String[] { ">" + chr + ":" + start + "-" + end, bases != null ? new String(bases) : "" };
     }
 
     private static final jregex.Pattern SOFT_CLIPPED = new jregex.Pattern("(\\d+)[MIS]");
@@ -3236,33 +3214,6 @@ public class VarDict {
             }
         }
         return hicov;
-    }
-
-    /**
-     * Get part of reference sequence
-     * @param region region of interest
-     * @param chrs map of chromosome lengths
-     * @param fasta file namo of reference genome in FASTA format
-     * @param numberNucleotideToExtend number of base pairs to extend around region of interest
-     * @return reference sequence map: key - position, value - base
-     * @throws IOException
-     */
-    static Map<Integer, Character> getREF(Region region, Map<String, Integer> chrs, String fasta, int numberNucleotideToExtend) throws IOException {
-        Map<Integer, Character> ref = new HashMap<Integer, Character>();
-
-        int s_start = region.start - numberNucleotideToExtend - 700 < 1 ? 1 : region.start - numberNucleotideToExtend - 700;
-        int len = chrs.containsKey(region.chr) ? chrs.get(region.chr) : 0;
-        int s_end = region.end + numberNucleotideToExtend + 700 > len ?
-                len : region.end + numberNucleotideToExtend + 700;
-
-        String[] subSeq = retriveSubSeq(fasta, region.chr, s_start, s_end);
-//        String header = subSeq[0];
-        String exon = subSeq[1];
-        for (int i = s_start; i < s_start + exon.length(); i++) { // TODO why '<=' ?
-            ref.put(i, Character.toUpperCase(exon.charAt(i - s_start)));
-        }
-
-        return ref;
     }
 
     /**

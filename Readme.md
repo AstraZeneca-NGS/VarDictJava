@@ -50,7 +50,6 @@ To generate Javadoc, in the build/docs/javadoc folder, run the following command
 ./gradlew clean javadoc
 ```
 
-
 ###Single sample mode
 
 To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 (see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl.`
@@ -81,6 +80,63 @@ The following is an example command to run in paired mode:
 AF_THR="0.01" # minimum allele frequency
 <path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/testsomatic.R | VarDict/var2vcf_paired.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
+###Running Tests
+#### Integration testing
+The list of integration test cases is stored in files in `testdata/intergationtestcases` directory.
+To run all integration tests, the command is:
+```$xslt
+./gradlew test --tests com.astrazeneca.vardict.integrationtests.IntegrationTest 
+```
+##### User extension of testcases
+Each file in `testdata/intergationtestcases` directory represents a test case with input data and expected output
+
+**1.** Create a txt file in `testdata/intergationtestcases` folder. 
+
+The file contains testcase input (of format described in [Test cases file format](Readme.md#CSVhead)) in the first line and expected output in the remaining file part.
+
+**2.** Extend or create [thin-FASTA](Readme.md#thFastahead) in `testdata/fastas` folder.
+ 
+**3.** Run tests.
+##### <a name="CSVhead"></a>Test cases file format 
+Each input file represents one test case input description. In the input file the first line consists of the following fields separated by `,` symbol:
+
+*Required fields:*
+- test case name
+- reference name
+- bam file name
+- chromosome name
+- start of region
+- end of region
+
+*Optional fields:*
+- start of region with amplicon case
+- end of region with amplicon case
+
+*Parameters field:*
+- the last filed can be any other command line parameters string
+
+Example of first line of input file:
+```
+Amplicon,hg19.fa,Colo829-18_S3-sort.bam,chr1,933866,934466,933866,934466,-a 10:0.95 -D
+Somatic,hg19.fa,Colo829-18_S3-sort.bam|Colo829-19_S4-sort.bam,chr1,755917,756517
+Simple,hg19.fa,Colo829-18_S3-sort.bam,chr1,9922,10122,-p
+```
+
+##### <a name="thFastahead"></a>Thin-FASTA Format
+Thin fasta is needed to store only needed for tests regions of real references to decrease disk usage. Each thin-FASTA file is `.csv` file, each line of which represent part of reference data with information of: 
+- chromosome name
+- start position of contig
+- end position of contig
+- and nucleotide sequence that corresponds to region
+
+thin-FASTA example:
+```
+chr1,1,15,ATGCCCCCCCCCAAA
+chr1,200,205,GCCGA
+chr2,10,12,AC
+```
+
+>Note: VarDict expands given regions by 700bp to left and right (plus given value by `-x` option). 
 
 ##Program Workflow
 The VarDictJava program follows the workflow:
