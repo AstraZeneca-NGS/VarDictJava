@@ -1,6 +1,7 @@
-#VarDictJava
+# VarDictJava
 
-##Introduction
+## Introduction
+
 VarDictJava is a variant discovery program written in Java and Perl. It is a partial Java port of [VarDict variant caller](https://github.com/AstraZeneca-NGS/VarDict). 
 
 The original Perl VarDict is a sensitive variant caller for both single and paired sample variant calling from BAM files. VarDict implements several novel features such as amplicon bias aware variant calling from targeted
@@ -17,14 +18,17 @@ Original coded by Zhongwu Lai 2014.
 
 VarDictJava can run in single sample (see Single sample mode section), paired sample (see Paired variant calling section), or amplicon bias aware modes. As input, VarDictJava takes reference genomes in FASTA format, aligned reads in BAM format, and target regions in BED format.
 
-##Requirements
+## Requirements
+
 1. JDK 1.8 or later
 2. R language (uses /usr/bin/env R)
 3. Perl (uses /usr/bin/env perl)
 4. Internet connection to download dependencies using gradle.
 
-##Getting started
-###Getting source code
+## Getting started
+
+### Getting source code
+
 The VarDictJava source code is located at [https://github.com/AstraZeneca-NGS/VarDictJava](https://github.com/AstraZeneca-NGS/VarDictJava).
 
 To load the project, execute the following command:
@@ -35,7 +39,8 @@ git clone --recursive https://github.com/AstraZeneca-NGS/VarDictJava.git
 
 Note that the original VardDict project is placed in this repository as a submodule and its contents can be found in the sub-directory VarDict in VarDictJava working folder. So when you use `teststrandbias.R` and `var2vcf_valid.pl.` (see details and examples below), you have to add prefix VarDict: `VarDict/teststrandbias.R` and `VarDict/var2vcf_valid.pl.`
 
-###Compiling
+### Compiling
+
 The project uses [Gradle](http://gradle.org/) and already includes a gradlew script.
 
 To build the project, in the root folder of the project, run the following command:
@@ -50,7 +55,7 @@ To generate Javadoc, in the build/docs/javadoc folder, run the following command
 ./gradlew clean javadoc
 ```
 
-###Single sample mode
+### Single sample mode
 
 To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 (see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl.`
 The following is an example command to run in single sample mode:
@@ -69,25 +74,31 @@ The following is an example command to run VarDictJava for a region (chromosome 
 
 In single sample mode, output columns contain a description and statistical info for variants in the single sample. See section Output Columns for list of columns in the output. 
 
-###Paired variant calling
+### Paired variant calling
 
 To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 (see the Program Workflow section) using `testsomatic.R` and `var2vcf_paired.pl`.
 
 In this mode, the number of statistics columns in the output is doubled: one set of columns is for the first sample, the other - for second sample.
 
 The following is an example command to run in paired mode:
+
 ```
 AF_THR="0.01" # minimum allele frequency
 <path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/testsomatic.R | VarDict/var2vcf_paired.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
-###Running Tests
+### Running Tests
+
 #### Integration testing
+
 The list of integration test cases is stored in files in `testdata/intergationtestcases` directory.
 To run all integration tests, the command is:
+
 ```$xslt
 ./gradlew test --tests com.astrazeneca.vardict.integrationtests.IntegrationTest 
 ```
+
 ##### User extension of testcases
+
 Each file in `testdata/intergationtestcases` directory represents a test case with input data and expected output
 
 **1.** Create a txt file in `testdata/intergationtestcases` folder. 
@@ -97,7 +108,9 @@ The file contains testcase input (of format described in [Test cases file format
 **2.** Extend or create [thin-FASTA](Readme.md#thFastahead) in `testdata/fastas` folder.
  
 **3.** Run tests.
+
 ##### <a name="CSVhead"></a>Test cases file format 
+
 Each input file represents one test case input description. In the input file the first line consists of the following fields separated by `,` symbol:
 
 *Required fields:*
@@ -116,6 +129,7 @@ Each input file represents one test case input description. In the input file th
 - the last filed can be any other command line parameters string
 
 Example of first line of input file:
+
 ```
 Amplicon,hg19.fa,Colo829-18_S3-sort.bam,chr1,933866,934466,933866,934466,-a 10:0.95 -D
 Somatic,hg19.fa,Colo829-18_S3-sort.bam|Colo829-19_S4-sort.bam,chr1,755917,756517
@@ -123,6 +137,7 @@ Simple,hg19.fa,Colo829-18_S3-sort.bam,chr1,9922,10122,-p
 ```
 
 ##### <a name="thFastahead"></a>Thin-FASTA Format
+
 Thin fasta is needed to store only needed for tests regions of real references to decrease disk usage. Each thin-FASTA file is `.csv` file, each line of which represent part of reference data with information of: 
 - chromosome name
 - start position of contig
@@ -138,21 +153,23 @@ chr2,10,12,AC
 
 >Note: VarDict expands given regions by 700bp to left and right (plus given value by `-x` option). 
 
-##Program Workflow
+## Program Workflow
+
 The VarDictJava program follows the workflow:
 
-1.	Get regions of interest from a BED file or the command line.
-2.	For each segment:
-	a.	Find all variants for this segment in mapped reads:
-		i.	Optionally skip duplicated reads, low mapping-quality reads, and reads having a large number of mismatches.
-		ii.	Skip a read if it does not overlap with the segment.
-		iii.	Preprocess the CIGAR string for each read.
-		iv.	For each position, create a variant. If a variant is already present, adjust its count using the adjCnt function.
-	b. Realign some of the variants using special ad-hoc approaches.
-	c. Calculate statistics for the variant, filter out some bad ones, if any.
-	d. Assign a type to each variant.
-	e. Output variants in an intermediate internal format (tabular). Columns of the table are described in the Output Columns section.     
-          **Note**: To perform Steps 1 and 2, use Java VarDict.
+1. Get regions of interest from a BED file or the command line.
+2. For each segment:
+   1. Find all variants for this segment in mapped reads:
+      1. Optionally skip duplicated reads, low mapping-quality reads, and reads having a large number of mismatches.
+      2. Skip a read if it does not overlap with the segment.
+      3. Preprocess the CIGAR string for each read.
+      4. For each position, create a variant. If a variant is already present, adjust its count using the adjCnt function.
+         1. Realign some of the variants using special ad-hoc approaches.
+         2. Calculate statistics for the variant, filter out some bad ones, if any.
+         3. Assign a type to each variant.
+         4. Output variants in an intermediate internal format (tabular). Columns of the table are described in the Output Columns section.
+	 
+	 **Note**: To perform Steps 1 and 2, use Java VarDict.
 
 3.	Perform a statistical test for strand bias using an R script.  
     **Note**: Use R script for this step.
@@ -161,7 +178,7 @@ The VarDictJava program follows the workflow:
 
 
 
-##Program Options
+## Program Options
 
 - `-H`  
     Print help page
@@ -254,7 +271,7 @@ The VarDictJava program follows the workflow:
      `SILENT`   - Like `LENIENT`, only don't emit warning messages.
     Default: `LENIENT`
 
-##Output columns
+## Output columns
 
 1. Sample - sample name
 2. Gene - gene name from a BED file
@@ -290,13 +307,11 @@ The VarDictJava program follows the workflow:
 23. SEGMENT:CHR_START_END - position description
 24. VARTYPE - variant type
 
-License
--------
+# License
 
 The code is freely available under the [MIT license](http://www.opensource.org/licenses/mit-license.html).
 
-Contributors
-------------
+# Contributors
 
 Java port of [VarDict](https://github.com/AstraZeneca-NGS/VarDict) implemented based on the original Perl version ([Zhongwu Lai](https://github.com/zhongwulai)) by:
 
