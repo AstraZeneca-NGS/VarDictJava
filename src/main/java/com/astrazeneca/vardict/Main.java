@@ -128,6 +128,10 @@ public class Main {
         if (cmd.hasOption("VS")) {
             conf.validationStringency = ValidationStringency.valueOf(cmd.getParsedOptionValue("VS").toString().toUpperCase());
         }
+        
+        if (cmd.hasOption("K")) {
+            conf.includeNInTotalDepth = true;
+        }
 
         conf.threads = Math.max(readThreadsCount(cmd), 1);
 
@@ -176,7 +180,7 @@ public class Main {
 //        options.addOption("M", false, "Similar to -D, but will append individual quality and position data instead of mean");
         options.addOption("t", false, "Indicate to remove duplicated reads.  Only one pair with same start positions will be kept");
         options.addOption("3", false, "Indicate to move indels to 3-prime if alternative alignment can be achieved.");
-
+        options.addOption("K", false, "Include Ns in the total depth calculation");
 
         options.addOption(OptionBuilder.withArgName("bit")
                 .hasArg(true)
