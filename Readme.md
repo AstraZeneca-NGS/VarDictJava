@@ -97,6 +97,8 @@ To run all integration tests, the command is:
 ./gradlew test --tests com.astrazeneca.vardict.integrationtests.IntegrationTest 
 ```
 
+The results of the tests can be viewed in the `build/reports/tests/index.html` file.
+
 ##### User extension of testcases
 
 Each file in `testdata/intergationtestcases` directory represents a test case with input data and expected output
