@@ -120,11 +120,11 @@ public class Configuration {
      */
     double qratio = 1.5; //-o
     /**
-     * The minimun mean mapping quality to be considered
+     * The minimum mean mapping quality to be considered
      */
     double mapq = 0; // -O  default 0
     /**
-     * Do pileup regarless the frequency
+     * Do pileup regardless the frequency
      */
     boolean doPileup = false; // -p
     /**
@@ -137,7 +137,11 @@ public class Configuration {
     boolean outputSplicing = false; // -i Output splicing read counts
 
     ValidationStringency validationStringency = ValidationStringency.LENIENT;
-
+    
+    /**
+     * Include Ns in the total depth calculation.
+     */
+    boolean includeNInTotalDepth = false; // -K
 
 
     /**

@@ -97,6 +97,8 @@ To run all integration tests, the command is:
 ./gradlew test --tests com.astrazeneca.vardict.integrationtests.IntegrationTest 
 ```
 
+The results of the tests can be viewed in the `build/reports/tests/index.html` file.
+
 ##### User extension of testcases
 
 Each file in `testdata/intergationtestcases` directory represents a test case with input data and expected output
@@ -196,6 +198,8 @@ The VarDictJava program follows the workflow:
     Indicate to remove duplicated reads.  Only one pair with identical start positions will be kept
 - `-3`   
      Indicate to move indels to 3-prime if alternative alignment can be achieved.
+- `-K`
+     Include Ns in the total depth calculation.
 - `-F bit`  
      The hexical to filter reads. Default: `0x500` (filter 2nd alignments and duplicates).  Use `-F 0` to turn it off.
 - `-z 0/1`       

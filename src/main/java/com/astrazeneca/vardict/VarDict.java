@@ -1380,6 +1380,7 @@ public class VarDict {
      * @throws IOException
      */
     static Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer> parseSAM(Region region, String bam,
+ 
             Map<String, Integer> chrs, String sample, Set<String> splice, String ampliconBasedCalling, int rlen, Map<Integer, Character> ref, Configuration conf) throws IOException {
 
         String[] bams = bam.split(":");
@@ -2228,6 +2229,9 @@ public class VarDict {
                             boolean startWithDelition = false;
                             //skip if base is unknown
                             if (ch1 == 'N') {
+                                if (conf.includeNInTotalDepth) {
+                                    incCnt(cov, start, 1);
+                                }
                                 start++;
                                 n++;
                                 p++;
