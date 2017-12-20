@@ -3381,7 +3381,7 @@ public class VarDict {
                     System.err.printf("  Working lgins30: %s %s 3: %s %s 5: %s %s\n",
                             p3, p5, seq3, cnt3, new StringBuilder(seq5).reverse(), cnt5);
                 }
-                Tuple3<Integer, Integer, Integer> tpl = find35match(seq5, seq3, p5, p3, ref);
+                Tuple3<Integer, Integer, Integer> tpl = find35match(new StringBuilder(seq5).reverse().toString(), seq3, p5, p3, ref);
                 int bp5 = tpl._1;
                 int bp3 = tpl._2;
                 //length of match
