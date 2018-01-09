@@ -888,6 +888,10 @@ public class VarDict {
                 if (var2.rev < 0)
                     var2.rev = 0;
 
+                if (var2.cov == 0) {
+                    return tuple(rlen, "FALSE");
+                }
+
                 var2.pmean = (vref.pmean * vref.cov - var1.pmean * var1.cov) / var2.cov;
                 var2.qual = (vref.qual * vref.cov - var1.qual * var1.cov) / var2.cov;
                 var2.mapq = (vref.mapq * vref.cov - var1.mapq * var1.cov) / var2.cov;
