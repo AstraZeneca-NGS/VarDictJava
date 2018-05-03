@@ -93,13 +93,13 @@ public class Main {
         conf.columnForChromosome = getColumnValue(cmd, "c", -1);
 
         conf.numberNucleotideToExtend = getIntValue(cmd, "x", 0);
-        conf.freq = getDoubleValue(cmd, "f", 0.05d);
+        conf.freq = getDoubleValue(cmd, "f", 0.01d);
         conf.minr = getIntValue(cmd, "r", 2);
         conf.minb = getIntValue(cmd, "B", 2);
         if (cmd.hasOption("Q")) {
             conf.mappingQuality = ((Number)cmd.getParsedOptionValue("Q")).intValue();
         }
-        conf.goodq = getIntValue(cmd, "q", 25);
+        conf.goodq = getDoubleValue(cmd, "q", 22.5);
         conf.mismatch =  getIntValue(cmd, "m", 8);
         conf.trimBasesAfter = getIntValue(cmd, "T", 0);
         conf.vext = getIntValue(cmd, "X", 3);
@@ -131,6 +131,15 @@ public class Main {
         
         if (cmd.hasOption("K")) {
             conf.includeNInTotalDepth = true;
+        }
+
+        if (cmd.hasOption("chimeric")) {
+            conf.chimeric = true;
+        }
+
+
+        if (cmd.hasOption("u")) {
+            conf.uniqueModeOn = true;
         }
 
         conf.threads = Math.max(readThreadsCount(cmd), 1);
@@ -181,6 +190,8 @@ public class Main {
         options.addOption("t", false, "Indicate to remove duplicated reads.  Only one pair with same start positions will be kept");
         options.addOption("3", false, "Indicate to move indels to 3-prime if alternative alignment can be achieved.");
         options.addOption("K", false, "Include Ns in the total depth calculation");
+        options.addOption("u", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.");
+        options.addOption("chimeric", false, "Indicate to turn off chimeric reads filtering.");
 
         options.addOption(OptionBuilder.withArgName("bit")
                 .hasArg(true)

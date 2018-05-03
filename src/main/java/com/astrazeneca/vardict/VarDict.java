@@ -1113,7 +1113,7 @@ public class VarDict {
         }
     }
 
-    private static void addCnt(Variation vref, boolean dir, int rp, double q, int Q, int nm, int goodq) {
+    private static void addCnt(Variation vref, boolean dir, int rp, double q, int Q, int nm, double goodq) {
         vref.cnt++;
         vref.incDir(dir);
         vref.pmean += rp;
@@ -1581,12 +1581,12 @@ public class VarDict {
                     }
 
                     int mateAlignmentStart = record.getMateAlignmentStart();
-                    boolean readsOverlap = isReadsOverlap(record);
 
-                    processReadCigar:
                     //Loop over CIGAR records
                     for (int ci = 0; ci < cigar.numCigarElements(); ci++) {
-
+                        if (conf.uniqueModeOn && !dir && start >= mateAlignmentStart) {
+                            break;
+                        }
                         //length of segment in CIGAR
                         int m =  cigar.getCigarElement(ci).getLength();
 
@@ -1612,6 +1612,35 @@ public class VarDict {
                             case S:
                                 //First record in CIGAR
                                 if (ci == 0) { // 5' soft clipped
+                                    // Ignore large soft clip due to chimeric reads in library construction
+                                    String saTagString = record.getStringAttribute(SAMTag.SA.name());
+                                    if ((!conf.chimeric) && m >= 20 && saTagString != null ) {
+                                        String[] saTagArray = saTagString.split(",");
+                                        String saChromosome = saTagArray[0];
+                                        int saPosition = Integer.valueOf(saTagArray[1]);
+                                        String saDirectionString = saTagArray[2];
+                                        String saCigar = saTagArray[3];
+
+                                        boolean saDirectionIsForward = saDirectionString.equals("+");
+
+                                        Matcher mm = SA_CIGAR_D_S_5clip.matcher(saCigar);
+                                        if ((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward)
+                                                && saChromosome.equals(record.getReferenceName())
+                                                && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
+                                                && mm.find()) {
+                                            n += m;
+                                            offset = 0;
+                                            start = record.getAlignmentStart();  // had to reset the start due to softclipping adjustment
+                                            if (conf.y) {
+                                                System.err.println(record.getReadName() + " " + record.getReferenceName()
+                                                        + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
+                                                        + " " + record.getCigarString()
+                                                        + " is ignored as chimeric with SA: " +
+                                                        saPosition + "," + saDirectionString + "," + saCigar);
+                                            }
+                                            continue;
+                                        }
+                                    }
                                     // align softclipped but matched sequences due to mis-softclipping
                                     /*
                                     Conditions:
@@ -1681,6 +1710,35 @@ public class VarDict {
                                     }
                                     m = cigar.getCigarElement(ci).getLength();
                                 } else if (ci == cigar.numCigarElements() - 1) { // 3' soft clipped
+                                    // Ignore large soft clip due to chimeric reads in library construction
+                                    String saTagString = record.getStringAttribute(SAMTag.SA.name());
+                                    if ((!conf.chimeric) && m >= 20 && saTagString != null ) {
+                                        String[] saTagArray = saTagString.split(",");
+                                        String saChromosome = saTagArray[0];
+                                        int saPosition = Integer.valueOf(saTagArray[1]);
+                                        String saDirectionString = saTagArray[2];
+                                        String saCigar = saTagArray[3];
+
+                                        boolean saDirectionIsForward = saDirectionString.equals("+");
+
+                                        Matcher mm = SA_CIGAR_D_S_3clip.matcher(saCigar);
+                                        if ((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward)
+                                                && saChromosome.equals(record.getReferenceName())
+                                                && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
+                                                && mm.find()) {
+                                            n += m;
+                                            offset = 0;
+                                            start = record.getAlignmentStart();  // had to reset the start due to softclipping adjustment
+                                            if (conf.y) {
+                                                System.err.println(record.getReadName() + " " + record.getReferenceName()
+                                                        + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
+                                                        + " " + record.getCigarString()
+                                                        + " is ignored as chimeric with SA: " +
+                                                        saPosition + "," + saDirectionString + "," + saCigar);
+                                            }
+                                            continue;
+                                        }
+                                    }
                                     /*
                                     Conditions:
                                     1). read position is less than sequence length
@@ -2197,7 +2255,6 @@ public class VarDict {
                                 n += offset + multoffp;
                                 p += offset + multoffp;
 
-                                if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                                 continue;
                             }
                             default:
@@ -2235,7 +2292,6 @@ public class VarDict {
                                 start++;
                                 n++;
                                 p++;
-                                if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                                 continue;
                             }
 
@@ -2288,7 +2344,6 @@ public class VarDict {
                                     //shift reference position by 1
                                     start++;
                                     nmoff++;
-                                    if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                                 } else { //if bases match, exit loop
                                     break;
                                 }
@@ -2328,7 +2383,6 @@ public class VarDict {
                                     n++;
                                     p++;
                                     start++;
-                                    if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                                 }
 
                                 //remove '&' delimiter from s
@@ -2439,18 +2493,20 @@ public class VarDict {
                             //If variation starts with a deletion ('-' character)
                             if (startWithDelition) {
                                 start += ddlen;
-                                if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                             }
 
                             //Shift reference position by 1 if CIGAR segment is not insertion
                             if (operator != CigarOperator.I) {
                                 start++;
-                                if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                             }
                             //Shift read position by 1 if CIGAR segment is not deletion
                             if (operator != CigarOperator.D) {
                                 n++;
                                 p++;
+                            }
+                            // Skip read if it is overlap
+                            if (conf.uniqueModeOn && !dir && start >= mateAlignmentStart) {
+                                break;
                             }
                         }
                         if (moffset != 0) {
@@ -2458,7 +2514,6 @@ public class VarDict {
                             n += moffset;
                             start += moffset;
                             p += moffset;
-                            if (isPositionOverlapMate(start, mateAlignmentStart, readsOverlap)) break processReadCigar;
                         }
                         if (start > region.end) { //end if reference position is outside region of interest
                             break;
@@ -2496,17 +2551,6 @@ public class VarDict {
         adjMNP(hash, mnp, cov, ref, sclip3, sclip5, conf);
 
         return tuple(hash, iHash, cov, rlen);
-    }
-
-    private static boolean isPositionOverlapMate(int start, int mateAlignmentStart, boolean readsOverlap) {
-        return readsOverlap && start >= mateAlignmentStart;
-    }
-
-    private static boolean isReadsOverlap(SAMRecord record) {
-        return record.getReadPairedFlag() && !record.getReadNegativeStrandFlag()
-                && record.getMateNegativeStrandFlag()
-                && record.getMateReferenceName().equals(record.getReferenceName())
-                && record.getMateAlignmentStart() <= record.getAlignmentEnd();
     }
 
     /**
@@ -4295,6 +4339,8 @@ public class VarDict {
     private static final Pattern UP_NUMBER_END = Pattern.compile("\\^(\\d+)$");
     private static final Pattern ATGSs_AMP_ATGSs_END = Pattern.compile("(\\+[ATGC]+)&[ATGC]+$");
     private static final Pattern PLUS_NUMBER = Pattern.compile("\\+(\\d+)");
+    private static final Pattern SA_CIGAR_D_S_5clip = Pattern.compile("^\\d\\d+S");
+    private static final Pattern SA_CIGAR_D_S_3clip = Pattern.compile("\\d\\dS$");
 
     private static final Comparator<Object[]> REALIGNDEL_COMPARATOR = new Comparator<Object[]>() {
         @Override
@@ -5085,7 +5131,7 @@ public class VarDict {
     private static Tuple4<Integer, String, String, Integer> finndOffset(int refp, int readp, int mlen, String rdseq, String qstr,
             Map<Integer, Character> ref,
             Map<Integer, Integer> cov,
-            int vext, int goodq) {
+            int vext, double goodq) {
         int offset = 0;
         String ss = "";
         String q = "";
@@ -5958,20 +6004,20 @@ public class VarDict {
         if (vref.qratio < conf.qratio) {
             return false;
         }
-        if (vref.freq > 0.35d) {
+        if (vref.freq > 0.30d) {
             return true;
         }
         if (vref.mapq < conf.mapq) {
             return false;
         }
-        if (vref.msi >= 13 && vref.freq <= 0.275d && vref.msint == 1) {
+        if (vref.msi >= 15 && vref.freq <= 0.25d && vref.msint == 1) {
             return false;
         }
-        if (vref.msi >= 8 && vref.freq <= 0.2d && vref.msint > 1) {
+        if (vref.msi >= 12 && vref.freq <= 0.1d && vref.msint > 1) {
             return false;
         }
-        if (vref.bias.equals("2;1") && vref.freq < 0.25d) {
-            if (type == null || type.equals("SNV") || (vref.refallele.length() <= 3 && vref.varallele.length() <= 3)) {
+        if (vref.bias.equals("2;1") && vref.freq < 0.20d) {
+            if (type == null || type.equals("SNV") || (vref.refallele.length() < 3 && vref.varallele.length() < 3)) {
                 return false;
             }
         }
