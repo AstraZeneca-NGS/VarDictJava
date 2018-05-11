@@ -1614,6 +1614,7 @@ public class VarDict {
                                 if (ci == 0) { // 5' soft clipped
                                     // Ignore large soft clip due to chimeric reads in library construction
                                     String saTagString = record.getStringAttribute(SAMTag.SA.name());
+                                    //TODO: it will be good to extract this to method when it will be refactoring time
                                     if ((!conf.chimeric) && m >= 20 && saTagString != null ) {
                                         String[] saTagArray = saTagString.split(",");
                                         String saChromosome = saTagArray[0];
@@ -1712,6 +1713,7 @@ public class VarDict {
                                 } else if (ci == cigar.numCigarElements() - 1) { // 3' soft clipped
                                     // Ignore large soft clip due to chimeric reads in library construction
                                     String saTagString = record.getStringAttribute(SAMTag.SA.name());
+                                    //TODO: it will be good to extract this to method when it will be refactoring time
                                     if ((!conf.chimeric) && m >= 20 && saTagString != null ) {
                                         String[] saTagArray = saTagString.split(",");
                                         String saChromosome = saTagArray[0];
