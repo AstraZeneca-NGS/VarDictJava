@@ -1380,7 +1380,7 @@ public class VarDict {
      * @throws IOException
      */
     static Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer> parseSAM(Region region, String bam,
- 
+
             Map<String, Integer> chrs, String sample, Set<String> splice, String ampliconBasedCalling, int rlen, Map<Integer, Character> ref, Configuration conf) throws IOException {
 
         String[] bams = bam.split(":");
@@ -1582,6 +1582,9 @@ public class VarDict {
 
                     int mateAlignmentStart = record.getMateAlignmentStart();
 
+                    boolean isPairedAndTheSameChromosome = record.getReadPairedFlag()
+                            && record.getMateReferenceName().equals(record.getReferenceName());
+
                     //Loop over CIGAR records
                     for (int ci = 0; ci < cigar.numCigarElements(); ci++) {
                         if (conf.uniqueModeOn && !dir && start >= mateAlignmentStart) {
@@ -1613,33 +1616,37 @@ public class VarDict {
                                 //First record in CIGAR
                                 if (ci == 0) { // 5' soft clipped
                                     // Ignore large soft clip due to chimeric reads in library construction
-                                    String saTagString = record.getStringAttribute(SAMTag.SA.name());
                                     //TODO: it will be good to extract this to method when it will be refactoring time
-                                    if ((!conf.chimeric) && m >= 20 && saTagString != null ) {
-                                        String[] saTagArray = saTagString.split(",");
-                                        String saChromosome = saTagArray[0];
-                                        int saPosition = Integer.valueOf(saTagArray[1]);
-                                        String saDirectionString = saTagArray[2];
-                                        String saCigar = saTagArray[3];
+                                    if (!conf.chimeric) {
+                                        System.err.println("chimeric filtering enabled");
+                                        String saTagString = record.getStringAttribute(SAMTag.SA.name());
 
-                                        boolean saDirectionIsForward = saDirectionString.equals("+");
+                                        if (m >= 20 && saTagString != null) {
+                                            String[] saTagArray = saTagString.split(",");
+                                            String saChromosome = saTagArray[0];
+                                            int saPosition = Integer.valueOf(saTagArray[1]);
+                                            String saDirectionString = saTagArray[2];
+                                            String saCigar = saTagArray[3];
 
-                                        Matcher mm = SA_CIGAR_D_S_5clip.matcher(saCigar);
-                                        if ((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward)
-                                                && saChromosome.equals(record.getReferenceName())
-                                                && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
-                                                && mm.find()) {
-                                            n += m;
-                                            offset = 0;
-                                            start = record.getAlignmentStart();  // had to reset the start due to softclipping adjustment
-                                            if (conf.y) {
-                                                System.err.println(record.getReadName() + " " + record.getReferenceName()
-                                                        + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
-                                                        + " " + record.getCigarString()
-                                                        + " is ignored as chimeric with SA: " +
-                                                        saPosition + "," + saDirectionString + "," + saCigar);
+                                            boolean saDirectionIsForward = saDirectionString.equals("+");
+
+                                            Matcher mm = SA_CIGAR_D_S_5clip.matcher(saCigar);
+                                            if ((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward)
+                                                    && saChromosome.equals(record.getReferenceName())
+                                                    && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
+                                                    && mm.find()) {
+                                                n += m;
+                                                offset = 0;
+                                                start = record.getAlignmentStart();  // had to reset the start due to softclipping adjustment
+                                                if (conf.y) {
+                                                    System.err.println(record.getReadName() + " " + record.getReferenceName()
+                                                            + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
+                                                            + " " + record.getCigarString()
+                                                            + " is ignored as chimeric with SA: " +
+                                                            saPosition + "," + saDirectionString + "," + saCigar);
+                                                }
+                                                continue;
                                             }
-                                            continue;
                                         }
                                     }
                                     // align softclipped but matched sequences due to mis-softclipping
@@ -1685,60 +1692,43 @@ public class VarDict {
                                             q += tq;
                                             qn++;
                                         }
-                                        //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
-                                        if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
-                                            //add record to $sclip5
-                                            Sclip sclip = sclip5.get(start);
-                                            if (sclip == null) {
-                                                sclip = new Sclip();
-                                                sclip5.put(start, sclip);
-                                            }
-                                            for (int si = m - 1; m - si <= qn; si--) {
-                                                Character ch = querySequence.charAt(si);
-                                                int idx = m - 1 - si;
-                                                Map<Character, Integer> cnts = sclip.nt.get(idx);
-                                                if (cnts == null) {
-                                                    cnts = new LinkedHashMap<>();
-                                                    sclip.nt.put(idx, cnts);
-                                                }
-                                                incCnt(cnts, ch, 1);
-                                                Variation seqVariation = getVariationFromSeq(sclip, idx, ch);
-                                                addCnt(seqVariation, dir, si - (m - qn), queryQuality.charAt(si) - 33, mappingQuality, nm, conf.goodq);
-                                            }
-                                            addCnt(sclip, dir, m, q / (double)qn, mappingQuality, nm, conf.goodq);
-                                        }
+                                        sclip5HighQualityProcessing(region, conf, sclip5, querySequence, mappingQuality,
+                                                queryQuality, nm, dir, start, m, q, qn, lowqcnt);
 
                                     }
                                     m = cigar.getCigarElement(ci).getLength();
                                 } else if (ci == cigar.numCigarElements() - 1) { // 3' soft clipped
                                     // Ignore large soft clip due to chimeric reads in library construction
-                                    String saTagString = record.getStringAttribute(SAMTag.SA.name());
                                     //TODO: it will be good to extract this to method when it will be refactoring time
-                                    if ((!conf.chimeric) && m >= 20 && saTagString != null ) {
-                                        String[] saTagArray = saTagString.split(",");
-                                        String saChromosome = saTagArray[0];
-                                        int saPosition = Integer.valueOf(saTagArray[1]);
-                                        String saDirectionString = saTagArray[2];
-                                        String saCigar = saTagArray[3];
+                                    if (!conf.chimeric) {
+                                        System.err.println("chimeric filtering enabled");
+                                        String saTagString = record.getStringAttribute(SAMTag.SA.name());
+                                        if (m >= 20 && saTagString != null) {
+                                            String[] saTagArray = saTagString.split(",");
+                                            String saChromosome = saTagArray[0];
+                                            int saPosition = Integer.valueOf(saTagArray[1]);
+                                            String saDirectionString = saTagArray[2];
+                                            String saCigar = saTagArray[3];
 
-                                        boolean saDirectionIsForward = saDirectionString.equals("+");
+                                            boolean saDirectionIsForward = saDirectionString.equals("+");
 
-                                        Matcher mm = SA_CIGAR_D_S_3clip.matcher(saCigar);
-                                        if ((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward)
-                                                && saChromosome.equals(record.getReferenceName())
-                                                && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
-                                                && mm.find()) {
-                                            n += m;
-                                            offset = 0;
-                                            start = record.getAlignmentStart();  // had to reset the start due to softclipping adjustment
-                                            if (conf.y) {
-                                                System.err.println(record.getReadName() + " " + record.getReferenceName()
-                                                        + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
-                                                        + " " + record.getCigarString()
-                                                        + " is ignored as chimeric with SA: " +
-                                                        saPosition + "," + saDirectionString + "," + saCigar);
+                                            Matcher mm = SA_CIGAR_D_S_3clip.matcher(saCigar);
+                                            if ((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward)
+                                                    && saChromosome.equals(record.getReferenceName())
+                                                    && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
+                                                    && mm.find()) {
+                                                n += m;
+                                                offset = 0;
+                                                start = record.getAlignmentStart();  // had to reset the start due to softclipping adjustment
+                                                if (conf.y) {
+                                                    System.err.println(record.getReadName() + " " + record.getReferenceName()
+                                                            + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
+                                                            + " " + record.getCigarString()
+                                                            + " is ignored as chimeric with SA: " +
+                                                            saPosition + "," + saDirectionString + "," + saCigar);
+                                                }
+                                                continue;
                                             }
-                                            continue;
                                         }
                                     }
                                     /*
@@ -1781,29 +1771,8 @@ public class VarDict {
                                             q += tq;
                                             qn++;
                                         }
-                                        //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
-                                        if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
-                                            //add record to $sclip3
-                                            Sclip sclip = sclip3.get(start);
-                                            if (sclip == null) {
-                                                sclip = new Sclip();
-                                                sclip3.put(start, sclip);
-                                            }
-                                            for (int si = 0; si < qn; si++) {
-                                                Character ch = querySequence.charAt(n + si);
-                                                int idx = si;
-                                                Map<Character, Integer> cnts = sclip.nt.get(idx);
-                                                if (cnts == null) {
-                                                    cnts = new HashMap<>();
-                                                    sclip.nt.put(idx, cnts);
-                                                }
-                                                incCnt(cnts, ch, 1);
-                                                Variation variation = getVariationFromSeq(sclip, idx, ch);
-                                                addCnt(variation, dir, qn - si, queryQuality.charAt(n + si) - 33, mappingQuality, nm, conf.goodq);
-                                            }
-                                            addCnt(sclip, dir, m, q / (double)qn, mappingQuality, nm, conf.goodq);
-                                        }
-
+                                        sclip3HighQualityProcessing(region, conf, sclip3, querySequence, mappingQuality,
+                                                queryQuality, nm, n, dir, start, m, q, qn, lowqcnt);
                                     }
 
                                 }
@@ -2553,6 +2522,59 @@ public class VarDict {
         adjMNP(hash, mnp, cov, ref, sclip3, sclip5, conf);
 
         return tuple(hash, iHash, cov, rlen);
+    }
+
+    private static void sclip3HighQualityProcessing(Region region, Configuration conf, Map<Integer, Sclip> sclip3, String querySequence, int mappingQuality, String queryQuality, int nm, int n, boolean dir, int start, int m, int q, int qn, int lowqcnt) {
+        //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
+        if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
+            //add record to $sclip3
+            Sclip sclip = sclip3.get(start);
+            if (sclip == null) {
+                sclip = new Sclip();
+                sclip3.put(start, sclip);
+            }
+            for (int si = 0; si < qn; si++) {
+                Character ch = querySequence.charAt(n + si);
+                int idx = si;
+                Map<Character, Integer> cnts = sclip.nt.get(idx);
+                if (cnts == null) {
+                    cnts = new HashMap<>();
+                    sclip.nt.put(idx, cnts);
+                }
+                incCnt(cnts, ch, 1);
+                Variation variation = getVariationFromSeq(sclip, idx, ch);
+                addCnt(variation, dir, qn - si, queryQuality.charAt(n + si) - 33, mappingQuality, nm, conf.goodq);
+            }
+            addCnt(sclip, dir, m, q / (double) qn, mappingQuality, nm, conf.goodq);
+        }
+    }
+
+    private static void sclip5HighQualityProcessing(Region region, Configuration conf, Map<Integer, Sclip> sclip5,
+                                                    String querySequence, int mappingQuality, String queryQuality,
+                                                    int nm, boolean dir, int start, int m, int q,
+                                                    int qn, int lowqcnt) {
+        //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
+        if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
+            //add record to $sclip5
+            Sclip sclip = sclip5.get(start);
+            if (sclip == null) {
+                sclip = new Sclip();
+                sclip5.put(start, sclip);
+            }
+            for (int si = m - 1; m - si <= qn; si--) {
+                Character ch = querySequence.charAt(si);
+                int idx = m - 1 - si;
+                Map<Character, Integer> cnts = sclip.nt.get(idx);
+                if (cnts == null) {
+                    cnts = new LinkedHashMap<>();
+                    sclip.nt.put(idx, cnts);
+                }
+                incCnt(cnts, ch, 1);
+                Variation seqVariation = getVariationFromSeq(sclip, idx, ch);
+                addCnt(seqVariation, dir, si - (m - qn), queryQuality.charAt(si) - 33, mappingQuality, nm, conf.goodq);
+            }
+            addCnt(sclip, dir, m, q / (double) qn, mappingQuality, nm, conf.goodq);
+        }
     }
 
     /**
