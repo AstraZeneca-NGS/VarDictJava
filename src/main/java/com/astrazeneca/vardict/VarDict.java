@@ -1587,7 +1587,7 @@ public class VarDict {
 
                     //Loop over CIGAR records
                     for (int ci = 0; ci < cigar.numCigarElements(); ci++) {
-                        if (conf.uniqueModeOn && !dir && start >= mateAlignmentStart) {
+                        if (conf.uniqueModeOn && !dir && isPairedAndTheSameChromosome && start >= mateAlignmentStart) {
                             break;
                         }
                         //length of segment in CIGAR
@@ -1618,7 +1618,6 @@ public class VarDict {
                                     // Ignore large soft clip due to chimeric reads in library construction
                                     //TODO: it will be good to extract this to method when it will be refactoring time
                                     if (!conf.chimeric) {
-                                        System.err.println("chimeric filtering enabled");
                                         String saTagString = record.getStringAttribute(SAMTag.SA.name());
 
                                         if (m >= 20 && saTagString != null) {
@@ -1701,7 +1700,6 @@ public class VarDict {
                                     // Ignore large soft clip due to chimeric reads in library construction
                                     //TODO: it will be good to extract this to method when it will be refactoring time
                                     if (!conf.chimeric) {
-                                        System.err.println("chimeric filtering enabled");
                                         String saTagString = record.getStringAttribute(SAMTag.SA.name());
                                         if (m >= 20 && saTagString != null) {
                                             String[] saTagArray = saTagString.split(",");
@@ -2476,7 +2474,7 @@ public class VarDict {
                                 p++;
                             }
                             // Skip read if it is overlap
-                            if (conf.uniqueModeOn && !dir && start >= mateAlignmentStart) {
+                            if (conf.uniqueModeOn && !dir && isPairedAndTheSameChromosome && start >= mateAlignmentStart) {
                                 break;
                             }
                         }
@@ -2524,7 +2522,10 @@ public class VarDict {
         return tuple(hash, iHash, cov, rlen);
     }
 
-    private static void sclip3HighQualityProcessing(Region region, Configuration conf, Map<Integer, Sclip> sclip3, String querySequence, int mappingQuality, String queryQuality, int nm, int n, boolean dir, int start, int m, int q, int qn, int lowqcnt) {
+    private static void sclip3HighQualityProcessing(Region region, Configuration conf, Map<Integer, Sclip> sclip3,
+                                                    String querySequence, int mappingQuality, String queryQuality,
+                                                    int nm, int n, boolean dir, int start, int m, int q,
+                                                    int qn, int lowqcnt) {
         //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
         if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
             //add record to $sclip3
