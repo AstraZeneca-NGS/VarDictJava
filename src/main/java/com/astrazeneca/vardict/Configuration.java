@@ -147,7 +147,13 @@ public class Configuration {
      * Indicate unique mode, which when mate pairs overlap,
      * the overlapping part will be counted only once using forward read only.
      */
-    boolean uniqueModeOn = false; // -u
+    boolean uniqueModeAlignmentEnabled = false; // -u
+
+    /**
+     * Indicate unique mode, which when mate pairs overlap,
+     * the overlapping part will be counted only once using first read only.
+     */
+    boolean uniqueModeSecondInPairEnabled = false; // -UN
 
     /**
      * Threads count
