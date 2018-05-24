@@ -242,8 +242,8 @@ The VarDictJava program follows the workflow:
     The minimum # of reads to determine strand bias, default: `2`
 - `-Q INT`  
     If set, reads with mapping quality less than INT will be filtered and ignored
-- `-q INT`   
-    The phred score for a base to be considered a good call.  Default: 25 (for Illumina). For PGM, set it to ~15, as PGM tends to underestimate base quality.
+- `-q double`   
+    The phred score for a base to be considered a good call.  Default: 22.5 (for Illumina). For PGM, set it to ~15, as PGM tends to underestimate base quality.
 - `-m INT`   
     If set, reads with mismatches more than `INT` will be filtered and ignored.  Gaps are not counted as mismatches. Valid only for bowtie2/TopHat or BWA aln followed by sampe.  BWA mem is calculated as NM - Indels.  Default: 8, or reads with more than 8 mismatches will not be used.
 - `-T INT`  
@@ -274,7 +274,13 @@ The VarDictJava program follows the workflow:
      `LENIENT`  - Emit warnings but keep going if possible.
      `SILENT`   - Like `LENIENT`, only don't emit warning messages.
     Default: `LENIENT`
-
+- `-u`  
+    Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.
+    Default: unique mode disabled, all reads are counted.
+- `--chimeric`
+    Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction, 
+    where a read can be split into two segments, each will be aligned within 1-2 read length distance,
+    but in opposite direction. Default: filtering enabled
 ## Output columns
 
 1. Sample - sample name
