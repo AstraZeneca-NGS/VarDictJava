@@ -275,7 +275,10 @@ The VarDictJava program follows the workflow:
      `SILENT`   - Like `LENIENT`, only don't emit warning messages.
     Default: `LENIENT`
 - `-u`  
-    Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.
+    Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using **forward** read only.
+    Default: unique mode disabled, all reads are counted.
+- `-UN`  
+    Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using **first** read only.
     Default: unique mode disabled, all reads are counted.
 - `--chimeric`
     Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction, 
