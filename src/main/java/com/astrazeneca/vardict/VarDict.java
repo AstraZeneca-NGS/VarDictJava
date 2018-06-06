@@ -4,6 +4,7 @@ import com.astrazeneca.vardict.Tuple.Tuple2;
 import com.astrazeneca.vardict.Tuple.Tuple3;
 import com.astrazeneca.vardict.Tuple.Tuple4;
 import htsjdk.samtools.*;
+import htsjdk.samtools.util.SequenceUtil;
 import jregex.Replacer;
 
 import java.io.*;
@@ -350,7 +351,8 @@ public class VarDict {
             for (Region region : list) {
                 Reference reference = getREF(region, chrs, conf);
                 final Set<String> splice = new HashSet<>();
-                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
+                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), reference, chrs, sample,
+                        splice, ampliconBasedCalling, 0, conf);
                 vardict(region, tpl._2, sample, splice, conf, System.out);
             }
         }
@@ -404,8 +406,10 @@ public class VarDict {
             for (Region region : list) {
                 final Set<String> splice = new ConcurrentHashSet<>();
                 Reference reference = getREF(region, chrs, conf);
-                Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region, conf.bam.getBam1(), reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
-                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), reference, chrs, sample, splice, ampliconBasedCalling, t1._1, conf);
+                Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region, conf.bam.getBam1(), reference, chrs, sample,
+                        splice, ampliconBasedCalling, 0, conf);
+                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), reference, chrs, sample,
+                        splice, ampliconBasedCalling, t1._1, conf);
                 somdict(region, t1._2, t2._2, sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1, t2._1), conf, System.out);
             }
         }
@@ -907,8 +911,8 @@ public class VarDict {
         }
         Region region = new Region(chr, var1.sp - rlen, var1.ep + rlen, "");
         Reference reference = getREF(region, chrs, conf);
-        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(), reference,
-                chrs, sample, splice, ampliconBasedCalling, rlen, conf);
+        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(),
+                reference, chrs, sample, splice, ampliconBasedCalling, rlen, conf);
         rlen = tpl._1;
         Map<Integer, Vars> vars = tpl._2;
         Variant vref = getVarMaybe(vars, p, varn, nt);
@@ -1338,17 +1342,22 @@ public class VarDict {
      */
     private static final jregex.Pattern NUMBER_IorD_NUMBER_S_END = new jregex.Pattern("(\\d+)([ID])(\\d+)S$");
     /**
-     * Regexp finds number followed by S followed by number followed by M followed by number followed by I or D at the start of string
+     * Regexp finds number
+     * followed by S followed by number followed by M followed by number followed by I or D at the start of string
      */
-    private static final jregex.Pattern BEGIN_NUMBER_S_NUMBER_M_NUMBER_IorD = new jregex.Pattern("^(\\d+)S(\\d+)M(\\d+)([ID])");
+    private static final jregex.Pattern BEGIN_NUMBER_S_NUMBER_M_NUMBER_IorD =
+            new jregex.Pattern("^(\\d+)S(\\d+)M(\\d+)([ID])");
     /**
-     * Regexp finds number followed by I or D followed by number followed by M followed by number followed by S followed by end of string
+     * Regexp finds number
+     * followed by I or D followed by number followed by M followed by number followed by S followed by end of string
      */
-    private static final jregex.Pattern NUMBER_IorD_NUMBER_M_NUMBER_S_END = new jregex.Pattern("(\\d+)([ID])(\\d+)M(\\d+)S$");
+    private static final jregex.Pattern NUMBER_IorD_NUMBER_M_NUMBER_S_END =
+            new jregex.Pattern("(\\d+)([ID])(\\d+)M(\\d+)S$");
     /**
      * Regexp finds digit-M-number-(I or D)-number-M
      */
-    private static final jregex.Pattern BEGIN_DIGIT_M_NUMBER_IorD_NUMBER_M = new jregex.Pattern("^(\\d)M(\\d+)([ID])(\\d+)M");
+    private static final jregex.Pattern BEGIN_DIGIT_M_NUMBER_IorD_NUMBER_M =
+            new jregex.Pattern("^(\\d)M(\\d+)([ID])(\\d+)M");
 
     private static final Pattern BEGIN_DIGIT_M_NUMBER_IorD_NUMBER_M_ = Pattern.compile("^\\dM\\d+[ID]\\d+M");
     /**
@@ -1360,19 +1369,15 @@ public class VarDict {
      * Regexp finds number-M-number-D-digit-M-number-I-digit-M-number-D. ^(.*?) captures everything before the
      * M-D-M-I-M-D complex
      */
-    private static final jregex.Pattern
-            D_M_D_DD_M_D_I_D_M_D_DD =
+    private static final jregex.Pattern D_M_D_DD_M_D_I_D_M_D_DD =
             new jregex.Pattern("^(.*?)(\\d+)M(\\d+)D(\\d+)M(\\d+)I(\\d+)M(\\d+)D(\\d+)M");
-    private static final Pattern
-            D_M_D_DD_M_D_I_D_M_D_DD_prim =
+    private static final Pattern D_M_D_DD_M_D_I_D_M_D_DD_prim =
             Pattern.compile("(\\d+)M(\\d+)D(\\d+)M(\\d+)I(\\d+)M(\\d+)D(\\d+)M");
-    private static final jregex.Pattern
-            threeDeletionsPattern = new jregex.Pattern("^(.*?)(\\d+)M(\\d+)D(\\d+)M(\\d+)D(\\d+)M(\\d+)D(\\d+)" + "M");
-    private static final jregex.Pattern
-            threeIndelsPattern =
+    private static final jregex.Pattern threeDeletionsPattern =
+            new jregex.Pattern("^(.*?)(\\d+)M(\\d+)D(\\d+)M(\\d+)D(\\d+)M(\\d+)D(\\d+)" + "M");
+    private static final jregex.Pattern threeIndelsPattern =
             new jregex.Pattern("^(.*?)(\\d+)M(\\d+)([DI])(\\d+)M(\\d+)([DI])(\\d+)M(\\d+)([DI])(\\d+)M");
-    private static final Pattern
-            DIGM_D_DI_DIGM_D_DI_DIGM_DI_DIGM =
+    private static final Pattern DIGM_D_DI_DIGM_D_DI_DIGM_DI_DIGM =
             Pattern.compile("\\d+M\\d+[DI]\\d+M\\d+[DI]\\d+M\\d+[DI]\\d+M");
     private static final Pattern DM_DD_DM_DD_DM_DD_DM = Pattern.compile("\\d+M\\d+D\\d+M\\d+D\\d+M\\d+D\\d+M");
     /**
@@ -1386,8 +1391,7 @@ public class VarDict {
     /**
      * Regexp finds not_digit-number-I-number-M-number-D and optionally number-I
      */
-    private static final Pattern
-            NOTDIG_DIG_I_DIG_M_DIG_DI_DIGI =
+    private static final Pattern NOTDIG_DIG_I_DIG_M_DIG_DI_DIGI =
             Pattern.compile("(\\D)(\\d+)I(\\d+)M(\\d+)([DI])(\\d+I)?");
     /**
      * Regexp finds number-D-number-D
@@ -1480,8 +1484,8 @@ public class VarDict {
      * @throws IOException
      */
     static Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer>
-          parseSAM(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice, String ampliconBasedCalling,
-                   int rlen, Reference reference, Configuration conf) throws IOException {
+          parseSAM(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice,
+                   String ampliconBasedCalling, int rlen, Reference reference, Configuration conf) throws IOException {
 
         String[] bams = bam.split(":");
 
@@ -1494,7 +1498,7 @@ public class VarDict {
         Map<Integer, Map<String, Integer>> mnp = new HashMap<>(); // Keep track of MNPs
         Map<Integer, Map<String, Integer>> dels5 = new HashMap<>();
         Map<String, int[]> spliceCnt = new HashMap<String, int[]>();
-        Map <Integer, Character> ref = reference.referenceSequences;
+        Map<Integer, Character> ref = reference.referenceSequences;
 
         String chr = region.chr;
         if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) { //remove prefix 'chr' if option -C is set
@@ -1741,12 +1745,13 @@ public class VarDict {
 
                                             Matcher mm = SA_CIGAR_D_S_5clip.matcher(saCigar);
                                             if (((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward))
-                                                    && saChromosome.equals(record.getReferenceName())
-                                                    && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
-                                                    && mm.find()) {
+                                                && saChromosome.equals(record.getReferenceName())
+                                                && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
+                                                && mm.find()) {
                                                 n += m;
                                                 offset = 0;
-                                                start = record.getAlignmentStart();  // Had to reset the start due to softclipping adjustment
+                                                // Had to reset the start due to softclipping adjustment
+                                                start = record.getAlignmentStart();
                                                 if (conf.y) {
                                                     System.err.println(record.getReadName() + " " + record.getReferenceName()
                                                             + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
@@ -1755,6 +1760,28 @@ public class VarDict {
                                                             saPosition + "," + saDirectionString + "," + saCigar);
                                                 }
                                                 continue;
+                                            }
+                                            //trying to detect chimeric reads even when there's no supplementary
+                                            // alignment from aligner
+                                        } else if (m >= conf.seed1) {
+                                            Map<String, List<Integer>> referenceSeedMap = reference.seed;
+                                            String sequence = getReverseComplementedSequence(record, 0, m);
+                                            String reverseComplementedSeed = sequence.substring(0, conf.seed1);
+
+                                            if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
+                                                List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
+                                                if (positions.size() == 1 &&
+                                                    abs(start - positions.get(0)) <  2 * rlen) {
+                                                    n += m;
+                                                    offset = 0;
+                                                    // Had to reset the start due to softclipping adjustment
+                                                    start = record.getAlignmentStart();
+                                                    if (conf.y) {
+                                                        System.err.println(sequence + " at 5' is a chimeric at "
+                                                                           + start + " by SEED " + conf.seed1);
+                                                    }
+                                                    continue;
+                                                }
                                             }
                                         }
                                     }
@@ -1826,7 +1853,8 @@ public class VarDict {
                                                     && mm.find()) {
                                                 n += m;
                                                 offset = 0;
-                                                start = record.getAlignmentStart();  // Had to reset the start due to softclipping adjustment
+                                                // Had to reset the start due to softclipping adjustment
+                                                start = record.getAlignmentStart();
                                                 if (conf.y) {
                                                     System.err.println(record.getReadName() + " " + record.getReferenceName()
                                                             + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
@@ -1835,6 +1863,25 @@ public class VarDict {
                                                             saPosition + "," + saDirectionString + "," + saCigar);
                                                 }
                                                 continue;
+                                            }
+                                        } else if (m >= conf.seed1) {
+                                            Map<String, List<Integer>> referenceSeedMap = reference.seed;
+                                            String sequence = getReverseComplementedSequence(record, -m, m);
+                                            String reverseComplementedSeed = sequence.substring(0, conf.seed1);
+
+                                            if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
+                                                List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
+                                                if (positions.size() == 1 && abs(start - positions.get(0)) <  2 * rlen) {
+                                                    n += m;
+                                                    offset = 0;
+                                                    // Had to reset the start due to softclipping adjustment
+                                                    start = record.getAlignmentStart();
+                                                    if (conf.y) {
+                                                        System.err.println(sequence  + " at 3' is a chimeric at "
+                                                                           + start + " by SEED " + conf.seed1);
+                                                    }
+                                                    continue;
+                                                }
                                             }
                                         }
                                     }
@@ -2873,7 +2920,8 @@ public class VarDict {
         Map<Integer, Map<String, Variation>> iHash = parseTpl._2;
         Map<Integer, Integer> cov = parseTpl._3;
         Rlen = parseTpl._4;
-        Map <Integer, Character> ref = reference.referenceSequences;
+        Map<Integer, Character> ref = reference.referenceSequences;
+
         //the variant structure
         Map<Integer, Vars> vars = new HashMap<>();
         //Loop over positions
@@ -5706,8 +5754,9 @@ public class VarDict {
 
         @Override
         public Tuple2<Integer, Map<Integer, Vars>> call() throws Exception {
-            if (reference == null)
+            if (reference == null) {
                 reference = getREF(region, chrs, conf);
+            }
             return toVars(region, bam, reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
         }
 
@@ -6961,6 +7010,23 @@ public class VarDict {
             default:
                 return false;
         }
+    }
+
+    /**
+     * Method returns reverse complemented sequence for the part of the record. Can work with 3' and 5' ends
+     * (if start index < 0, then it will found the index in the end of sequence by adding the length of record).
+     * @param record read from SAM file to process
+     * @param startIndex index where start the sequence
+     * @param length length of pert of sequence
+     * @return reverse complemented part of record
+     */
+    private static String getReverseComplementedSequence(SAMRecord record, int startIndex, int length) {
+        if (startIndex < 0) {
+            startIndex = record.getReadLength() + startIndex;
+        }
+        byte[] rangeBytes = Arrays.copyOfRange(record.getReadBases(), startIndex, startIndex + length);
+        SequenceUtil.reverseComplement(rangeBytes);
+        return new String(rangeBytes);
     }
 
     public static void main(String[] args) {
