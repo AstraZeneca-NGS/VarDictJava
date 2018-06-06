@@ -5,9 +5,8 @@ import htsjdk.samtools.reference.ReferenceSequence;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.*;
 
 public class ReferenceResource {
 
@@ -45,23 +44,85 @@ public class ReferenceResource {
      * Get part of reference sequence
      * @param region region of interest
      * @return reference sequence map: key - position, value - base
-     * @throws IOException
      */
-    public static Map<Integer, Character> getREF(Region region, Map<String, Integer> chrs, String fasta, int numberNucleotideToExtend) {
-        Map<Integer, Character> ref = new HashMap<>();
+    public static Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf) {
+        Reference ref = new Reference();
+        int extension = 15000;
+        return getREF(region, chrs, conf, extension, ref);
+    }
 
-        int s_start = region.start - numberNucleotideToExtend - 700 < 1 ? 1 : region.start - numberNucleotideToExtend - 700;
+    /**
+     * Get part of reference sequence
+     * @param region region of interest
+     * @param ref reference
+     * @param extension extension for reference
+     * @return reference sequence map: key - position, value - base
+     */
+    public static Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf, int extension, Reference ref) {
+        int sequenceStart = region.start - conf.numberNucleotideToExtend - extension < 1 ? 1
+                : region.start - conf.numberNucleotideToExtend - extension;
         int len = chrs.containsKey(region.chr) ? chrs.get(region.chr) : 0;
-        int s_end = region.end + numberNucleotideToExtend + 700 > len ?
-                len : region.end + numberNucleotideToExtend + 700;
+        int sequenceEnd = region.end + conf.numberNucleotideToExtend + extension > len ?
+                len : region.end + conf.numberNucleotideToExtend + extension;
+        if (conf.y) {
+            System.err.println("TIME: Getting REF: " + LocalDateTime.now());
+        }
 
-        String[] subSeq = retriveSubSeq(fasta, region.chr, s_start, s_end);
+        String[] subSeq = retriveSubSeq(conf.fasta, region.chr, sequenceStart, sequenceEnd);
 //        String header = subSeq[0];
         String exon = subSeq[1];
-        for (int i = s_start; i < s_start + exon.length(); i++) { // TODO why '<=' ?
-            ref.put(i, Character.toUpperCase(exon.charAt(i - s_start)));
+
+        if (isLoaded(region.chr, sequenceStart, sequenceEnd, ref)) {
+            return ref;
+        }
+
+        Reference.LoadedRegion loadedRegion = new Reference.LoadedRegion(region.chr, sequenceStart, sequenceEnd);
+        ref.loadedRegions.add(loadedRegion);
+
+        for (int i = 0; i < exon.length(); i++) { // TODO why '<=' in Perl?
+            // don't process it more than once
+            if (ref.referenceSequences.containsKey(i + sequenceStart)) {
+                continue;
+            }
+            ref.referenceSequences.put(i + sequenceStart, Character.toUpperCase(exon.charAt(i)));
+
+            if (exon.length() - i > conf.seed1) {
+                String keySequence = exon.substring(i, i + conf.seed1).toUpperCase();
+                ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
+            }
+            if (exon.length() - i > conf.seed2) {
+                String keySequence = exon.substring(i, i + conf.seed2).toUpperCase();
+                ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
+            }
+        }
+
+        if (conf.y) {
+            System.err.println("TIME: Got REF: " + LocalDateTime.now());
         }
 
         return ref;
+    }
+
+    public static Reference addPositionsToSeedSequence(Reference ref, int sequenceStart, int i, String keySequence) {
+        List<Integer> seedPositions = ref.seed.getOrDefault(keySequence, new ArrayList<>());
+        seedPositions.add(i + sequenceStart);
+        ref.seed.put(keySequence, seedPositions);
+        return ref;
+    }
+
+    /**
+     * Check whether a region is already loaded in reference
+     * @return true if region is already loaded and false if not
+     */
+    public static boolean isLoaded(String chr, int sequenceStart, int sequenceEnd, Reference reference) {
+        if (reference.loadedRegions.isEmpty()) {
+            return false;
+        }
+        for (Reference.LoadedRegion region : reference.loadedRegions) {
+            if (chr.equals(region.chr) && sequenceStart >= region.sequenceStart && sequenceEnd <= region.sequenceEnd) {
+                return true;
+            }
+        }
+        return false;
     }
 }
