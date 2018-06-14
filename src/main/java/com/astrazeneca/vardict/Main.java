@@ -137,9 +137,12 @@ public class Main {
             conf.chimeric = true;
         }
 
+        if (cmd.hasOption("UN")) {
+            conf.uniqueModeSecondInPairEnabled = true;
+        }
 
         if (cmd.hasOption("u")) {
-            conf.uniqueModeOn = true;
+            conf.uniqueModeAlignmentEnabled = true;
         }
 
         conf.threads = Math.max(readThreadsCount(cmd), 1);
@@ -190,7 +193,8 @@ public class Main {
         options.addOption("t", false, "Indicate to remove duplicated reads.  Only one pair with same start positions will be kept");
         options.addOption("3", false, "Indicate to move indels to 3-prime if alternative alignment can be achieved.");
         options.addOption("K", false, "Include Ns in the total depth calculation");
-        options.addOption("u", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.");
+        options.addOption("u", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using first read only.");
+        options.addOption("UN", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.");
         options.addOption("chimeric", false, "Indicate to turn off chimeric reads filtering.");
 
         options.addOption(OptionBuilder.withArgName("bit")

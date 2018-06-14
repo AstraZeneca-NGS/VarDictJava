@@ -1582,12 +1582,10 @@ public class VarDict {
 
                     int mateAlignmentStart = record.getMateAlignmentStart();
 
-                    boolean isPairedAndTheSameChromosome = record.getReadPairedFlag()
-                            && record.getMateReferenceName().equals(record.getReferenceName());
-
+                    processCigar:
                     //Loop over CIGAR records
                     for (int ci = 0; ci < cigar.numCigarElements(); ci++) {
-                        if (conf.uniqueModeOn && !dir && isPairedAndTheSameChromosome && start >= mateAlignmentStart) {
+                        if (skipOverlappingReads(conf, record, dir, start, mateAlignmentStart)) {
                             break;
                         }
                         //length of segment in CIGAR
@@ -2474,8 +2472,8 @@ public class VarDict {
                                 p++;
                             }
                             // Skip read if it is overlap
-                            if (conf.uniqueModeOn && !dir && isPairedAndTheSameChromosome && start >= mateAlignmentStart) {
-                                break;
+                            if (skipOverlappingReads(conf, record, dir, start, mateAlignmentStart)) {
+                                break processCigar;
                             }
                         }
                         if (moffset != 0) {
@@ -2500,26 +2498,57 @@ public class VarDict {
         }
 
         if (conf.performLocalRealignment) {
-            if (conf.y)
-                System.err.println("Start Realigndel");
-            realigndel(hash, dels5, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
-            if (conf.y)
-                System.err.println("Start Realignins");
-            realignins(hash, iHash, ins, cov, sclip5, sclip3, ref, region.chr, chrs, conf);
-            if (conf.y)
-                System.err.println("Start Realignlgdel");
-            realignlgdel(hash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
-            if (conf.y)
-                System.err.println("Start Realignlgins");
-            realignlgins(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
-            if (conf.y)
-                System.err.println("Start Realignlgins30");
-            realignlgins30(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
+            realignIndels(region, chrs, rlen, ref, conf, bams, hash, iHash, cov, sclip3, sclip5, ins, dels5);
         }
 
         adjMNP(hash, mnp, cov, ref, sclip3, sclip5, conf);
 
         return tuple(hash, iHash, cov, rlen);
+    }
+
+    private static void realignIndels(Region region, Map<String, Integer> chrs, int rlen, Map<Integer, Character> ref, Configuration conf, String[] bams, Map<Integer, Map<String, Variation>> hash, Map<Integer, Map<String, Variation>> iHash, Map<Integer, Integer> cov, Map<Integer, Sclip> sclip3, Map<Integer, Sclip> sclip5, Map<Integer, Map<String, Integer>> ins, Map<Integer, Map<String, Integer>> dels5) throws IOException {
+        if (conf.y)
+            System.err.println("Start Realigndel");
+        realigndel(hash, dels5, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
+        if (conf.y)
+            System.err.println("Start Realignins");
+        realignins(hash, iHash, ins, cov, sclip5, sclip3, ref, region.chr, chrs, conf);
+        if (conf.y)
+            System.err.println("Start Realignlgdel");
+        realignlgdel(hash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
+        if (conf.y)
+            System.err.println("Start Realignlgins");
+        realignlgins(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
+        if (conf.y)
+            System.err.println("Start Realignlgins30");
+        realignlgins30(hash, iHash, cov, sclip5, sclip3, ref, region.chr, chrs, rlen, bams, conf);
+    }
+
+    private static boolean skipOverlappingReads(Configuration conf, SAMRecord record, boolean dir, int start, int mateAlignmentStart) {
+        if (conf.uniqueModeAlignmentEnabled && isPairedAndSameChromosome(record)
+                && !dir && start >= mateAlignmentStart) {
+            return true;
+        }
+        if (conf.uniqueModeSecondInPairEnabled && record.getSecondOfPairFlag() && isPairedAndSameChromosome(record)
+                && isReadsOverlap(record, start, mateAlignmentStart)) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isReadsOverlap(SAMRecord record, int start, int mateAlignmentStart){
+        if (record.getAlignmentStart() >= mateAlignmentStart) {
+            return start >= mateAlignmentStart
+                            && start <= (mateAlignmentStart + record.getCigar().getReferenceLength() - 1);
+        }
+        else {
+            return start >= mateAlignmentStart
+                            && record.getMateAlignmentStart() <= record.getAlignmentEnd();
+        }
+    }
+
+    private static boolean isPairedAndSameChromosome(SAMRecord record) {
+        return record.getReadPairedFlag() && record.getMateReferenceName().equals(record.getReferenceName());
     }
 
     private static void sclip3HighQualityProcessing(Region region, Configuration conf, Map<Integer, Sclip> sclip3,
