@@ -138,6 +138,16 @@ Somatic,hg19.fa,Colo829-18_S3-sort.bam|Colo829-19_S4-sort.bam,chr1,755917,756517
 Simple,hg19.fa,Colo829-18_S3-sort.bam,chr1,9922,10122,-p
 ```
 
+##### <a name="testCoverageReporthead"></a>Test coverage Report
+
+To build test coverage report run the following command:
+
+```
+./gradlew jacocoTestReport 
+```
+
+Then HTML report could be found in `build/reports/jacoco/test/html/index.html`
+
 ##### <a name="thFastahead"></a>Thin-FASTA Format
 
 Thin fasta is needed to store only needed for tests regions of real references to decrease disk usage. Each thin-FASTA file is `.csv` file, each line of which represent part of reference data with information of: 
