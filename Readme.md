@@ -143,7 +143,7 @@ Simple,hg19.fa,Colo829-18_S3-sort.bam,chr1,9922,10122,-p
 To build test coverage report run the following command:
 
 ```
-./gradlew jacocoTestReport 
+./gradlew test jacocoTestReport 
 ```
 
 Then HTML report could be found in `build/reports/jacoco/test/html/index.html`
