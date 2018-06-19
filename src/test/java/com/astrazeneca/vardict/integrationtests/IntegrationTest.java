@@ -30,6 +30,11 @@ public class IntegrationTest {
     private static class TestCase {
         VarDictInput input;
         String output;
+
+        @Override
+        public String toString() {
+            return input.toString();
+        }
     }
 
     @ObjectFactory
