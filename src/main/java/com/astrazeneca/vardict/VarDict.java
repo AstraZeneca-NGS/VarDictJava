@@ -888,16 +888,21 @@ public class VarDict {
                 if (var2.rev < 0)
                     var2.rev = 0;
 
-                if (var2.cov == 0) {
-                    return tuple(rlen, "FALSE");
+                if (var2.cov != 0) {
+                    var2.pmean = (vref.pmean * vref.cov - var1.pmean * var1.cov) / var2.cov;
+                    var2.qual = (vref.qual * vref.cov - var1.qual * var1.cov) / var2.cov;
+                    var2.mapq = (vref.mapq * vref.cov - var1.mapq * var1.cov) / var2.cov;
+                    var2.hifreq = (vref.hifreq * vref.cov - var1.hifreq * var1.cov) / var2.cov;
+                    var2.extrafreq = (vref.extrafreq * vref.cov - var1.extrafreq * var1.cov) / var2.cov;
+                    var2.nm = (vref.nm * vref.cov - var1.nm * var1.cov) / var2.cov;
+                } else {
+                    var2.pmean = 0;
+                    var2.qual = 0;
+                    var2.mapq = 0;
+                    var2.hifreq = 0;
+                    var2.extrafreq = 0;
+                    var2.nm = 0;
                 }
-
-                var2.pmean = (vref.pmean * vref.cov - var1.pmean * var1.cov) / var2.cov;
-                var2.qual = (vref.qual * vref.cov - var1.qual * var1.cov) / var2.cov;
-                var2.mapq = (vref.mapq * vref.cov - var1.mapq * var1.cov) / var2.cov;
-                var2.hifreq = (vref.hifreq * vref.cov - var1.hifreq * var1.cov) / var2.cov;
-                var2.extrafreq = (vref.extrafreq * vref.cov - var1.extrafreq * var1.cov) / var2.cov;
-                var2.nm = (vref.nm * vref.cov - var1.nm * var1.cov) / var2.cov;
 
                 var2.pstd = true;
                 var2.qstd = true;
