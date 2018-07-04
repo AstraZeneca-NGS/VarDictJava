@@ -26,6 +26,14 @@ public class ReferenceResource {
         );
     }
 
+    /**
+     *
+     * @param fasta path to fasta file
+     * @param chr chromosome name of region
+     * @param start start position of region
+     * @param end end position of region
+     * @return array of nucleotide bases in the region of fasta
+     */
     public static String[] retriveSubSeq(String fasta, String chr, int start, int end) {
         IndexedFastaSequenceFile idx = fetchFasta(fasta);
         ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);

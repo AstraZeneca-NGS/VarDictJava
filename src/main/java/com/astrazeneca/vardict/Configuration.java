@@ -6,29 +6,35 @@ import com.astrazeneca.vardict.VarDict.BedRowFormat;
 
 public class Configuration {
     /**
-     * Print a header row decribing columns
+     * Print a header row describing columns
      */
     boolean printHeader; //-h
     /**
      * The delimiter for split region_info
      */
     String delimiter; // -d
+    /**
+     * Path to bed file with regions
+     */
     String bed;
     /**
      * The number of nucleotide to extend for each segment
      */
     int numberNucleotideToExtend; // -x
     /**
-     * Indicate wehther is zero-based cooridates, as IGV does
-     * When use -R option, it's set to false
+     * Indicate whether is zero-based coordinates, as IGV does
+     * When use -R option, it is set to false TODO: is it so? In perl it doesn't changed
      */
-    Boolean zeroBased; // -z,  default true if set -R
+    Boolean zeroBased; // -z
     /**
-     * Indicate it's amplicon based calling.  Reads don't map to the amplicon will be skipped.  A read pair is considered belonging
-     * the amplicon if the edges are less than int bp to the amplicon, and overlap fraction is at least float.  Default: 10:0.95
+     * Indicate it's amplicon based calling.  Reads don't map to the amplicon will be skipped.
+     * A read pair is considered belonging the amplicon if the edges are less than int bp to the amplicon,
+     * and overlap fraction is at least float. Default: 10:0.95
      */
     String ampliconBasedCalling; //-a
-    int columnForChromosome = -1;
+
+    int columnForChromosome = -1; //-c
+
     BedRowFormat bedRowFormat;
     /**
      * The regular expression to extract sample name from bam filenames.
@@ -39,17 +45,18 @@ public class Configuration {
      */
     String sampleName; //-N
     /**
-     * The the reference fasta
+     * The reference fasta
      */
     String fasta; // -G
     /**
      * The indexed BAM file name(s)
      */
-    BamNames bam;
+    BamNames bam; //-b
     /**
      * For downsampling fraction
      */
-    Double downsampling;
+    Double downsampling; //-Z
+
     boolean chromosomeNameIsNumber; // -C
     /**
      * If set, reads with mapping quality less than INT will be filtered and ignored
@@ -63,7 +70,10 @@ public class Configuration {
      * If set, reads with mismatches more than INT will be filtered and ignored
      */
     int mismatch; //-m, default = 8
-    boolean y; //-y TODO ???
+    /**
+     * Verbose mode. Will output variant calling process.
+     */
+    boolean y; //-y
     /**
      * The phred score for a base to be considered a good call
      */
@@ -84,59 +94,80 @@ public class Configuration {
     /**
      * The indel size
      */
-    int indelsize = 120; // -I, default 120
+    int indelsize = 50; // -I, default 50
     /**
-     * The cutoff to decide whether a positin has read strand bias
+     * The cutoff to decide whether a position has read strand bias
      */
     double bias = 0.05d;
     /**
-     * The minimum reads for bias calculation
+     * The minimum reads for bias calculation. Default: 2
      */
-    int minb = 2; // -B, default 2.
+    int minb = 2; // -B
     /**
-     * The minimum # of variance reads
+     * The minimum # of variance reads. Default: 2. If -p, it is set to 0.
      */
-    int minr = 2; // -r, default 2 //TODO -p
+    int minr = 2; // -r
+
+    /**
+     * Debug mode. Will print some error messages and append full genotype at the end.
+     */
     boolean debug = false; // -D
     /**
-     * The threshold for allele frequency
+     * The threshold for allele frequency. If -p it is set to -1.
      */
-    double freq = 0.5; // -f and -p
+    double freq = 0.01; // -f
     /**
-     * Indicate to move indels to 3-prime if alternative alignment can be achieved
+     * Indicate to move indels to 3-prime if alternative alignment can be achieved.
      */
-    boolean  moveIndelsTo3 = false; //-3
+    boolean moveIndelsTo3 = false; //-3
+
+    /**
+     * The hexical to filter reads.
+     */
     String samfilter = "0x500"; //-F
     /**
-     * chr:start[-end]
+     * chr:start[-end]. If end is omitted, then a single position.
      */
     String regionOfInterest; //-R
     /**
-     * The read position filter
+     * The read position filter. Default: 5
      */
-    int readPosFilter = 5; // -P default 5
+    int readPosFilter = 5; // -P
     /**
      * The Qratio of (good_quality_reads)/(bad_quality_reads+0.5)
      */
-    double qratio = 1.5; //-o
+    double qratio = 1.5; // -o
     /**
-     * The minimum mean mapping quality to be considered
+     * The minimum mean mapping quality to be considered. Default: 0.
      */
-    double mapq = 0; // -O  default 0
+    double mapq = 0; // -O
     /**
      * Do pileup regardless the frequency
      */
     boolean doPileup = false; // -p
     /**
-     * The lowest frequency in normal sample allowed for a putative somatic mutations
+     * The lowest allele frequency in normal sample allowed for a putative somatic mutations. Default: 0.05.
      */
-    double lofreq = 0.05d; // -V default to 0.05
+    double lofreq = 0.05d; // -V
+
+    /**
+     * Any base with quality <=10 will be consider low quality in soft-clipped seq and extension will stop.
+     */
     final int lowqual = 10;
 
-    int minmatch = 0; // -M The minimum matches for a read to be considered
-    boolean outputSplicing = false; // -i Output splicing read counts
+    /**
+     * The minimum matches for a read to be considered
+     */
+    int minmatch = 0; // -M
+    /**
+     *  Output splicing read counts
+     */
+    boolean outputSplicing = false; // -i
 
-    ValidationStringency validationStringency = ValidationStringency.LENIENT;
+    /**
+     * How strict to be when reading a SAM or BAM.
+     */
+    ValidationStringency validationStringency = ValidationStringency.LENIENT; // -VS
     
     /**
      * Include Ns in the total depth calculation.
@@ -156,9 +187,9 @@ public class Configuration {
     boolean uniqueModeSecondInPairEnabled = false; // -UN
 
     /**
-     * Threads count
+     * Threads count to use in multithreading mode
      */
-    int threads;
+    int threads; //-th
 
     /**
      * Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction,
