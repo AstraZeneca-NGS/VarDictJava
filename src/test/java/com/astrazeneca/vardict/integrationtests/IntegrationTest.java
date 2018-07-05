@@ -157,5 +157,52 @@ public class IntegrationTest {
         }
         return bed;
     }
+
+    @DataProvider(name = "incorrectBedFiles")
+    public Object[][] incorrectBedFiles() {
+        return new Object[][]{
+                {"beds/incorrect_4columns.bed"},
+                {"beds/incorrect_8columns.bed"}
+        };
+    }
+
+    @Test(dataProvider = "incorrectBedFiles", expectedExceptions = NumberFormatException.class)
+    public void testIncorrectBedFileRead(String bedFilePath) throws Exception {
+        File bam = new File(IntegrationTest.class.getResource("L861Q.bam").getPath());
+        File bed = new File(IntegrationTest.class.getResource(bedFilePath).getPath());
+
+        String fastaPath ="hg19.fa";
+        mockReferenceResource(fastaPath);
+
+        String[] args = (bed + " -b " + bam + " " + DEFAULT_ARGS + fastaPath + "csv").split("\\s");
+        Main.main(args);
+    }
+
+    @DataProvider(name = "correctBedFiles")
+    public Object[][] correctBedFiles() {
+        return new Object[][]{
+                {"beds/correct_5columns.bed"},
+                {"beds/correct_9columns.bed"},
+                {"beds/correct_8columns_not_amplicon.bed"}
+        };
+    }
+
+    @Test(dataProvider = "correctBedFiles")
+    public void testCorrectBedFileRead(String bedFilePath) throws Exception {
+        File bam = new File(IntegrationTest.class.getResource("L861Q.bam").getPath());
+        File bed = new File(IntegrationTest.class.getResource(bedFilePath).getPath());
+        StringBuilder output = new StringBuilder();
+        try(Scanner in = new Scanner(new File(PATH_TO_TESTCASES + "Simple;hg19.fa;L861Q.bam;chr7;55259400-55259600;.txt"))) {
+            while (in.hasNext()) {
+                output.append(in.nextLine() + "\n");
+            }
+        }
+        String fastaPath ="hg19.fa";
+        mockReferenceResource(fastaPath);
+        String[] args = (bed + " -b " + bam + " " + DEFAULT_ARGS + fastaPath + ".csv").split("\\s");
+        Main.main(args);
+        String actualOutput = "Simple,hg19.fa,L861Q.bam,chr7,55259400,55259600\n" + outContent.toString();
+        Assert.assertEquals(actualOutput, output.toString());
+    }
 }
 

@@ -4,7 +4,6 @@ import com.astrazeneca.vardict.Tuple.Tuple2;
 import com.astrazeneca.vardict.Tuple.Tuple3;
 import com.astrazeneca.vardict.Tuple.Tuple4;
 import htsjdk.samtools.*;
-import htsjdk.samtools.reference.IndexedFastaSequenceFile;
 import jregex.Replacer;
 
 import java.io.*;
@@ -30,6 +29,7 @@ public class VarDict {
 
     final static Pattern SN = Pattern.compile("\\s+SN:(\\S+)");
     final static Pattern LN = Pattern.compile("\\sLN:(\\d+)");
+    final static Pattern INTEGER_ONLY = Pattern.compile("^\\d+$");
 
     private static ThreadLocal<Map<String, SamReader>> threadLocalSAMReaders = ThreadLocal.withInitial(HashMap::new);
 
@@ -120,6 +120,8 @@ public class VarDict {
                         }
                     }
                 } catch (NumberFormatException e) {
+                    System.err.println("Incorrect format of BED file. 2 and 3 columns must contain region start and end.");
+                    throw e;
                 }
             }
             String chr = splitA[format.chrColumn];
@@ -225,20 +227,26 @@ public class VarDict {
                 }
                 if (a == null) {
                     String[] ampl = line.split(conf.delimiter);
-                    if (ampl.length > 7) {
-                        try {
-                            int a1 = toInt(ampl[1]);
-                            int a2 = toInt(ampl[2]);
-                            int a6 = toInt(ampl[6]);
-                            int a7 = toInt(ampl[7]);
-                            if (a6 >= a1 && a7 <= a2) {
-                                a = "10:0.95";
-                                if (!conf.isZeroBasedDefined()) {
-                                    zeroBased = true;
+                    if (ampl.length == 8) {
+                        Matcher ampl6 = INTEGER_ONLY.matcher(ampl[6]);
+                        Matcher ampl7 = INTEGER_ONLY.matcher(ampl[7]);
+                        if (ampl6.find() && ampl7.find()) {
+                            try {
+                                int a1 = toInt(ampl[1]);
+                                int a2 = toInt(ampl[2]);
+                                int a6 = toInt(ampl[6]);
+                                int a7 = toInt(ampl[7]);
+                                if (a6 >= a1 && a7 <= a2) {
+                                    a = "10:0.95";
+                                    if (!conf.isZeroBasedDefined()) {
+                                        zeroBased = true;
+                                    }
                                 }
+                            } catch (NumberFormatException e) {
+                                System.err.println("Incorrect format of BED file for amplicon mode. It must be 8 columns " +
+                                        "and 2, 3, 7 and 8 columns must contain region start and end.");
+                                throw e;
                             }
-                        } catch (NumberFormatException e) {
-                            continue;
                         }
                     }
                 }
