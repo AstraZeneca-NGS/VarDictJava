@@ -6,7 +6,6 @@ plugins {
 
 version = '1.5.3'
 
-
 repositories { 
     mavenCentral() 
 }
