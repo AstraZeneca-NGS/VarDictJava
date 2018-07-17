@@ -30,6 +30,7 @@ public class VarDict {
     final static Pattern SN = Pattern.compile("\\s+SN:(\\S+)");
     final static Pattern LN = Pattern.compile("\\sLN:(\\d+)");
     final static Pattern INTEGER_ONLY = Pattern.compile("^\\d+$");
+    private static final String DEFAULT_AMPLICON_PARAMETERS = "10:0.95";
 
     private static ThreadLocal<Map<String, SamReader>> threadLocalSAMReaders = ThreadLocal.withInitial(HashMap::new);
 
@@ -260,7 +261,7 @@ public class VarDict {
                                 if (startAmplicon_a6 >= startRegion_a1 && endAmplicon_a7 <= endRegion_a2) {
                                     // Read pair is considered belonging the amplicon if the edges are less than 10 bp
                                     // to the amplicon and overlap fraction is at least 0.95 by default
-                                    ampliconParameters = "10:0.95";
+                                    ampliconParameters = DEFAULT_AMPLICON_PARAMETERS;
                                     if (!conf.isZeroBasedDefined()) {
                                         zeroBased = true;
                                     }
