@@ -348,10 +348,9 @@ public class VarDict {
                                            final Configuration conf) throws IOException {
         for (List<Region> list : segs) {
             for (Region region : list) {
-                Map<Integer, Character> ref = getREF(region, chrs,  conf).referenceSequences;
+                Reference reference = getREF(region, chrs, conf);
                 final Set<String> splice = new HashSet<>();
-                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), ref, chrs, sample, splice,
-                        ampliconBasedCalling, 0, conf);
+                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
                 vardict(region, tpl._2, sample, splice, conf, System.out);
             }
         }
@@ -371,9 +370,9 @@ public class VarDict {
                     for (List<Region> list : segs) {
                         for (Region region : list) {
                             final Set<String> splice = new ConcurrentHashSet<>();
-                            Map<Integer, Character> ref = getREF(region, chrs,  conf).referenceSequences;
-                            Future<Tuple2<Integer, Map<Integer, Vars>>> f1 = executor.submit(new ToVarsWorker(region, conf.bam.getBam1(), chrs, sample, splice, ampliconBasedCalling, ref, conf));
-                            Future<OutputStream> f2 = executor.submit(new SomdictWorker(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, ref, conf, f1, sample));
+                            Reference reference = getREF(region, chrs, conf);
+                            Future<Tuple2<Integer, Map<Integer, Vars>>> f1 = executor.submit(new ToVarsWorker(region, conf.bam.getBam1(), chrs, sample, splice, ampliconBasedCalling, reference, conf));
+                            Future<OutputStream> f2 = executor.submit(new SomdictWorker(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, reference, conf, f1, sample));
                             toSamdict.put(f2);
                         }
                     }
@@ -404,13 +403,10 @@ public class VarDict {
         for (List<Region> list : segs) {
             for (Region region : list) {
                 final Set<String> splice = new ConcurrentHashSet<>();
-                Map<Integer, Character> ref = getREF(region, chrs, conf).referenceSequences;
-                Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region, conf.bam.getBam1(), ref, chrs, sample,
-                        splice, ampliconBasedCalling, 0, conf);
-                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), ref, chrs, sample,
-                        splice, ampliconBasedCalling, t1._1, conf);
-                somdict(region, t1._2, t2._2, sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1, t2._1),
-                        conf, System.out);
+                Reference reference = getREF(region, chrs, conf);
+                Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region, conf.bam.getBam1(), reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
+                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), reference, chrs, sample, splice, ampliconBasedCalling, t1._1, conf);
+                somdict(region, t1._2, t2._2, sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1, t2._1), conf, System.out);
             }
         }
 
@@ -910,8 +906,8 @@ public class VarDict {
             System.err.printf("Start Combine %s %s\n", p, nt);
         }
         Region region = new Region(chr, var1.sp - rlen, var1.ep + rlen, "");
-        Map<Integer, Character> ref = getREF(region, chrs,  conf).referenceSequences;
-        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(), ref,
+        Reference reference = getREF(region, chrs, conf);
+        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(), reference,
                 chrs, sample, splice, ampliconBasedCalling, rlen, conf);
         rlen = tpl._1;
         Map<Integer, Vars> vars = tpl._2;
@@ -1478,14 +1474,14 @@ public class VarDict {
      * @param splice set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @param rlen max read length
-     * @param ref reference in a given region
+     * @param reference reference in a given region
      * @param conf Configuration
      * @return Tuple of (noninsertion variant  structure, insertion variant structure, coverage, maxmimum read length)
      * @throws IOException
      */
     static Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer>
-            parseSAM(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice,
-                     String ampliconBasedCalling, int rlen, Map<Integer, Character> ref, Configuration conf) throws IOException {
+          parseSAM(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice, String ampliconBasedCalling,
+                   int rlen, Reference reference, Configuration conf) throws IOException {
 
         String[] bams = bam.split(":");
 
@@ -1497,7 +1493,8 @@ public class VarDict {
         Map<Integer, Map<String, Integer>> ins = new HashMap<>();
         Map<Integer, Map<String, Integer>> mnp = new HashMap<>(); // Keep track of MNPs
         Map<Integer, Map<String, Integer>> dels5 = new HashMap<>();
-        Map<String, int[]> spliceCnt = new HashMap<>();
+        Map<String, int[]> spliceCnt = new HashMap<String, int[]>();
+        Map <Integer, Character> ref = reference.referenceSequences;
 
         String chr = region.chr;
         if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) { //remove prefix 'chr' if option -C is set
@@ -2856,7 +2853,7 @@ public class VarDict {
      * Read BAM files and create variant structure
      * @param region region of interest
      * @param bam BAM file names (':' delimiter)
-     * @param ref part of reference sequence (key - position, value - base)
+     * @param reference Reference object contains part of reference sequence (key - position, value - base)
      * @param chrs map of chromosome lengths
      * @param sample sample name
      * @param SPLICE set of strings representing spliced regions
@@ -2866,18 +2863,17 @@ public class VarDict {
      * @return Tuple of (maximum read length, variant structure)
      * @throws IOException
      */
-    static Tuple2<Integer, Map<Integer, Vars>> toVars(Region region, String bam, Map<Integer, Character> ref,
-            Map<String, Integer> chrs, String sample, Set<String> SPLICE, String ampliconBasedCalling, int Rlen,
-                                                      Configuration conf) throws IOException {
+    static Tuple2<Integer, Map<Integer, Vars>> toVars(Region region, String bam, Reference reference,
+            Map<String, Integer> chrs, String sample, Set<String> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
 
         Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer> parseTpl =
-                parseSAM(region, bam, chrs, sample, SPLICE, ampliconBasedCalling, Rlen, ref, conf);
+                parseSAM(region, bam, chrs, sample, SPLICE, ampliconBasedCalling, Rlen, reference, conf);
 
         Map<Integer, Map<String, Variation>> hash = parseTpl._1;
         Map<Integer, Map<String, Variation>> iHash = parseTpl._2;
         Map<Integer, Integer> cov = parseTpl._3;
         Rlen = parseTpl._4;
-
+        Map <Integer, Character> ref = reference.referenceSequences;
         //the variant structure
         Map<Integer, Vars> vars = new HashMap<>();
         //Loop over positions
@@ -5694,10 +5690,9 @@ public class VarDict {
         final Set<String> splice;
         final String ampliconBasedCalling;
         final Configuration conf;
-        Map<Integer, Character> ref;
+        Reference reference;
 
-        public ToVarsWorker(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice,
-                            String ampliconBasedCalling, Map<Integer, Character> ref, Configuration conf) {
+        public ToVarsWorker(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice, String ampliconBasedCalling, Reference reference, Configuration conf) {
             super();
             this.region = region;
             this.bam = bam;
@@ -5706,14 +5701,14 @@ public class VarDict {
             this.splice = splice;
             this.ampliconBasedCalling = ampliconBasedCalling;
             this.conf = conf;
-            this.ref = ref;
+            this.reference = reference;
         }
 
         @Override
         public Tuple2<Integer, Map<Integer, Vars>> call() throws Exception {
-            if (ref == null)
-                ref = getREF(region, chrs, conf).referenceSequences;
-            return toVars(region, bam, ref, chrs, sample, splice, ampliconBasedCalling, 0, conf);
+            if (reference == null)
+                reference = getREF(region, chrs, conf);
+            return toVars(region, bam, reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
         }
 
     }
@@ -5724,12 +5719,11 @@ public class VarDict {
         final ToVarsWorker second;
         final String sample;
 
-        public SomdictWorker(Region region, String bam, Map<String, Integer> chrs, Set<String> splice,
-                             String ampliconBasedCalling, Map<Integer, Character> ref, Configuration conf,
+        public SomdictWorker(Region region, String bam, Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, Reference reference, Configuration conf,
                 Future<Tuple2<Integer, Map<Integer, Vars>>> first,
                 String sample) {
             this.first = first;
-            this.second = new ToVarsWorker(region, bam, chrs, sample, splice, ampliconBasedCalling, ref, conf);
+            this.second = new ToVarsWorker(region, bam, chrs, sample, splice, ampliconBasedCalling, reference, conf);
             this.sample = sample;
         }
 
@@ -5769,9 +5763,8 @@ public class VarDict {
 
         @Override
         public OutputStream call() throws Exception {
-            Map<Integer, Character> ref = getREF(region, chrs, conf).referenceSequences;
-            Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), ref, chrs, sample, splice,
-                    ampliconBasedCalling, 0, conf);
+            Reference reference = getREF(region, chrs, conf);
+            Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream out = new PrintStream(baos);
             vardict(region, tpl._2, sample, splice, conf, out);
@@ -5900,7 +5893,7 @@ public class VarDict {
                     }
                     list.add(tuple(j, region));
                 }
-                vars.add(toVars(region, bam1, getREF(region, chrs,  conf).referenceSequences, chrs, sample, splice, ampliconBasedCalling, 0, conf)._2);
+                vars.add(toVars(region, bam1, getREF(region, chrs, conf), chrs, sample, splice, ampliconBasedCalling, 0, conf)._2);
                 j++;
             }
             ampVardict(rg, vars, pos, sample, splice, conf, System.out);

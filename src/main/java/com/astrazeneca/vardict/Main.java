@@ -144,7 +144,7 @@ public class Main {
         }
 
         if (cmd.hasOption("U")) {
-            conf.enableSV = true;
+            conf.disableSV = true;
         }
         if (cmd.hasOption("UN")) {
             conf.uniqueModeSecondInPairEnabled = true;

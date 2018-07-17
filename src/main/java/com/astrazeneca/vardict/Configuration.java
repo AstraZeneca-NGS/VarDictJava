@@ -215,7 +215,7 @@ public class Configuration {
     /**
      * Turn off structural variant calling when set to true
      */
-    boolean enableSV = false; //-U
+    boolean disableSV = false; //-U
 
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;
