@@ -103,17 +103,27 @@ public class VarDict {
         }
     };
 
+    /**
+     * Method splits list of lines from BED file to list of Regions in non-amplicon mode.
+     * @param segraw list of lines from BED file
+     * @param chrs map of chromosome lengths
+     * @param zeroBased true if coordinates in BED file start from 0
+     * @param conf Vardict Configuration (contains bed row format and the number of nucleotides to extend for each segment)
+     * @return list of segments split by Regions
+     * @throws IOException
+     */
     private static List<List<Region>> toRegions(List<String> segraw, Map<String, Integer> chrs, Boolean zeroBased, Configuration conf) throws IOException {
         boolean zb = conf.isZeroBasedDefined() ? conf.zeroBased : false;
         List<List<Region>> segs = new LinkedList<>();
         BedRowFormat format = conf.bedRowFormat;
         for (String seg : segraw) {
-            String[] splitA = seg.split(conf.delimiter);
-            if (!conf.isColumnForChromosomeSet() && splitA.length == 4) {
+            String[] columnValues = seg.split(conf.delimiter);
+            // For Custom Bed Row format columns number must be 4 and parameter -c doesn't set
+            if (!conf.isColumnForChromosomeSet() && columnValues.length == 4) {
                 try {
-                    int a1 = toInt(splitA[1]);
-                    int a2 = toInt(splitA[2]);
-                    if (a1 <= a2) {
+                    int startRegion_a1 = toInt(columnValues[1]);
+                    int endRegion_a2 = toInt(columnValues[2]);
+                    if (startRegion_a1 <= endRegion_a2) {
                         format = CUSTOM_BED_ROW_FORMAT;
                         if (zeroBased == null) {
                             zb = true;
@@ -124,34 +134,35 @@ public class VarDict {
                     throw e;
                 }
             }
-            String chr = splitA[format.chrColumn];
+            String chr = columnValues[format.chrColumn];
             chr = correctChr(chrs, chr);
-            int cdss = toInt(splitA[format.startColumn]);
-            int cdse = toInt(splitA[format.endColumn]);
-            String gene = format.geneColumn < splitA.length ? splitA[format.geneColumn] : chr;
+            int cdsStart = toInt(columnValues[format.startColumn]);
+            int cdsEnd = toInt(columnValues[format.endColumn]);
+            String gene = format.geneColumn < columnValues.length ? columnValues[format.geneColumn] : chr;
 
-            String[] starts = splitA[format.thickStartColumn].split(",");
-            String[] ends = splitA[format.thickEndColumn].split(",");
+            String[] starts = columnValues[format.thickStartColumn].split(",");
+            String[] ends = columnValues[format.thickEndColumn].split(",");
             List<Region> cds = new LinkedList<>();
             for (int i = 0; i < starts.length; i++) {
-                int s = toInt(starts[i]);
-                int e = toInt(ends[i]);
-                if (cdss > e) {
+                int regionStart = toInt(starts[i]);
+                int regionEnd = toInt(ends[i]);
+                if (cdsStart > regionEnd) {
                     continue;
                 }
-                if (cdse > e) {
+                if (cdsEnd > regionEnd) {
                     break;
                 }
-                if (s < cdss)
-                    s = cdss;
-                if (e > cdse)
-                    e = cdse;
-                s -= conf.numberNucleotideToExtend;
-                e += conf.numberNucleotideToExtend;
-                if (zb && s < e) {
-                    s++;
+                if (regionStart < cdsStart)
+                    regionStart = cdsStart;
+                if (regionEnd > cdsEnd)
+                    regionEnd = cdsEnd;
+                regionStart -= conf.numberNucleotideToExtend;
+                regionEnd += conf.numberNucleotideToExtend;
+                // increment start if zero based parameter true (coordinates start from 0)
+                if (zb && regionStart < regionEnd) {
+                    regionStart++;
                 }
-                cds.add(new Region(chr, s, e, gene));
+                cds.add(new Region(chr, regionStart, regionEnd, gene));
             }
             segs.add(cds);
         }
@@ -213,8 +224,16 @@ public class VarDict {
         return chr;
     }
 
-    private static Tuple3<String, Boolean, List<String>> readBedFile(Configuration conf) throws IOException, FileNotFoundException {
-        String a = conf.ampliconBasedCalling;
+    /**
+     * Method reads BED file line by line and checks if an amplicon mode sets in Configuration or by BED file.
+     *
+     * @param conf Vardict Configuration (contains amplicon based calling parameter)
+     * @return tuple of amplicon parameters (distance to the edges and overlap fraction), zero based parameter
+     * and list of lines from BED file
+     * @throws IOException
+     */
+    private static Tuple3<String, Boolean, List<String>> readBedFile(Configuration conf) throws IOException {
+        String ampliconParameters = conf.ampliconBasedCalling;
         Boolean zeroBased = conf.zeroBased;
         List<String> segraw = new ArrayList<>();
         try (BufferedReader bedFileReader = new BufferedReader(new FileReader(conf.bed))) {
@@ -225,26 +244,30 @@ public class VarDict {
                         || line.startsWith("track")) {
                     continue;
                 }
-                if (a == null) {
-                    String[] ampl = line.split(conf.delimiter);
-                    if (ampl.length == 8) {
-                        Matcher ampl6 = INTEGER_ONLY.matcher(ampl[6]);
-                        Matcher ampl7 = INTEGER_ONLY.matcher(ampl[7]);
-                        if (ampl6.find() && ampl7.find()) {
+                // Check that the amplicon parameters are not set in Configuration
+                if (ampliconParameters == null) {
+                    String[] columnValues = line.split(conf.delimiter);
+                    // Amplicon mode is on only if bed file contains exactly 8 columns and columns #7 and #8 are numbers
+                    if (columnValues.length == 8) {
+                        Matcher column6Matcher = INTEGER_ONLY.matcher(columnValues[6]);
+                        Matcher column7Matcher = INTEGER_ONLY.matcher(columnValues[7]);
+                        if (column6Matcher.find() && column7Matcher.find()) {
                             try {
-                                int a1 = toInt(ampl[1]);
-                                int a2 = toInt(ampl[2]);
-                                int a6 = toInt(ampl[6]);
-                                int a7 = toInt(ampl[7]);
-                                if (a6 >= a1 && a7 <= a2) {
-                                    a = "10:0.95";
+                                int startRegion_a1 = toInt(columnValues[1]);
+                                int endRegion_a2 = toInt(columnValues[2]);
+                                int startAmplicon_a6 = toInt(columnValues[6]);
+                                int endAmplicon_a7 = toInt(columnValues[7]);
+                                if (startAmplicon_a6 >= startRegion_a1 && endAmplicon_a7 <= endRegion_a2) {
+                                    // Read pair is considered belonging the amplicon if the edges are less than 10 bp
+                                    // to the amplicon and overlap fraction is at least 0.95 by default
+                                    ampliconParameters = "10:0.95";
                                     if (!conf.isZeroBasedDefined()) {
                                         zeroBased = true;
                                     }
                                 }
                             } catch (NumberFormatException e) {
                                 System.err.println("Incorrect format of BED file for amplicon mode. It must be 8 columns " +
-                                        "and 2, 3, 7 and 8 columns must contain region start and end.");
+                                        "and 2, 3, 7 and 8 columns must contain region and amplicon starts and ends.");
                                 throw e;
                             }
                         }
@@ -253,7 +276,7 @@ public class VarDict {
                 segraw.add(line);
             }
         }
-        return tuple(a, zeroBased, segraw);
+        return tuple(ampliconParameters, zeroBased, segraw);
     }
 
     private static void nonAmpVardict(List<List<Region>> segs, Map<String, Integer> chrs, String ampliconBasedCalling, String sample, String samplem, Configuration conf) throws IOException {
