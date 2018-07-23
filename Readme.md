@@ -37,7 +37,7 @@ To load the project, execute the following command:
 git clone --recursive https://github.com/AstraZeneca-NGS/VarDictJava.git
 ```
 
-Note that the original VardDict project is placed in this repository as a submodule and its contents can be found in the sub-directory VarDict in VarDictJava working folder. So when you use `teststrandbias.R` and `var2vcf_valid.pl.` (see details and examples below), you have to add prefix VarDict: `VarDict/teststrandbias.R` and `VarDict/var2vcf_valid.pl.`
+Note that the original VarDict project is placed in this repository as a submodule and its contents can be found in the sub-directory VarDict in VarDictJava working folder. So when you use `teststrandbias.R` and `var2vcf_valid.pl.` (see details and examples below), you have to add prefix VarDict: `VarDict/teststrandbias.R` and `VarDict/var2vcf_valid.pl.`
 
 ### Compiling
 
@@ -46,7 +46,7 @@ The project uses [Gradle](http://gradle.org/) and already includes a gradlew scr
 To build the project, in the root folder of the project, run the following command:
 
 ```
-./gradlew clean installApp 
+./gradlew clean installDist
 ```
 
 To generate Javadoc, in the build/docs/javadoc folder, run the following command:

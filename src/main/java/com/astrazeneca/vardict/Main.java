@@ -143,6 +143,9 @@ public class Main {
             conf.chimeric = true;
         }
 
+        if (cmd.hasOption("U")) {
+            conf.disableSV = true;
+        }
         if (cmd.hasOption("UN")) {
             conf.uniqueModeSecondInPairEnabled = true;
         }

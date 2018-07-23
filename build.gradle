@@ -6,7 +6,6 @@ plugins {
 
 version = '1.5.3'
 
-
 repositories { 
     mavenCentral() 
 }
@@ -29,9 +28,11 @@ dependencies {
         transitive = false
     }
     // https://mvnrepository.com/artifact/org.powermock/powermock-module-junit4
-    testCompile group: 'org.powermock', name: 'powermock-api-mockito', version: '1.6.6'
-    testCompile group: 'org.powermock', name: 'powermock-module-testng', version: '1.6.6'
-    testCompile'org.testng:testng:6.9.13.6'
+    testCompile group: 'org.powermock', name: 'powermock-api-mockito2', version: '2.0.0-beta.5'
+    testCompile group: 'org.powermock', name: 'powermock-module-testng', version: '2.0.0-beta.5'
+    testCompile 'org.testng:testng:6.9.13.6'
+    testCompile 'net.bytebuddy:byte-buddy:1.8.3'
+    testCompile 'net.bytebuddy:byte-buddy-agent:1.8.3'
 }
 
 mainClassName = "com.astrazeneca.vardict.Main"

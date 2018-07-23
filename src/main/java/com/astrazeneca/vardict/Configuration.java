@@ -78,7 +78,6 @@ public class Configuration {
      * The phred score for a base to be considered a good call
      */
     double goodq; // -q, default = 22.5
-    final int buffer = 200;
     /**
      * Extension of bp to look for mismatches after insersion or deletion
      */
@@ -192,11 +191,31 @@ public class Configuration {
     int threads; //-th
 
     /**
+     * The larger seed size
+     */
+    int seed1 = 17;
+
+    /**
+     * The smaller seed size
+     */
+    int seed2 = 12;
+
+    /**
+     * The adaptor size
+     */
+    int adseed = 6;
+    /**
+     *
      * Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction,
      * where a read can be split into two segments, each will be aligned within 1-2 read length distance,
      * but in opposite direction.
      */
     public boolean chimeric = false; // --chimeric
+
+    /**
+     * Turn off structural variant calling when set to true
+     */
+    boolean disableSV = false; //-U
 
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;

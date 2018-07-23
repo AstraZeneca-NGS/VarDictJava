@@ -348,10 +348,9 @@ public class VarDict {
                                            final Configuration conf) throws IOException {
         for (List<Region> list : segs) {
             for (Region region : list) {
-                Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
+                Reference reference = getREF(region, chrs, conf);
                 final Set<String> splice = new HashSet<>();
-                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), ref, chrs, sample, splice,
-                        ampliconBasedCalling, 0, conf);
+                Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
                 vardict(region, tpl._2, sample, splice, conf, System.out);
             }
         }
@@ -371,9 +370,9 @@ public class VarDict {
                     for (List<Region> list : segs) {
                         for (Region region : list) {
                             final Set<String> splice = new ConcurrentHashSet<>();
-                            Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
-                            Future<Tuple2<Integer, Map<Integer, Vars>>> f1 = executor.submit(new ToVarsWorker(region, conf.bam.getBam1(), chrs, sample, splice, ampliconBasedCalling, ref, conf));
-                            Future<OutputStream> f2 = executor.submit(new SomdictWorker(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, ref, conf, f1, sample));
+                            Reference reference = getREF(region, chrs, conf);
+                            Future<Tuple2<Integer, Map<Integer, Vars>>> f1 = executor.submit(new ToVarsWorker(region, conf.bam.getBam1(), chrs, sample, splice, ampliconBasedCalling, reference, conf));
+                            Future<OutputStream> f2 = executor.submit(new SomdictWorker(region, conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, reference, conf, f1, sample));
                             toSamdict.put(f2);
                         }
                     }
@@ -404,13 +403,10 @@ public class VarDict {
         for (List<Region> list : segs) {
             for (Region region : list) {
                 final Set<String> splice = new ConcurrentHashSet<>();
-                Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
-                Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region, conf.bam.getBam1(), ref, chrs, sample,
-                        splice, ampliconBasedCalling, 0, conf);
-                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), ref, chrs, sample,
-                        splice, ampliconBasedCalling, t1._1, conf);
-                somdict(region, t1._2, t2._2, sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1, t2._1),
-                        conf, System.out);
+                Reference reference = getREF(region, chrs, conf);
+                Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region, conf.bam.getBam1(), reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
+                Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), reference, chrs, sample, splice, ampliconBasedCalling, t1._1, conf);
+                somdict(region, t1._2, t2._2, sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1, t2._1), conf, System.out);
             }
         }
 
@@ -910,8 +906,8 @@ public class VarDict {
             System.err.printf("Start Combine %s %s\n", p, nt);
         }
         Region region = new Region(chr, var1.sp - rlen, var1.ep + rlen, "");
-        Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
-        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(), ref,
+        Reference reference = getREF(region, chrs, conf);
+        Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(), reference,
                 chrs, sample, splice, ampliconBasedCalling, rlen, conf);
         rlen = tpl._1;
         Map<Integer, Vars> vars = tpl._2;
@@ -1431,6 +1427,9 @@ public class VarDict {
     private static final jregex.Pattern END_NUMBER_I = new jregex.Pattern("(\\d+)I$");
     private static final Pattern START_DIG = Pattern.compile("^-(\\d+)");
 
+    private static final Pattern START_AAAAAAA = Pattern.compile("^.AAAAAAA");
+    private static final Pattern START_TTTTTTT = Pattern.compile("^.TTTTTTT");
+
     /**
      * To avoid performance issues only one SamView object on the same file can be opened per thread
      */
@@ -1475,14 +1474,14 @@ public class VarDict {
      * @param splice set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @param rlen max read length
-     * @param ref reference in a given region
+     * @param reference reference in a given region
      * @param conf Configuration
      * @return Tuple of (noninsertion variant  structure, insertion variant structure, coverage, maxmimum read length)
      * @throws IOException
      */
     static Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer>
-            parseSAM(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice,
-                     String ampliconBasedCalling, int rlen, Map<Integer, Character> ref, Configuration conf) throws IOException {
+          parseSAM(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice, String ampliconBasedCalling,
+                   int rlen, Reference reference, Configuration conf) throws IOException {
 
         String[] bams = bam.split(":");
 
@@ -1494,7 +1493,8 @@ public class VarDict {
         Map<Integer, Map<String, Integer>> ins = new HashMap<>();
         Map<Integer, Map<String, Integer>> mnp = new HashMap<>(); // Keep track of MNPs
         Map<Integer, Map<String, Integer>> dels5 = new HashMap<>();
-        Map<String, int[]> spliceCnt = new HashMap<>();
+        Map<String, int[]> spliceCnt = new HashMap<String, int[]>();
+        Map <Integer, Character> ref = reference.referenceSequences;
 
         String chr = region.chr;
         if (conf.chromosomeNameIsNumber && chr.startsWith("chr")) { //remove prefix 'chr' if option -C is set
@@ -2684,8 +2684,8 @@ public class VarDict {
                                                     String querySequence, int mappingQuality, String queryQuality,
                                                     int nm, int n, boolean dir, int start, int m, int q,
                                                     int qn, int lowqcnt) {
-        //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
-        if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
+        //If we have at least 1 high-quality soft-clipped base of region of interest
+        if (qn >= 1 && qn > lowqcnt && start >= region.start && start <= region.end) {
             //add record to $sclip3
             Sclip sclip = sclip3.get(start);
             if (sclip == null) {
@@ -2712,8 +2712,8 @@ public class VarDict {
                                                     String querySequence, int mappingQuality, String queryQuality,
                                                     int nm, boolean dir, int start, int m, int q,
                                                     int qn, int lowqcnt) {
-        //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
-        if (qn >= 1 && qn > lowqcnt && start >= region.start - conf.buffer && start <= region.end + conf.buffer) {
+        //If we have at least 1 high-quality soft-clipped base of region of interest
+        if (qn >= 1 && qn > lowqcnt && start >= region.start && start <= region.end) {
             //add record to $sclip5
             Sclip sclip = sclip5.get(start);
             if (sclip == null) {
@@ -2853,7 +2853,7 @@ public class VarDict {
      * Read BAM files and create variant structure
      * @param region region of interest
      * @param bam BAM file names (':' delimiter)
-     * @param ref part of reference sequence (key - position, value - base)
+     * @param reference Reference object contains part of reference sequence (key - position, value - base)
      * @param chrs map of chromosome lengths
      * @param sample sample name
      * @param SPLICE set of strings representing spliced regions
@@ -2863,18 +2863,17 @@ public class VarDict {
      * @return Tuple of (maximum read length, variant structure)
      * @throws IOException
      */
-    static Tuple2<Integer, Map<Integer, Vars>> toVars(Region region, String bam, Map<Integer, Character> ref,
-            Map<String, Integer> chrs, String sample, Set<String> SPLICE, String ampliconBasedCalling, int Rlen,
-                                                      Configuration conf) throws IOException {
+    static Tuple2<Integer, Map<Integer, Vars>> toVars(Region region, String bam, Reference reference,
+            Map<String, Integer> chrs, String sample, Set<String> SPLICE, String ampliconBasedCalling, int Rlen, Configuration conf) throws IOException {
 
         Tuple4<Map<Integer, Map<String, Variation>>, Map<Integer, Map<String, Variation>>, Map<Integer, Integer>, Integer> parseTpl =
-                parseSAM(region, bam, chrs, sample, SPLICE, ampliconBasedCalling, Rlen, ref, conf);
+                parseSAM(region, bam, chrs, sample, SPLICE, ampliconBasedCalling, Rlen, reference, conf);
 
         Map<Integer, Map<String, Variation>> hash = parseTpl._1;
         Map<Integer, Map<String, Variation>> iHash = parseTpl._2;
         Map<Integer, Integer> cov = parseTpl._3;
         Rlen = parseTpl._4;
-
+        Map <Integer, Character> ref = reference.referenceSequences;
         //the variant structure
         Map<Integer, Vars> vars = new HashMap<>();
         //Loop over positions
@@ -3603,8 +3602,8 @@ public class VarDict {
                 if (p3 - p5 > rlen - 10) { // if they're too far away, don't even try
                     continue;
                 }
-                final String seq5 = findconseq(sc5v, conf.y);
-                final String seq3 = findconseq(sc3v, conf.y);
+                final String seq5 = findconseq(sc5v, conf);
+                final String seq3 = findconseq(sc3v, conf);
                 //next until at least one of consensus sequences has length > 10
                 if (seq5.length() <= 10 || seq3.length() <= 10) {
                     continue;
@@ -3818,7 +3817,7 @@ public class VarDict {
             if (sc5v.used) {
                 continue;
             }
-            String seq = findconseq(sc5v, conf.y);
+            String seq = findconseq(sc5v, conf);
             if (seq.isEmpty()) {
                 continue;
             }
@@ -3899,7 +3898,7 @@ public class VarDict {
             if (sc3v.used) {
                 continue;
             }
-            String seq = findconseq(sc3v, conf.y);
+            String seq = findconseq(sc3v, conf);
             if (seq.isEmpty()) {
                 continue;
             }
@@ -4178,7 +4177,7 @@ public class VarDict {
             if (sc5v.used) {
                 continue;
             }
-            String seq = findconseq(sc5v, conf.y);
+            String seq = findconseq(sc5v, conf);
             if (seq.isEmpty()) {
                 continue;
             }
@@ -4292,7 +4291,7 @@ public class VarDict {
             if (sc3v.used) {
                 continue;
             }
-            String seq = findconseq(sc3v, conf.y);
+            String seq = findconseq(sc3v, conf);
             if (seq.isEmpty()) {
                 continue;
             }
@@ -4731,7 +4730,7 @@ public class VarDict {
             for (Integer sc5pp : sc5p) {
                 Sclip tv = sclip5.get(sc5pp);
                 if (tv != null && !tv.used) {
-                    String seq = findconseq(tv, conf.y);
+                    String seq = findconseq(tv, conf);
                     if (conf.y) {
                         System.err.printf("    ins5: %s %s %s %s %s %s\n", p, sc5pp, seq, wupseq, icnt, tv.cnt);
                     }
@@ -4753,7 +4752,7 @@ public class VarDict {
                     System.err.printf("    33: %s %s %s %s\n", p, sc3pp, vn, sanpseq);
                 }
                 if (tv != null && !tv.used) {
-                    String seq = findconseq(tv, conf.y);
+                    String seq = findconseq(tv, conf);
                     if (conf.y) {
                         System.err.printf("    ins3: %s %s %s %s %s %s %s\n", p, sc3pp, seq, sanpseq, vn, icnt, tv.cnt);
                     }
@@ -4963,7 +4962,7 @@ public class VarDict {
             for (Integer sc5pp : sc5p) {
                 if (sclip5.containsKey(sc5pp) && !sclip5.get(sc5pp).used) {
                     Sclip tv = sclip5.get(sc5pp);
-                    String seq = findconseq(tv, conf.y);
+                    String seq = findconseq(tv, conf);
                     if (conf.y) {
                         System.err.printf("  Realigndel 5: %s %s Seq: '%s' %s %s %s %s %s cov: %s\n",
                                 p, sc5pp, seq, new StringBuilder(wupseq).reverse(), tv.cnt, dcnt, vn, p, cov.get(p));
@@ -4985,7 +4984,7 @@ public class VarDict {
             for (Integer sc3pp : sc3p) {
                 if (sclip3.containsKey(sc3pp) && !sclip3.get(sc3pp).used) {
                     Sclip tv = sclip3.get(sc3pp);
-                    String seq = findconseq(tv, conf.y);
+                    String seq = findconseq(tv, conf);
                     if (conf.y) {
                         System.err.printf("  Realigndel 3: %s %s seq '%s' %s %s %s %s %s %s %s\n",
                                 p, sc3pp, seq, sanpseq, tv.cnt, dcnt, vn, p, dellen, substr(sanpseq, sc3pp - p));
@@ -5097,33 +5096,45 @@ public class VarDict {
      * @param seq2 second sequence
      * @param dir direction of seq2 (1 or -1)
      * @param debugLog print debug message if true
-     * @return true if seq1 matches seq2 with no more than 2 mismathes
+     * @param MM length of mismatches for SV
+     * @return true if seq1 matches seq2 with no more than MM number of mismatches
      */
-    static boolean ismatch(String seq1, String seq2, int dir, boolean debugLog) {
+    static boolean ismatch(String seq1, String seq2, int dir, boolean debugLog, int MM) {
         if (debugLog) {
-            System.err.printf("    Matching %s %s %s\n", seq1, seq2, dir);
+            System.err.printf("    Matching two seqs %s %s %s %s\n", seq1, seq2, dir, MM);
         }
         seq2 = seq2.replaceAll("#|\\^", "");
         int mm = 0;
-        Map<Character, Boolean> nts = new HashMap<>();
         for (int n = 0; n < seq1.length() && n < seq2.length(); n++) {
-            nts.put(seq1.charAt(n), true);
             if (seq1.charAt(n) != substr(seq2, dir * n - (dir == -1 ? 1 : 0), 1).charAt(0)) {
                 mm++;
             }
         }
 
-        return (mm <= 2 && mm / (double)seq1.length() < 0.15);
+        return (mm <= MM && mm / (double)seq1.length() < 0.15);
+    }
+
+    /**
+     * Find if sequences match
+     * @param seq1 first sequence
+     * @param seq2 second sequence
+     * @param dir direction of seq2 (1 or -1)
+     * @param debugLog print debug message if true
+     * @return true if seq1 matches seq2 with no more than 3 mismatches
+     */
+    static boolean ismatch(String seq1, String seq2, int dir, boolean debugLog) {
+        int MM = 3;
+        return ismatch(seq1, seq2, dir, debugLog, MM);
     }
 
     /**
      * Find the consensus sequence in soft-clipped reads. Consensus is called if
      * the matched nucleotides are &gt;90% of all softly clipped nucleotides.
      * @param scv soft-clipped sequences
-     * @param debugLog print debug message if true
+     * @param conf Configuration for debug and adseed options
      * @return consensus sequence
      */
-    static String findconseq(Sclip scv, boolean debugLog) {
+    private static String findconseq(Sclip scv, Configuration conf) {
         if (scv.sequence != null) {
             return scv.sequence;
         }
@@ -5143,11 +5154,14 @@ public class VarDict {
                 Character nt = ent.getKey();
                 int ncnt = ent.getValue();
                 tt += ncnt;
-                if (scv.seq.containsKey(i) && scv.seq.get(i).containsKey(nt) && scv.seq.get(i).get(nt).qmean > maxq) {
+                if (ncnt > max && scv.seq.containsKey(i) && scv.seq.get(i).containsKey(nt) && scv.seq.get(i).get(nt).qmean > maxq) {
                     max = ncnt;
                     mnt = nt;
                     maxq = scv.seq.get(i).get(nt).qmean;
                 }
+            }
+            if (i == 3 && scv.nt.size() >= 6 && tt/scv.cnt < 0.2 && tt <= 2) {
+                break;
             }
             if ((tt - max > 2 || max <= tt - max) && max / (double)tt < 0.8) {
                 if (flag)
@@ -5172,12 +5186,41 @@ public class VarDict {
         } else {
             scv.sequence = "";
         }
-        if (debugLog) {
-            System.err.printf("  candidate consensus: %s M: %s T: %s Final: %s\n", seq, match, total, scv.sequence);
-        }
-        return scv.sequence;
 
+        if (!scv.sequence.isEmpty() && seq.length() > conf.seed2) {
+            Matcher mm1  =  START_AAAAAAA.matcher(seq);
+            Matcher mm2  =  START_TTTTTTT.matcher(seq);
+            if (mm1.find() || mm2.find()) {
+                scv.used = true;
+            }
+            if (islowcomplexseq(seq.toString())) {
+                scv.used = true;
+            }
+        }
+        if (conf.y) {
+            System.err.printf("  Candidate consensus: %s Reads: %s M: %s T: %s Final: %s\n", seq, scv.cnt, match, total, scv.sequence);
+        }
+
+        return scv.sequence;
     }
+
+    // TODO: need to implement in adaptor task
+//    static String findconseq(Sclip scv, Configuration conf, int dir) {
+//        String sequence = findconseq(scv, conf);
+//
+//        if (!sequence.isEmpty() && sequence.length() >= conf.adseed) {
+//            if ( dir == 3 ) { // 3'
+//                if (adaptor.containsKey(substr(sequence, 0, conf.adseed))) {
+//                    scv.sequence = "";
+//                }
+//            } else if ( dir == 5 ) { // 5'
+//                if (adaptor_rev.containsKey(new StringBuilder(substr(sequence, 0, conf.adseed)).reverse().toString())) {
+//                    scv.sequence = "";
+//                }
+//            }
+//        }
+//        return scv.sequence;
+//    }
 
     /**
      * Given a variant sequence, find the mismatches and potential softclipping positions
@@ -5442,7 +5485,7 @@ public class VarDict {
                 if (sclip3.containsKey(p)) {
                     final Sclip sc3v = sclip3.get(p);
                     if (!sc3v.used) {
-                        final String seq = findconseq(sc3v, conf.y);
+                        final String seq = findconseq(sc3v, conf);
                         if (seq.startsWith(mnt)) {
                             if(seq.length() == mnt.length()
                                     || ismatchref(seq.substring(mnt.length()), ref, p + mnt.length(), 1, conf.y)) {
@@ -5456,7 +5499,7 @@ public class VarDict {
                 if (sclip5.containsKey(p + mnt.length())) {
                     final Sclip sc5v = sclip5.get(p + mnt.length());
                     if (!sc5v.used) {
-                        String seq =  findconseq(sc5v, conf.y);
+                        String seq =  findconseq(sc5v, conf);
                         if (!seq.isEmpty() && seq.length() >= mnt.length()) {
                             seq =  new StringBuffer(seq).reverse().toString();
                             if (seq.endsWith(mnt)) {
@@ -5476,18 +5519,27 @@ public class VarDict {
 
     }
 
-    private static boolean ismatchref(String seq, Map<Integer, Character> ref, int p, int dir, boolean debugLog) {
+    private static boolean ismatchref(String seq, Map<Integer, Character> ref, int p, int dir, boolean debugLog, int MM) {
         if (debugLog) {
-            System.err.println(format("      Matching REF %s %s %s", seq, p, dir));
+            System.err.println(format("      Matching REF %s %s %s %s", seq, p, dir, MM));
         }
+
         int mm = 0;
         for (int n = 0; n < seq.length(); n++) {
             final Character refCh = ref.get(p + dir * n);
-            if (refCh == null || charAt(seq, dir == 1 ? n : dir * n - 1) != refCh) {
+            if (refCh == null) {
+                return false;
+            }
+            if (charAt(seq, dir == 1 ? n : dir * n - 1) != refCh) {
                 mm++;
             }
         }
-        return mm <= 3 && mm / (double)seq.length() < 0.15;
+        return mm <= MM && mm / (double)seq.length() < 0.15;
+    }
+
+    private static boolean ismatchref(String seq, Map<Integer, Character> ref, int p, int dir, boolean debugLog) {
+        int MM = 3;
+        return ismatchref(seq, ref, p, dir, debugLog, MM);
     }
 
     /**
@@ -5638,10 +5690,9 @@ public class VarDict {
         final Set<String> splice;
         final String ampliconBasedCalling;
         final Configuration conf;
-        Map<Integer, Character> ref;
+        Reference reference;
 
-        public ToVarsWorker(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice,
-                            String ampliconBasedCalling, Map<Integer, Character> ref, Configuration conf) {
+        public ToVarsWorker(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice, String ampliconBasedCalling, Reference reference, Configuration conf) {
             super();
             this.region = region;
             this.bam = bam;
@@ -5650,14 +5701,14 @@ public class VarDict {
             this.splice = splice;
             this.ampliconBasedCalling = ampliconBasedCalling;
             this.conf = conf;
-            this.ref = ref;
+            this.reference = reference;
         }
 
         @Override
         public Tuple2<Integer, Map<Integer, Vars>> call() throws Exception {
-            if (ref == null)
-                ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
-            return toVars(region, bam, ref, chrs, sample, splice, ampliconBasedCalling, 0, conf);
+            if (reference == null)
+                reference = getREF(region, chrs, conf);
+            return toVars(region, bam, reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
         }
 
     }
@@ -5668,12 +5719,11 @@ public class VarDict {
         final ToVarsWorker second;
         final String sample;
 
-        public SomdictWorker(Region region, String bam, Map<String, Integer> chrs, Set<String> splice,
-                             String ampliconBasedCalling, Map<Integer, Character> ref, Configuration conf,
+        public SomdictWorker(Region region, String bam, Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling, Reference reference, Configuration conf,
                 Future<Tuple2<Integer, Map<Integer, Vars>>> first,
                 String sample) {
             this.first = first;
-            this.second = new ToVarsWorker(region, bam, chrs, sample, splice, ampliconBasedCalling, ref, conf);
+            this.second = new ToVarsWorker(region, bam, chrs, sample, splice, ampliconBasedCalling, reference, conf);
             this.sample = sample;
         }
 
@@ -5713,9 +5763,8 @@ public class VarDict {
 
         @Override
         public OutputStream call() throws Exception {
-            Map<Integer, Character> ref = getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend);
-            Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), ref, chrs, sample, splice,
-                    ampliconBasedCalling, 0, conf);
+            Reference reference = getREF(region, chrs, conf);
+            Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream out = new PrintStream(baos);
             vardict(region, tpl._2, sample, splice, conf, out);
@@ -5844,8 +5893,7 @@ public class VarDict {
                     }
                     list.add(tuple(j, region));
                 }
-                vars.add(toVars(region, bam1, getREF(region, chrs, conf.fasta, conf.numberNucleotideToExtend),
-                        chrs, sample, splice, ampliconBasedCalling, 0, conf)._2);
+                vars.add(toVars(region, bam1, getREF(region, chrs, conf), chrs, sample, splice, ampliconBasedCalling, 0, conf)._2);
                 j++;
             }
             ampVardict(rg, vars, pos, sample, splice, conf, System.out);
