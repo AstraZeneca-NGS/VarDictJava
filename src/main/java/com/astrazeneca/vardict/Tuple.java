@@ -1,6 +1,8 @@
 package com.astrazeneca.vardict;
 
-
+/**
+ * Util class for creating tuple structures of different size
+ */
 public final class Tuple {
 
     private Tuple() { }

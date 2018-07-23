@@ -14,6 +14,12 @@ import com.astrazeneca.vardict.VarDict.BedRowFormat;
 public class Main {
 
 
+    /**
+     * Method to build options from command line
+     * @param args array of arguments from command line
+     * @throws ParseException
+     * @throws IOException
+     */
     public static void main(String[] args) throws ParseException, IOException {
         Options options = buildOptions();
         CommandLineParser parser = new BasicParser();
@@ -110,7 +116,7 @@ public class Main {
         conf.qratio = getDoubleValue(cmd, "o", 1.5d);
         conf.mapq = getDoubleValue(cmd, "O", 0);
         conf.lofreq = getDoubleValue(cmd, "V", 0.05d);
-        conf.indelsize = getIntValue(cmd, "I", 120);
+        conf.indelsize = getIntValue(cmd, "I", 50);
 
 
         if (cmd.hasOption("p")) {
@@ -182,19 +188,18 @@ public class Main {
     @SuppressWarnings("static-access")
     private static Options buildOptions() {
         Options options = new Options();
-        options.addOption("H", false, "Print this help page");
-        options.addOption("h", false, "Print a header row describing columns");
+        options.addOption("H", "?", false, "Print this help page");
+        options.addOption("h", "header", false, "Print a header row describing columns");
         options.addOption("v", false, "VCF format output");
-        options.addOption("i", false, "Output splicing read counts");
+        options.addOption("i", "splice", false, "Output splicing read counts");
         options.addOption("p", false, "Do pileup regardless of the frequency");
-        options.addOption("C", false, "Indicate the chromosome names are just numbers, such as 1, 2, not chr1, chr2");
-        options.addOption("D", false, "Debug mode.  Will print some error messages and append full genotype at the end.");
-//        options.addOption("M", false, "Similar to -D, but will append individual quality and position data instead of mean");
-        options.addOption("t", false, "Indicate to remove duplicated reads.  Only one pair with same start positions will be kept");
+        options.addOption("C", false, "Indicate the chromosome names are just numbers, such as 1, 2, not chr1, chr2 (deprecated)");
+        options.addOption("D", "debug", false, "Debug mode.  Will print some error messages and append full genotype at the end.");
+        options.addOption("t", "dedup", false, "Indicate to remove duplicated reads.  Only one pair with same start positions will be kept");
         options.addOption("3", false, "Indicate to move indels to 3-prime if alternative alignment can be achieved.");
         options.addOption("K", false, "Include Ns in the total depth calculation");
-        options.addOption("u", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using first read only.");
-        options.addOption("UN", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.");
+        options.addOption("u", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.");
+        options.addOption("UN", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using first read only.");
         options.addOption("chimeric", false, "Indicate to turn off chimeric reads filtering.");
 
         options.addOption(OptionBuilder.withArgName("bit")
@@ -225,6 +230,7 @@ public class Main {
                         + " to the amplicon if the edges are less than int bp to the amplicon, and overlap fraction is at least float.  Default: 10:0.95")
                 .withType(Number.class)
                 .isRequired(false)
+                .withLongOpt("amplicon")
                 .create('a'));
 
         options.addOption(OptionBuilder.withArgName("INT")
@@ -321,7 +327,7 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("double")
                 .hasArg(true)
-                .withDescription("The threshold for allele frequency, default: 0.05 or 5%")
+                .withDescription("The threshold for allele frequency, default: 0.01 or 1%")
                 .withType(Number.class)
                 .isRequired(false)
                 .create('f'));
@@ -369,6 +375,7 @@ public class Main {
                 .withDescription("Trim bases after [INT] bases in the reads")
                 .withType(Number.class)
                 .isRequired(false)
+                .withLongOpt("trim")
                 .create('T'));
 
         options.addOption(OptionBuilder.withArgName("INT")
@@ -391,6 +398,7 @@ public class Main {
                         + "downsampling will be random and non-reproducible.")
                 .withType(Number.class)
                 .isRequired(false)
+                .withLongOpt("downsample")
                 .create('Z'));
 
         options.addOption(OptionBuilder.withArgName("Qratio")
@@ -416,13 +424,14 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("INT")
                 .hasArg(true)
-                .withDescription("The indel size.  Default: 120bp")
+                .withDescription("The indel size.  Default: 50bp")
                 .withType(Number.class)
                 .isRequired(false)
                 .create('I'));
 
         options.addOption(OptionBuilder
                 .isRequired(false)
+                .withLongOpt("verbose")
                 .create('y'));
 
         options.addOption(OptionBuilder.withArgName("INT")
@@ -460,11 +469,11 @@ public class Main {
         formater.setOptionComparator(null);
         formater.printHelp(142, "vardict [-n name_reg] [-b bam] [-c chr] [-S start] [-E end] [-s seg_starts] [-e seg_ends] "
                 + "[-x #_nu] [-g gene] [-f freq] [-r #_reads] [-B #_reads] region_info",
-    "VarDict is a variant calling program for SNV, MNV, indels (<120 bp), and complex variants.  It accepts any BAM format, either\n"+
-    "from DNA-seq or RNA-seq.  There're several distinct features over other variant callers.  First, it can perform local\n"+
+    "VarDict is a variant calling program for SNV, MNV, indels (<50 bp), and complex variants.  It accepts any BAM format, either\n"+
+    "from DNA-seq or RNA-seq.  There are several distinct features over other variant callers.  First, it can perform local\n"+
     "realignment over indels on the fly for more accurate allele frequencies of indels.  Second, it rescues softly clipped reads\n"+
     "to identify indels not present in the alignments or support existing indels.  Third, when given the PCR amplicon information,\n"+
-    "it'll perform amplicon-based variant calling and filter out variants that show amplicon bias, a common false positive in PCR\n"+
+    "it will perform amplicon-based variant calling and filter out variants that show amplicon bias, a common false positive in PCR\n"+
     "based targeted deep sequencing.  Forth, it has very efficient memory management and memory usage is linear to the region of\n"+
     "interest, not the depth.  Five, it can handle ultra-deep sequencing and the performance is only linear to the depth.  It has\n"+
     "been tested on depth over 2M reads.  Finally, it has a build-in capability to perform paired sample analysis, intended for\n"+
