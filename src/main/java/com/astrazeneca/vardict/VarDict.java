@@ -2684,7 +2684,7 @@ public class VarDict {
                                                     String querySequence, int mappingQuality, String queryQuality,
                                                     int nm, int n, boolean dir, int start, int m, int q,
                                                     int qn, int lowqcnt) {
-        //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
+        //If we have at least 1 high-quality soft-clipped base of region of interest
         if (qn >= 1 && qn > lowqcnt && start >= region.start && start <= region.end) {
             //add record to $sclip3
             Sclip sclip = sclip3.get(start);
@@ -2712,7 +2712,7 @@ public class VarDict {
                                                     String querySequence, int mappingQuality, String queryQuality,
                                                     int nm, boolean dir, int start, int m, int q,
                                                     int qn, int lowqcnt) {
-        //If we have at least 1 high-quality soft-clipped base within conf.buffer of region of interest
+        //If we have at least 1 high-quality soft-clipped base of region of interest
         if (qn >= 1 && qn > lowqcnt && start >= region.start && start <= region.end) {
             //add record to $sclip5
             Sclip sclip = sclip5.get(start);

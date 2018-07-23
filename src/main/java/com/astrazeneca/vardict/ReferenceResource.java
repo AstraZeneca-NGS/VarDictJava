@@ -41,7 +41,7 @@ public class ReferenceResource {
     }
 
     /**
-     * Get part of reference sequence in
+     * Get part of reference sequence with default extension.
      * @param region region of interest
      * @param chrs map of chromosome lengths
      * @param conf Vardict Configuration
@@ -53,7 +53,7 @@ public class ReferenceResource {
     }
 
     /**
-     * Get part of reference sequence
+     * Get part of reference sequence with customizable extension.
      * @param region region of interest
      * @param chrs map of chromosome lengths
      * @param conf Vardict Configuration contains number of nucleotides to extend and seed1, seed2 lengths
