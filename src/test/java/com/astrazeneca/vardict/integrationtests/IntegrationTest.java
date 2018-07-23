@@ -7,20 +7,19 @@ import com.astrazeneca.vardict.*;
 import org.mockito.invocation.InvocationOnMock;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.testng.PowerMockObjectFactory;
+import org.powermock.modules.testng.PowerMockTestCase;
 import org.testng.Assert;
-import org.testng.IObjectFactory;
 import org.testng.annotations.*;
 
 import java.io.*;
 import java.util.*;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 
 @PrepareForTest(ReferenceResource.class)
-public class IntegrationTest {
+public class IntegrationTest extends PowerMockTestCase {
 
     private final static String DEFAULT_ARGS = "-z -c 1 -S 2 -E 3 -g 4 -G ";
     private final static String PATH_TO_TESTCASES = "testdata/integrationtestcases/";
@@ -35,11 +34,6 @@ public class IntegrationTest {
         public String toString() {
             return input.toString();
         }
-    }
-
-    @ObjectFactory
-    public IObjectFactory getObjectFactory() {
-        return new PowerMockObjectFactory();
     }
 
     @BeforeClass
