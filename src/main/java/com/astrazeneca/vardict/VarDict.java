@@ -3410,13 +3410,7 @@ public class VarDict {
                     vref.msint = msint.length();
                     vref.shift3 = shift3;
                     vref.sp = sp;
-                    // In perl it was changed to simple ep
-                    final Matcher pnMtch = PLUS_NUMBER.matcher(genotype);
-                    if (pnMtch.find()) {
-                        vref.ep = sp + toInt(pnMtch.group(1));
-                    } else {
-                        vref.ep = ep;
-                    }
+                    vref.ep = ep;
                     vref.refallele = refallele;
                     vref.varallele = varallele;
                     vref.genotype = genotype;
@@ -4578,7 +4572,6 @@ public class VarDict {
     private static final Pattern BEGIN_MINUS_NUMBER_ANY = Pattern.compile("^-\\d+(.*)");
     private static final Pattern UP_NUMBER_END = Pattern.compile("\\^(\\d+)$");
     private static final Pattern ATGSs_AMP_ATGSs_END = Pattern.compile("(\\+[ATGC]+)&[ATGC]+$");
-    private static final Pattern PLUS_NUMBER = Pattern.compile("\\+(\\d+)");
     private static final Pattern SA_CIGAR_D_S_5clip = Pattern.compile("^\\d\\d+S");
     private static final Pattern SA_CIGAR_D_S_3clip = Pattern.compile("\\d\\dS$");
 
