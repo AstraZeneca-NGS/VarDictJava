@@ -4,7 +4,7 @@ plugins {
     id 'jacoco'
 }
 
-version = '1.5.3'
+version = '1.5.4'
 
 repositories { 
     mavenCentral() 
@@ -64,3 +64,5 @@ test {
     // enable TestNG support (default is JUnit)
     useTestNG()
 }
+
+applicationDistribution.from('VarDict/teststrandbias.R','VarDict/var2vcf_valid.pl','VarDict/var2vcf_paired.pl').into('bin')
