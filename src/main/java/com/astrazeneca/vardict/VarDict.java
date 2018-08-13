@@ -1763,10 +1763,10 @@ public class VarDict {
                                             }
                                             //trying to detect chimeric reads even when there's no supplementary
                                             // alignment from aligner
-                                        } else if (m >= conf.seed1) {
+                                        } else if (m >= Configuration.SEED_1) {
                                             Map<String, List<Integer>> referenceSeedMap = reference.seed;
                                             String sequence = getReverseComplementedSequence(record, 0, m);
-                                            String reverseComplementedSeed = sequence.substring(0, conf.seed1);
+                                            String reverseComplementedSeed = sequence.substring(0, Configuration.SEED_1);
 
                                             if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
                                                 List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
@@ -1778,7 +1778,7 @@ public class VarDict {
                                                     start = record.getAlignmentStart();
                                                     if (conf.y) {
                                                         System.err.println(sequence + " at 5' is a chimeric at "
-                                                                           + start + " by SEED " + conf.seed1);
+                                                                           + start + " by SEED " + Configuration.SEED_1);
                                                     }
                                                     continue;
                                                 }
@@ -1864,10 +1864,10 @@ public class VarDict {
                                                 }
                                                 continue;
                                             }
-                                        } else if (m >= conf.seed1) {
+                                        } else if (m >= Configuration.SEED_1) {
                                             Map<String, List<Integer>> referenceSeedMap = reference.seed;
                                             String sequence = getReverseComplementedSequence(record, -m, m);
-                                            String reverseComplementedSeed = sequence.substring(0, conf.seed1);
+                                            String reverseComplementedSeed = substr(sequence, -Configuration.SEED_1, Configuration.SEED_1);
 
                                             if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
                                                 List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
@@ -1878,7 +1878,7 @@ public class VarDict {
                                                     start = record.getAlignmentStart();
                                                     if (conf.y) {
                                                         System.err.println(sequence  + " at 3' is a chimeric at "
-                                                                           + start + " by SEED " + conf.seed1);
+                                                                           + start + " by SEED " + conf.SEED_1);
                                                     }
                                                     continue;
                                                 }
@@ -1968,7 +1968,9 @@ public class VarDict {
                                         && cigar.getCigarElement(ci + 1).getLength() <= conf.vext
                                         && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
                                         && (cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.I
-                                            || cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.D)) {
+                                            || cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.D)
+                                        && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
+                                        && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
 
                                     int mLen = cigar.getCigarElement(ci + 1).getLength();
                                     int indelLen = cigar.getCigarElement(ci + 2).getLength();
@@ -2169,7 +2171,9 @@ public class VarDict {
                                         && cigar.getCigarElement(ci + 1).getLength() <= conf.vext
                                         && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
                                         && (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
-                                         || cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D)) {
+                                         || cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D)
+                                        && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
+                                        && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
 
                                     int mLen = cigar.getCigarElement(ci + 1).getLength();
                                     int indelLen = cigar.getCigarElement(ci + 2).getLength();
@@ -5228,7 +5232,7 @@ public class VarDict {
             scv.sequence = "";
         }
 
-        if (!scv.sequence.isEmpty() && seq.length() > conf.seed2) {
+        if (!scv.sequence.isEmpty() && seq.length() > conf.SEED_2) {
             Matcher mm1  =  START_AAAAAAA.matcher(seq);
             Matcher mm2  =  START_TTTTTTT.matcher(seq);
             if (mm1.find() || mm2.find()) {
@@ -6784,7 +6788,8 @@ public class VarDict {
             int rn = 0;
             Set<Character> RN = new HashSet<>();
 
-            while (rn < soft && isHasAndEquals(ref, refoff + rn, querySeq, rdoff + rn)) {
+            while (rn < soft && isHasAndEquals(ref, refoff + rn, querySeq, rdoff + rn)
+                    && queryQual.charAt(rdoff + rn) - 33 > lowqual ) {
                 rn++;
             }
             if (rn > 0) {
@@ -6889,7 +6894,8 @@ public class VarDict {
             //number of bases before matched sequence that match in reference and read sequences
             int rn = 0;
             Set<Character> RN = new HashSet<>();
-            while (rn < soft && isHasAndEquals(ref, position - rn - 1, querySeq, soft - rn - 1)) {
+            while (rn < soft && isHasAndEquals(ref, position - rn - 1, querySeq, soft - rn - 1)
+                    && queryQual.charAt(soft - rn - 1) - 33 > lowqual) {
                 rn++;
             }
 

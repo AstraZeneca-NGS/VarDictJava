@@ -117,7 +117,7 @@ public class Main {
         conf.mapq = getDoubleValue(cmd, "O", 0);
         conf.lofreq = getDoubleValue(cmd, "V", 0.05d);
         conf.indelsize = getIntValue(cmd, "I", 50);
-
+        conf.referenceExtension = getIntValue(cmd, "Y", 1200);
 
         if (cmd.hasOption("p")) {
             conf.doPileup = true;
@@ -452,6 +452,16 @@ public class Main {
                 .withType(Number.class)
                 .isRequired(false)
                 .create('M'));
+
+        options.addOption(OptionBuilder.withArgName("INT")
+                .hasArg(true)
+                .withDescription("Extension of bp of reference to build lookup table. Default to 1200 bp." +
+                        " Increase the number will slowdown the program. The main purpose is to call large indels with 1000 bp" +
+                        " that can be missed by discordant mate pairs.")
+                .withType(Number.class)
+                .isRequired(false)
+                .withLongOpt("ref-extension")
+                .create('Y'));
 
         options.addOption(OptionBuilder.withArgName("STRICT | LENIENT | SILENT")
                 .hasArg(true)

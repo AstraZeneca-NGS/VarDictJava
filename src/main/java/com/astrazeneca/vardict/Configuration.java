@@ -193,12 +193,12 @@ public class Configuration {
     /**
      * The larger seed size
      */
-    int seed1 = 17;
+    public static final int SEED_1 = 17;
 
     /**
      * The smaller seed size
      */
-    int seed2 = 12;
+    public static final int SEED_2 = 12;
 
     /**
      * The adaptor size
@@ -216,6 +216,11 @@ public class Configuration {
      * Turn off structural variant calling when set to true
      */
     boolean disableSV = false; //-U
+
+    /**
+     * Default reference extension $REFEXT
+     */
+    public int referenceExtension = 1200;
 
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;
