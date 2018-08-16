@@ -1,0 +1,1 @@
+Simple,hg19.fa,Colo829.chr20.SVBPReverse.bam,chr20,318511,318527,-f 0.001

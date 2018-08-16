@@ -135,24 +135,16 @@ public class Main {
             conf.validationStringency = ValidationStringency.valueOf(cmd.getParsedOptionValue("VS").toString().toUpperCase());
         }
         
-        if (cmd.hasOption("K")) {
-            conf.includeNInTotalDepth = true;
-        }
+        conf.includeNInTotalDepth = cmd.hasOption("K");
+        conf.chimeric = cmd.hasOption("chimeric");
+        conf.disableSV = cmd.hasOption("U");
+        conf.uniqueModeSecondInPairEnabled = cmd.hasOption("UN");
+        conf.uniqueModeAlignmentEnabled = cmd.hasOption("u");
 
-        if (cmd.hasOption("chimeric")) {
-            conf.chimeric = true;
-        }
-
-        if (cmd.hasOption("U")) {
-            conf.disableSV = true;
-        }
-        if (cmd.hasOption("UN")) {
-            conf.uniqueModeSecondInPairEnabled = true;
-        }
-
-        if (cmd.hasOption("u")) {
-            conf.uniqueModeAlignmentEnabled = true;
-        }
+        conf.INSSIZE = getIntValue(cmd, "w", 300);
+        conf.INSSTD = getIntValue(cmd, "W", 100);
+        conf.INSSTDAMT = getIntValue(cmd, "A", 4);
+        conf.SVMINLEN = getIntValue(cmd, "L", 1000);
 
         conf.threads = Math.max(readThreadsCount(cmd), 1);
 
@@ -204,6 +196,7 @@ public class Main {
         options.addOption("u", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.");
         options.addOption("UN", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using first read only.");
         options.addOption("chimeric", false, "Indicate to turn off chimeric reads filtering.");
+        options.addOption("U", "nosv", false, "Turn off structural variant calling.");
 
         options.addOption(OptionBuilder.withArgName("bit")
                 .hasArg(true)
@@ -463,6 +456,38 @@ public class Main {
                 .withType(String.class)
                 .isRequired(false)
                 .create("VS"));
+
+        options.addOption(OptionBuilder.withArgName("INT")
+                .hasArg(true)
+                .withDescription("The number of STD. A pair will be considered for DEL " +
+                        "if INSERT > INSERT_SIZE + INSERT_STD_AMT * INSERT_STD.  Default: 4")
+                .withType(Number.class)
+                .isRequired(false)
+                .create('A'));
+
+        options.addOption(OptionBuilder.withArgName("INT")
+                .hasArg(true)
+                .withDescription("The insert size STD.  Used for SV calling.  Default: 100")
+                .withType(Number.class)
+                .isRequired(false)
+                .withLongOpt("insert-std")
+                .create('W'));
+
+        options.addOption(OptionBuilder.withArgName("INT")
+                .hasArg(true)
+                .withDescription("The insert size.  Used for SV calling.  Default: 300")
+                .withType(Number.class)
+                .isRequired(false)
+                .withLongOpt("insert-size")
+                .create('w'));
+
+        options.addOption(OptionBuilder.withArgName("INT")
+                .hasArg(true)
+                .withDescription("The minimum structural variant length to be presented using <DEL> <DUP> <INV> <INS>, etc. "
+                        + "Default: 1000. Any indel, complex variants less than this will be spelled out with exact nucleotides.")
+                .withType(Number.class)
+                .isRequired(false)
+                .create('L'));
 
         return options;
     }
