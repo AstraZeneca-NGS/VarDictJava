@@ -65,4 +65,4 @@ test {
     useTestNG()
 }
 
-applicationDistribution.from('VarDict/teststrandbias.R','VarDict/var2vcf_valid.pl','VarDict/var2vcf_paired.pl').into('bin')
+applicationDistribution.from('VarDict/teststrandbias.R','VarDict/testsomatic.R','VarDict/var2vcf_valid.pl','VarDict/var2vcf_paired.pl').into('bin')

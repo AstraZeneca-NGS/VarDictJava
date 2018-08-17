@@ -215,7 +215,6 @@ public class CigarUtils {
                     flag = true;
                 }
             } else if (threeDeletionsMatcher.find()) {
-                // deletions added from 27.04.2018
                 //length of both matched sequences and insertion
                 tslen = toInt(threeDeletionsMatcher.group(4)) + toInt(threeDeletionsMatcher.group(6));
                 //length of deletions and internal matched sequences
