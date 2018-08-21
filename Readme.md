@@ -305,6 +305,10 @@ The VarDictJava program follows the workflow:
     Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction, 
     where a read can be split into two segments, each will be aligned within 1-2 read length distance,
     but in opposite direction. Default: filtering enabled
+- `-Y|--ref-extension INT`  
+    Extension of bp of reference to build lookup table. Default to 1200 bp. Increase the number will slowdown the program. 
+    The main purpose is to call large indels with 1000 bp that can be missed by discordant mate pairs.    
+ 
 ## Output columns
 
 1. Sample - sample name
