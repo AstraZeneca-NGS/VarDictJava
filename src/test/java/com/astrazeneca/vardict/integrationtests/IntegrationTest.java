@@ -205,5 +205,15 @@ public class IntegrationTest extends PowerMockTestCase {
         String actualOutput = "Simple,hg19.fa,L861Q.bam,chr7,55259400,55259600\n" + outContent.toString();
         Assert.assertEquals(actualOutput, output.toString());
     }
+
+    @Test
+    public void testCorrectAmpliconBedFileRead() throws Exception {
+        File bam = new File(IntegrationTest.class.getResource("L861Q.bam").getPath());
+        File bed = new File(IntegrationTest.class.getResource("beds/correct_8columns_amplicon.bed").getPath());
+        String fastaPath ="hg19.fa";
+        mockReferenceResource(fastaPath);
+        String[] args = (bed + " -b " + bam + " " + DEFAULT_ARGS + fastaPath + ".csv").split("\\s");
+        Main.main(args);
+    }
 }
 

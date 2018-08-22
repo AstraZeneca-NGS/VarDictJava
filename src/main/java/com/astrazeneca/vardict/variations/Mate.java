@@ -6,16 +6,16 @@ public class Mate {
     public int mateLength_mlen;
     public int start_s;
     public int end_e;
-    public int pmean_rp;
+    public double pmean_rp;
     public double qmean_q;
-    public int Qmean_Q;
-    public int nm;
+    public double Qmean_Q;
+    public double nm;
 
     public Mate() {
     }
 
-    public Mate(int mateStart_ms, int mateEnd_me, int mateLength_mlen, int start_s, int end_e, int pmean_rp,
-                double qmean_q, int qmean_Q, int nm) {
+    public Mate(int mateStart_ms, int mateEnd_me, int mateLength_mlen, int start_s, int end_e, double pmean_rp,
+                double qmean_q, double qmean_Q, double nm) {
         this.mateStart_ms = mateStart_ms;
         this.mateEnd_me = mateEnd_me;
         this.mateLength_mlen = mateLength_mlen;

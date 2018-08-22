@@ -63,7 +63,8 @@ public class ToVarsBuilder {
 
         Tuple.Tuple5<Map<Integer, VariationMap<String, Variation>>, Map<Integer, VariationMap<String, Variation>>,
                 Map<Integer, Integer>, Integer, Double> parseTpl =
-                parseSAM(region, bam, chrs, sample, SPLICE, ampliconBasedCalling, Rlen, reference, conf, hash,
+                parseSAM(region, bam, chrs, sample, SPLICE, ampliconBasedCalling, Rlen, reference,
+                        conf, hash,
                         iHash, cov, sclip3, sclip5, svflag);
 
         hash = parseTpl._1;
@@ -84,7 +85,7 @@ public class ToVarsBuilder {
             final int p = entH.getKey();
             VariationMap<String, Variation> v = entH.getValue();
 
-            if(v.isEmpty()) {
+            if (v.isEmpty()) {
                 continue;
             }
             //Skip if position is outside region of interest
@@ -92,10 +93,11 @@ public class ToVarsBuilder {
                 if (p < region.start || p > region.end) {
                     continue;
                 }
-            }
-            //skip position if it has no coverage
-            if (!cov.containsKey(p)) {
-                continue;
+                //skip position if it has no coverage
+                if (!cov.containsKey(p)) {
+                    continue;
+                }
+
             }
 
             Set<String> vk = new HashSet<String>(v.keySet());
@@ -146,9 +148,9 @@ public class ToVarsBuilder {
                 //strand bias flag (0, 1 or 2)
                 int bias = strandBias(fwd, rev, conf.bias, conf.minb);
                 //mean base quality for variant
-                double vqual = cnt.qmean / cnt.cnt; // base quality
+                double vqual = roundHalfEven("0.0", cnt.qmean / cnt.cnt); // base quality
                 //mean mapping quality for variant
-                double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
+                double mq = roundHalfEven("0.0", cnt.Qmean / (double) cnt.cnt);
                 //number of high-quality reads for variant
                 int hicnt = cnt.hicnt;
                 //number of low-quality reads for variant
@@ -170,27 +172,28 @@ public class ToVarsBuilder {
                 tvref.fwd = fwd;
                 tvref.rev = rev;
                 tvref.bias = String.valueOf(bias);
-                tvref.freq = cnt.cnt / (double)ttcov;
-                tvref.pmean = cnt.pmean / (double)cnt.cnt;
+                tvref.freq = cnt.cnt / (double) ttcov;
+                tvref.pmean = cnt.pmean / (double) cnt.cnt;
                 tvref.pstd = cnt.pstd;
                 tvref.qual = vqual;
                 tvref.qstd = cnt.qstd;
                 tvref.mapq = mq;
                 tvref.qratio = hicnt / (locnt != 0 ? locnt : 0.5d);
-                tvref.hifreq = hicov > 0 ? hicnt / (double)hicov : 0;
-                tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)ttcov : 0;
+                tvref.hifreq = hicov > 0 ? hicnt / (double) hicov : 0;
+                tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double) ttcov : 0;
                 tvref.shift3 = 0;
                 tvref.msi = 0;
-                tvref.nm = cnt.nm / (double)cnt.cnt;
+                tvref.nm = cnt.nm / (double) cnt.cnt;
                 tvref.hicnt = hicnt;
                 tvref.hicov = hicov;
                 tvref.duprate = duprate;
 
                 //append variant record
                 var.add(tvref);
-                tvref.debugVariantsContent(conf, tmp, n , false);
+                if (conf.debug) {
+                    tvref.debugVariantsContentSimple(tmp, n);
+                }
             }
-
             //Handle insertions separately
             Map<String, Variation> iv = iHash.get(p);
             if (iv != null) {
@@ -207,9 +210,9 @@ public class ToVarsBuilder {
                     //strand bias flag (0, 1 or 2)
                     int bias = strandBias(fwd, rev, conf.bias, conf.minb);
                     //mean base quality for variant
-                    double vqual = cnt.qmean / cnt.cnt; // base quality
+                    double vqual = roundHalfEven("0.0", cnt.qmean / cnt.cnt); // base quality
                     //mean mapping quality for variant
-                    double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
+                    double mq = roundHalfEven("0.0", cnt.Qmean / (double)cnt.cnt); // mapping quality
                     //number of high-quality reads for variant
                     int hicnt = cnt.hicnt;
                     //number of low-quality reads for variant
@@ -241,8 +244,8 @@ public class ToVarsBuilder {
                     tvref.fwd = fwd;
                     tvref.rev = rev;
                     tvref.bias = String.valueOf(bias);
-                    tvref.freq = cnt.cnt / (double)ttcov;
-                    tvref.pmean = cnt.pmean / (double)cnt.cnt;
+                    tvref.freq = cnt.cnt / (double) ttcov;
+                    tvref.pmean = cnt.pmean / (double) cnt.cnt;
                     tvref.pstd = cnt.pstd;
                     tvref.qual = vqual;
                     tvref.qstd = cnt.qstd;
@@ -258,7 +261,9 @@ public class ToVarsBuilder {
                     tvref.duprate = duprate;
 
                     var.add(tvref);
-                    tvref.debugVariantsContent(conf, tmp, n, true);
+                    if (conf.debug) {
+                        tvref.debugVariantsContentInsertion(tmp, n);
+                    }
                 }
             }
 
@@ -327,7 +332,8 @@ public class ToVarsBuilder {
             //description string for any other variant
             String genotype2 = "";
 
-            if (tcov > cov.get(p) && hash.containsKey(p + 1) && hash.get(p + 1).containsKey(ref.get(p + 1).toString())) {
+            if (tcov > cov.get(p) && hash.containsKey(p + 1) && ref.containsKey(p + 1)
+                    && hash.get(p + 1).containsKey(ref.get(p + 1).toString())) {
                 Variation tpref = getVariationMaybe(hash, p + 1, ref.get(p + 1));
                 rfc = tpref.dirPlus;
                 rrc = tpref.dirMinus;
@@ -600,7 +606,10 @@ public class ToVarsBuilder {
                             .replace("#", "")
                             .replace("^", "i");
                     //convert extrafreq, freq, hifreq, msi fields to strings
-                    vref.msi = msi;
+                    vref.extrafreq = roundHalfEven("0.0000", vref.extrafreq);
+                    vref.freq = roundHalfEven("0.0000", vref.freq);
+                    vref.hifreq = roundHalfEven("0.0000", vref.hifreq);
+                    vref.msi = roundHalfEven("0.000", msi);
                     vref.msint = msint.length();
                     vref.shift3 = shift3;
                     vref.sp = sp;
@@ -645,6 +654,7 @@ public class ToVarsBuilder {
                 vref.shift3 = 0;
                 vref.sp = p;
                 vref.ep = p;
+                vref.hifreq = roundHalfEven("0.0000", vref.hifreq);
                 String r = ref.containsKey(p) ? ref.get(p).toString() : "";
                 //both refallele and varallele are 1 base from reference string
                 vref.refallele = r;

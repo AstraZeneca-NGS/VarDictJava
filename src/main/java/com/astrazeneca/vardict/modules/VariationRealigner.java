@@ -6,6 +6,7 @@ import com.astrazeneca.vardict.Utils;
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
 import com.astrazeneca.vardict.data.Reference;
+import com.astrazeneca.vardict.data.SVStructures;
 import com.astrazeneca.vardict.data.SamView;
 import com.astrazeneca.vardict.variations.Sclip;
 import com.astrazeneca.vardict.variations.Variation;
@@ -15,11 +16,16 @@ import java.io.IOException;
 import java.util.*;
 import java.util.regex.Matcher;
 
+import static com.astrazeneca.vardict.collection.VariationMap.getSV;
+import static com.astrazeneca.vardict.collection.VariationMap.removeSV;
 import static com.astrazeneca.vardict.data.Patterns.*;
 import static com.astrazeneca.vardict.modules.CigarUtils.getAlignedLength;
 import static com.astrazeneca.vardict.modules.SAMFileParser.parseSAM;
 import static com.astrazeneca.vardict.ReferenceResource.getREF;
 import static com.astrazeneca.vardict.ReferenceResource.isLoaded;
+import static com.astrazeneca.vardict.modules.StructuralVariantsProcessor.findMatch;
+import static com.astrazeneca.vardict.modules.StructuralVariantsProcessor.markDUPSV;
+import static com.astrazeneca.vardict.modules.StructuralVariantsProcessor.markSV;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.Utils.*;
@@ -60,7 +66,8 @@ public class VariationRealigner {
                                      Set<String> splice,
                                      String ampliconBasedCalling,
                                      Map<Integer, Map<String, Integer>> ins,
-                                     Map<Integer, Map<String, Integer>> dels5) throws IOException {
+                                     Map<Integer, Map<String, Integer>> dels5,
+                                     SVStructures svStructures) throws IOException {
         if (conf.y)
             System.err.println("Start Realigndel");
         realigndel(hash, dels5, cov, sclip5, sclip3, reference, region, chrs, rlen, bam, conf);
@@ -70,14 +77,14 @@ public class VariationRealigner {
         if (conf.y)
             System.err.println("Start Realignlgdel");
         realignlgdel(hash, cov, sclip5, sclip3, sample, splice, ampliconBasedCalling,
-                reference, region, chrs, iHash, rlen, bam, conf);
-        if (conf.y)
-            System.err.println("Start Realignlgins");
-        realignlgins(hash, iHash, cov, sclip5, sclip3, sample, splice, ampliconBasedCalling,
-                reference, region, chrs, rlen, bam, conf);
+                reference, region, chrs, iHash, rlen, bam, svStructures.svfdel, svStructures.svrdel, conf);
         if (conf.y)
             System.err.println("Start Realignlgins30");
         realignlgins30(hash, iHash, cov, sclip5, sclip3, reference, region, chrs, rlen, bam, conf);
+        if (conf.y)
+            System.err.println("Start Realignlgins");
+        realignlgins(hash, iHash, cov, sclip5, sclip3, sample, splice, ampliconBasedCalling,
+                reference, region, chrs, rlen, bam, svStructures.svfdup, svStructures.svrdup, conf);
     }
 
     /**
@@ -93,7 +100,7 @@ public class VariationRealigner {
      * @param chrs map of chromosome lengths
      * @param conf configuration
      */
-    public static void realignins(Map<Integer, VariationMap<String, Variation>> hash,
+    public static String realignins(Map<Integer, VariationMap<String, Variation>> hash,
                                   Map<Integer, VariationMap<String, Variation>> iHash,
                                   Map<Integer, Map<String, Integer>> ins,
                                   Map<Integer, Integer> cov,
@@ -106,11 +113,12 @@ public class VariationRealigner {
                                   Configuration conf) {
         String chr = region.chr;
         Map<Integer, Character> ref = reference.referenceSequences;
-        List<Object[]> tmp = fillTmp(ins);
-        for (Object[] objects : tmp) {
-            Integer p = (Integer)objects[0];
-            String vn = (String)objects[1];
-            Integer icnt = (Integer)objects[2];
+        List<Tuple.Tuple3<Integer, String, Integer>> tmp = fillTmp(ins);
+        String NEWINS = "";
+        for (Tuple.Tuple3<Integer, String, Integer> tpl : tmp) {
+            Integer p = tpl._1;
+            String vn = tpl._2;
+            Integer icnt = tpl._3;
             if (conf.y) {
                 System.err.println(format("  Realign Ins: %s %s %s", p, vn, icnt));
             }
@@ -120,6 +128,14 @@ public class VariationRealigner {
                 insert = mtch.group(1);
             } else {
                 continue;
+            }
+            String ins3 = "";
+            int inslen = insert.length();
+
+            mtch = DUP_NUM_ATGC.matcher(vn);
+            if (mtch.find()) {
+                ins3 = mtch.group(2);
+                inslen += toInt(mtch.group(1)) + ins3.length();
             }
             String extra = "";
             mtch = AMP_ATGC.matcher(vn);
@@ -133,16 +149,16 @@ public class VariationRealigner {
             }
 
             // In perl it doesn't commented, but not used
-//            String newins = ""; // the adjacent insertion
-//            mtch = CARET_ATGC_E.matcher(vn);
-//            if (mtch.find()) {
-//                newins = mtch.group(1);
-//            }
+            String newins = ""; // the adjacent insertion
+            mtch = CARET_ATGC_END.matcher(vn);
+            if (mtch.find()) {
+                newins = mtch.group(1);
+            }
 
             int newdel = 0; // the adjacent deletion
-            try {
-                newdel = toInt(vn);
-            } catch (NumberFormatException ignore) {
+            mtch = UP_NUMBER_END.matcher(vn);
+            if (mtch.find()) {
+                newdel = toInt(mtch.group(1));
             }
             String tn = vn.replaceFirst("^\\+", "")
                     .replaceFirst("&", "")
@@ -150,10 +166,7 @@ public class VariationRealigner {
                     .replaceFirst("\\^\\d+$", "")
                     .replaceFirst("\\^", "");
 
-            int wustart = p - 100 - vn.length() + 1;
-            if (wustart <= 1) {
-                wustart = 1;
-            }
+            int wustart = p - 150 > 1 ? (p - 150) : 1;
             String wupseq = joinRef(ref, wustart, p) + tn; // 5prime flanking seq
             /*
             5' flanking region is a region of DNA that is adjacent to the 5' end of the gene.
@@ -166,7 +179,7 @@ public class VariationRealigner {
                 sanend = tend;
             }
             // 3prime flanking seq
-            String sanpseq = tn + joinRef(ref, p + extra.length() + 1 + compm.length() + newdel, sanend);
+            String sanpseq = "";
             /*
             3' flanking region is a region of DNA which is NOT copied into the mature mRNA, but which is present adjacent
             to 3' end of the gene. It was originally thought that the 3' flanking DNA was not transcribed at all,
@@ -174,11 +187,22 @@ public class VariationRealigner {
             transcript to form the mature mRNA. The 3' flanking region often contains sequences which affect the
             formation of the 3' end of the message. It may also contain enhancers or other sites to which proteins may bind.
              */
-            // mismatches, mismatch positions, 5 or 3 ends
-            MismatchResult findMM3 = findMM3(ref, p + 1, sanpseq, insert.length() + compm.length(), sclip3);
+            MismatchResult findMM3;
 
-            MismatchResult findMM5 = findMM5(ref, p + extra.length() + compm.length() + newdel, wupseq,
-                    insert.length() + compm.length(), sclip5);
+            if (!ins3.isEmpty()) {
+                int p3 = p + inslen - ins3.length() + Configuration.SVFLANK;
+                if (ins3.length() > Configuration.SVFLANK) {
+                    sanpseq = substr(ins3, Configuration.SVFLANK - ins3.length());
+                }
+                sanpseq += joinRef(ref, p + 1, p + 101);
+                findMM3 = findMM3(ref, p3 + 1, sanpseq, sclip3);
+            } else {
+                sanpseq = tn + joinRef(ref, p + extra.length() + 1 + compm.length() + newdel, sanend);
+                findMM3 = findMM3(ref, p + 1, sanpseq, sclip3);
+            }
+
+            // mismatches, mismatch positions, 5 or 3 ends
+            MismatchResult findMM5 = findMM5(ref, p + extra.length() + compm.length() + newdel, wupseq, sclip5);
 
             List<Tuple.Tuple3<String, Integer, Integer>> mm3 = findMM3.getMm();
             List<Integer> sc3p = findMM3.getScp();
@@ -249,10 +273,12 @@ public class VariationRealigner {
                     hash.remove(mp);
                 }
             }
-            if (misp3 != 0 && mm3.size() == 1 && hash.containsKey(misp3)) {
+            if (misp3 != 0 && mm3.size() == 1 && hash.containsKey(misp3)
+                    && hash.get(misp3).containsKey(misnt3) && hash.get(misp3).get(misnt3).cnt < icnt) {
                 hash.get(misp3).remove(misnt3);
             }
-            if (misp5 != 0 && mm5.size() == 1 && hash.containsKey(misp5)) {
+            if (misp5 != 0 && mm5.size() == 1 && hash.containsKey(misp5)
+                    && hash.get(misp5).containsKey(misnt5) && hash.get(misp5).get(misnt5).cnt < icnt) {
                 hash.get(misp5).remove(misnt5);
             }
             for (Integer sc5pp : sc5p) {
@@ -261,19 +287,25 @@ public class VariationRealigner {
                     System.err.printf("    55: %s %s VN: '%s'  5' seq: ^%s^\n", p, sc5pp, vn, wupseq);
                 }
                 if (tv != null && !tv.used) {
-                    String seq = findconseq(tv, conf);
+                    String seq = findconseq(tv, conf, 0);
                     if (conf.y) {
-                        System.err.printf("    ins5: %s %s %s %s %s %s\n", p, sc5pp, seq, wupseq, icnt, tv.cnt);
+                        System.err.printf("    ins5: %s %s %s %s VN: %s iCnt: %s vCnt: %s\n", p, sc5pp, seq, wupseq, vn, icnt, tv.cnt);
                     }
                     if (!seq.isEmpty() && ismatch(seq, wupseq, -1, conf.y)) {
                         if (conf.y) {
-                            System.err.printf("    ins5: %s %s %s %s %s %s used\n", p, sc5pp, seq, wupseq, icnt, tv.cnt);
+                            System.err.printf("      ins5: %s %s %s %s VN: %s iCnt: %s cCnt: %s used\n", p, sc5pp, seq, wupseq,vn, icnt, tv.cnt);
                         }
                         if (sc5pp > p) {
                             incCnt(cov, p, tv.cnt);
                         }
                         adjCnt(vref, tv, conf);
                         tv.used = true;
+
+                        //To find a case and implement later
+                        if (insert.length() + 1 == vn.length() && sc5pp <= p ) {
+                            // Not commented in perl, created for special case
+                            // System.err.printf(" %s %s\n", sc5pp, p);
+                        }
                     }
                 }
             }
@@ -283,15 +315,16 @@ public class VariationRealigner {
                     System.err.printf("    33: %s %s VN: '%s'  3' seq: ^%s^\n", p, sc3pp, vn, sanpseq);
                 }
                 if (tv != null && !tv.used) {
-                    String seq = findconseq(tv, conf);
+                    String seq = findconseq(tv, conf, 0);
                     if (conf.y) {
-                        System.err.printf("    ins3: %s %s %s %s %s %s %s\n", p, sc3pp, seq, sanpseq, vn, icnt, tv.cnt);
+                        System.err.printf("    ins3: %s %s %s %s VN: %s iCnt: %s vCnt: %s\n", p, sc3pp, seq, sanpseq, vn, icnt, tv.cnt);
                     }
-                    if (!seq.isEmpty() && ismatch(seq, substr(sanpseq, sc3pp - p - 1), 1, conf.y)) {
+                    String mseq = !ins3.isEmpty() ? sanpseq : substr(sanpseq, sc3pp - p - 1);
+                    if (!seq.isEmpty() && ismatch(seq, mseq, 1, conf.y)) {
                         if (conf.y) {
-                            System.err.printf("    ins3: %s %s %s %s %s %s used\n", p, sc3pp, seq, vn, icnt, tv.cnt);
+                            System.err.printf("      ins3: %s %s %s VN: %s iCnt: %s vCnt: %s used\n", p, sc3pp, seq, vn, icnt, tv.cnt);
                         }
-                        if (sc3pp <= p) {
+                        if (sc3pp <= p || insert.length() > tv.pmean/tv.cnt) {
                             incCnt(cov, p, tv.cnt);
                         }
                         Variation lref = null;
@@ -302,26 +335,47 @@ public class VariationRealigner {
 
                             lref = hash.get(p).get(ref.get(p).toString());
                         }
+                        if (insert.length() > tv.pmean/tv.cnt ) {
+                            lref = null;
+                        }
                         adjCnt(vref, tv, lref, conf);
                         tv.used = true;
+                        if (insert.length() + 1 == vn.length() && insert.length() > rlen
+                                && sc3pp >= p + 1 + insert.length()) {
+                            int flag = 0;
+                            int offset = (sc3pp - p - 1) % insert.length();
+                            String tvn = vn;
+                            for(int seqi = 0; seqi < seq.length() && seqi < insert.length(); seqi++) {
+                                if (!substr(seq, seqi, 1).equals(substr(insert, seqi + offset, 1))) {
+                                    flag++;
+                                    tvn = tvn.replace(substr(tvn, seqi + offset + 1, 1), substr(seq, seqi, 1));
+                                }
+                            }
+                            if (flag > 0) {
+                                Variation variation = iHash.get(p).get(vn);
+                                iHash.get(p).put(tvn, variation);
+                                iHash.get(p).remove(vn);
+                                NEWINS = tvn;
+                            }
+                        }
                     }
-
                 }
             }
             int first3 = sc3p.get(0);
             int first5 = sc5p.get(0);
-            if (!sc3p.isEmpty() && !sc5p.isEmpty() && ref.containsKey(p)
-                    && hash.containsKey(p) && hash.get(p).containsKey(ref.get(p).toString())
+            if (!sc3p.isEmpty() && !sc5p.isEmpty()
                     && first3 > first5 + 3
                     && first3 - first5 < rlen * 0.75) {
-                adjRefFactor(hash.get(p).get(ref.get(p).toString()), (first3 - first5 - 1) / (double) rlen, conf.y);
+                if (ref.containsKey(p) && hash.containsKey(p) && hash.get(p).containsKey(ref.get(p).toString())) {
+                    adjRefFactor(hash.get(p).get(ref.get(p).toString()), (first3 - first5 - 1) / (double) rlen, conf.y);
+                }
                 adjRefFactor(vref, -(first3 - first5 - 1)/ (double) rlen, conf.y);
             }
         }
 
-        for (Object[] objects : tmp) {
-            Integer p = (Integer)objects[0];
-            String vn = (String)objects[1];
+        for (Tuple.Tuple3<Integer, String, Integer> tpl : tmp) {
+            Integer p = tpl._1;
+            String vn = tpl._2;
             if (!iHash.containsKey(p)) {
                 continue;
             }
@@ -341,7 +395,7 @@ public class VariationRealigner {
                 }
             }
         }
-
+        return NEWINS;
     }
 
     /**
@@ -372,16 +426,16 @@ public class VariationRealigner {
                            Configuration conf) throws IOException {
         String chr = region.chr;
         Map<Integer, Character> ref = reference.referenceSequences;
-        String[] bams = bam.split(":");
+        String[] bams = bam != null ? bam.split(":") : null;
 
         // In perl it doesn't commented, but it doesn't used
         // int longmm = 3; //Longest continued mismatches typical aligned at the end
-        List<Object[]> tmp = fillTmp(dels5);
+        List<Tuple.Tuple3<Integer, String, Integer>> tmp = fillTmp(dels5);
 
-        for (Object[] objects : tmp) {
-            Integer p = (Integer)objects[0];
-            String vn = (String)objects[1];
-            Integer dcnt = (Integer)objects[2];
+        for (Tuple.Tuple3<Integer, String, Integer> tpl : tmp) {
+            Integer p = tpl._1;
+            String vn = tpl._2;
+            Integer dcnt = tpl._3;
             if (conf.y) {
                 System.err.printf("  Realigndel for: %s %s %s cov: %s\n", p, vn, dcnt, cov.get(p));
             }
@@ -396,31 +450,38 @@ public class VariationRealigner {
                 dellen += toInt(mtch.group(1));
             }
             String extrains = "";
-            mtch = CARET_ATGNC.matcher(vn);
-            if (mtch.find()) {
-                extrains = mtch.group(1);
-            }
             String extra = "";
-            mtch = BEGIN_MINUS_NUMBER_ANY.matcher(vn);
-            if (mtch.find()) {
+            String inv5 = "";
+            String inv3 = "";
+
+            if ((mtch = MINUS_NUMBER_ATGNC_SV_ATGNC_END.matcher(vn)).find()) {
+                inv5 = mtch.group(1);
+                inv3 = mtch.group(2);
+            } else if ((mtch = BEGIN_MINUS_NUMBER_ANY.matcher(vn)).find()) {
                 extra = mtch.group(1).replaceAll("\\^|&|#", "");
+                if ((mtch = CARET_ATGNC.matcher(vn)).find()){
+                    extrains = mtch.group(1);
+                }
             }
 
-            int wustart = p - dellen - 100;
-            if (wustart <= 1) {
-                wustart = 1;
-            }
-
+            int wustart = (p - 200) > 1 ? (p - 200) : 1;
             String wupseq = joinRef(ref, wustart, p - 1) + extra; // 5' flanking seq
-            int sanend = p + 2 * dellen + 100;
-            if (sanend > chrs.get(chr)) {
-                sanend = chrs.get(chr);
+            if (!inv3.isEmpty()) {
+                wupseq = inv3;
             }
+            int sanend = (chrs.get(chr) != null && p + 200 > chrs.get(chr))
+                    ? chrs.get(chr)
+                    : p + 200;
+
             // 3' flanking seq
             String sanpseq = extra + joinRef(ref, p + dellen + extra.length() - extrains.length(), sanend);
+            if (!inv5.isEmpty()) {
+                sanpseq = inv5;
+            }
+
             // mismatches, mismatch positions, 5 or 3 ends
-            MismatchResult r3 = findMM3(ref, p, sanpseq, dellen, sclip3);
-            MismatchResult r5 = findMM5(ref, p + dellen + extra.length() - extrains.length() - 1, wupseq, dellen, sclip5);
+            MismatchResult r3 = findMM3(ref, p, sanpseq, sclip3);
+            MismatchResult r5 = findMM5(ref, p + dellen + extra.length() - extrains.length() - 1, wupseq, sclip5);
 
             List<Tuple.Tuple3<String, Integer, Integer>> mm3 = r3.getMm();
             List<Integer> sc3p = r3.getScp();
@@ -478,12 +539,12 @@ public class VariationRealigner {
                         f = 1;
                     }
                     incCnt(cov, p, (int)(tv.cnt * f));
-                    adjRefCnt(tv, getVariationMaybe(hash, p, ref.get(p)), dellen);
+                    adjRefCnt(tv, getVariationMaybe(hash, p, ref.get(p)), dellen, conf);
                 }
                 Variation lref = (mp > p && me == 3)
                         ? (hash.containsKey(p) && hash.get(p).containsKey(ref.get(p).toString())
-                        ? hash.get(p).get(ref.get(p).toString())
-                        : null)
+                            ? hash.get(p).get(ref.get(p).toString())
+                            : null)
                         : null;
                 adjCnt(vref, tv, lref, conf);
                 hash.get(mp).remove(mm);
@@ -495,19 +556,21 @@ public class VariationRealigner {
                             mm, mp, me, nm3, nm5, p, tv.cnt, tv.qmean, cov.get(p));
                 }
             }
-            if (misp3 != 0 && mm3.size() == 1 && hash.containsKey(misp3)) {
+            if (misp3 != 0 && mm3.size() == 1 && hash.containsKey(misp3)
+                    && hash.get(misp3).containsKey(misnt3) && hash.get(misp3).get(misnt3).cnt < dcnt) {
                 hash.get(misp3).remove(misnt3);
             }
-            if (misp5 != 0 && mm5.size() == 1 && hash.containsKey(misp5)) {
+            if (misp5 != 0 && mm5.size() == 1 && hash.containsKey(misp5)
+                    && hash.get(misp5).containsKey(misnt5) && hash.get(misp5).get(misnt5).cnt < dcnt) {
                 hash.get(misp5).remove(misnt5);
             }
 
             for (Integer sc5pp : sc5p) {
                 if (sclip5.containsKey(sc5pp) && !sclip5.get(sc5pp).used) {
                     Sclip tv = sclip5.get(sc5pp);
-                    String seq = findconseq(tv, conf);
+                    String seq = findconseq(tv, conf, 0);
                     if (conf.y) {
-                        System.err.printf("  Realigndel 5: %s %s Seq: '%s' %s %s %s %s %s cov: %s\n",
+                        System.err.printf("  Realigndel 5: %s %s seq: '%s' Wuseq: %s cnt: %s %s %s %s cov: %s\n",
                                 p, sc5pp, seq, new StringBuilder(wupseq).reverse(), tv.cnt, dcnt, vn, p, cov.get(p));
                     }
                     if (!seq.isEmpty() && ismatch(seq, wupseq, -1, conf.y)) {
@@ -527,9 +590,9 @@ public class VariationRealigner {
             for (Integer sc3pp : sc3p) {
                 if (sclip3.containsKey(sc3pp) && !sclip3.get(sc3pp).used) {
                     Sclip tv = sclip3.get(sc3pp);
-                    String seq = findconseq(tv, conf);
+                    String seq = findconseq(tv, conf, 0);
                     if (conf.y) {
-                        System.err.printf("  Realigndel 3: %s %s seq '%s' %s %s %s %s %s %s %s\n",
+                        System.err.printf("  Realigndel 3: %s %s seq '%s' Sanseq: %s cnt: %s %s %s %s %s %s\n",
                                 p, sc3pp, seq, sanpseq, tv.cnt, dcnt, vn, p, dellen, substr(sanpseq, sc3pp - p));
                     }
                     if (!seq.isEmpty() && ismatch(seq, substr(sanpseq, sc3pp - p), 1, conf.y)) {
@@ -550,21 +613,21 @@ public class VariationRealigner {
             // int pe = p + dellen + extra.length() + compm.length();
             int pe = p + dellen + extra.length() - extrains.length();
             Variation h = getVariationMaybe(hash, p, ref.get(p));
+            // taking the size of gap into account
             if (bams != null && bams.length > 0
                     && pe - p >= 5
                     && pe - p < rlen - 10
                     && h != null && h.cnt != 0
                     && noPassingReads(chr, p, pe, bams, conf)
                     && vref.cnt > 2 * h.cnt * (1 - (pe - p) / (double)rlen)) {
-
                 adjCnt(vref, h, h, conf);
             }
         }
-
-        for (int i = tmp.size() - 1; i >= 0; i--) {
-            Object[] os = tmp.get(i);
-            int p = (Integer)os[0];
-            String vn = (String)os[1];
+        for (Tuple.Tuple3<Integer, String, Integer> tpl : tmp) {
+        //for (int i = tmp.size() - 1; i >= 0; i--) {
+           // Tuple.Tuple3<Integer, String, Integer> os = tmp.get(i);
+            int p = tpl._1;
+            String vn = tpl._2;
             if (!hash.containsKey(p)) {
                 continue;
             }
@@ -612,8 +675,9 @@ public class VariationRealigner {
                              Map<Integer, VariationMap<String, Variation>> iHash,
                              final int rlen,
                              String bam,
+                             List<Sclip> svfdel,
+                             List<Sclip> svrdel,
                              Configuration conf) throws IOException {
-
         final int longmm = 3;
         String chr = region.chr;
         Map<Integer, Character> ref = reference.referenceSequences;
@@ -628,79 +692,111 @@ public class VariationRealigner {
             tmp.add(tuple(ent5.getKey(), ent5.getValue()));
         }
         Collections.sort(tmp, COMP2);
+        int svcov = 0;
+        int clusters = 0;
+        int pairs = 0;
         for (Tuple.Tuple2<Integer, Sclip> t : tmp) {
             int p = t._1;
             Sclip sc5v = t._2;
             int cnt = t._2.cnt;
+            if(cnt < conf.minr) {
+                break;
+            }
+            //already been used in
             if (sc5v.used) {
                 continue;
             }
-            String seq = findconseq(sc5v, conf);
+            String seq = findconseq(sc5v, conf, 5);
             if (seq.isEmpty()) {
                 continue;
             }
-            if (B_A7.matcher(seq).find() || B_T7.matcher(seq).find()) {
-                continue;
-            }
+
             if (seq.length() < 7) {
                 continue;
             }
-            if (islowcomplexseq(seq)) {
-                continue;
-            }
-            int bp = findbp(seq, p - 5, ref, conf.indelsize, -1, chr, chrs, conf.y);
-            final int dellen = p - bp;
-            if (bp == 0) {
-                continue;
-            }
-            // TODO: these parts in realignlgins and realignlgdel must be moved in appropriate parts
-            // after implementing changes for realignment
-            if (bp < region.start) {
-                int tts = bp - rlen;
-                int tte = bp + rlen;
-                if (bp + rlen >= region.start) {
-                    tte = region.start - 1;
-                }
-                Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
-                if(!isLoaded(chr, tts, tte, reference)) {
-                    getREF(modifiedRegion, chrs, conf, rlen, reference);
-                }
-                parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
-                        rlen, reference, conf, hash, iHash, cov, sclip5, sclip3, true);
+
+            if (conf.y) {
+                System.err.printf("  Working Realignlgdel: 5' %s '%s' %s\n", p, seq, cnt);
             }
 
-            StringBuilder extra = new StringBuilder();
-            int en = 0;
-            while (!Character.valueOf(seq.charAt(en)).equals(ref.get(bp - en - 1)) && en < seq.length()) {
-                extra.append(seq.charAt(en));
-                en++;
+            int bp = findbp(seq, p - 5, ref, conf.indelsize, -1, chr, chrs, conf.y);
+
+            String extra = "";
+            String EXTRA = "";
+
+            if (bp == 0) {
+                //next if ($SOFTP2SV{ $p } && $SOFTP2SV{ $p }->[0]->{ used });
+                if (islowcomplexseq(seq)) {
+                    continue;
+                }
+                Tuple.Tuple2<Integer, String>  tp = findMatch(conf, seq, reference, p, -1, Configuration.SEED_1, 1);
+                bp = tp._1;
+                EXTRA = tp._2;
+                if (!(bp != 0 && p - bp > 15 && p - bp < Configuration.SVMAXLEN)) {
+                    continue;
+                }
+                bp++;
+                Tuple.Tuple3<Integer, Integer, Integer> svMark = markSV(bp, p, Arrays.asList(svfdel, svrdel), rlen, conf);
+                svcov = svMark._1;
+                clusters = svMark._2;
+                pairs = svMark._3;
+                if (svcov == 0) {
+                    if (cnt <= conf.minr) {
+                        continue;
+                    }
+                }
+
+                VariationMap.SV sv = getSV(hash, bp);
+                sv.type = "DEL";
+                sv.pairs += pairs;
+                sv.splits += cnt;
+                sv.clusters += clusters;
+
+                if (bp < region.start) {
+                    int tts = bp - rlen;
+                    int tte = bp + rlen;
+                    if (bp + rlen >= region.start) {
+                        tte = region.start - 1;
+                    }
+                    Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
+                    if(!isLoaded(chr, tts, tte, reference)) {
+                        getREF(modifiedRegion, chrs, conf, rlen, reference);
+                    }
+                    parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
+                            rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                }
             }
-            final String gt;
-            if (extra.length() > 0) {
-                extra = extra.reverse();
-                gt = "-" + dellen + "&" + extra;
-                bp -= extra.length();
+            int dellen = p - bp;
+            int en = 0;
+            String gt = "-" + dellen;
+
+            if (EXTRA.isEmpty()) {
+                while(en < seq.length() && isNotEquals(seq.charAt(en), ref.get(bp - en - 1))) {
+                    extra += substr(seq, en, 1);
+                    en++;
+                }
+                if (!extra.isEmpty()) {
+                    extra = reverse(extra);
+                    gt = "-" + dellen + "&" + extra;
+                    bp -= extra.length();
+                }
             } else {
-                gt = String.valueOf(-dellen);
+                dellen -= EXTRA.length();
+                gt = dellen == 0 ? "-" + EXTRA.length() + "^" + EXTRA : "-" + dellen + "&" + EXTRA;
             }
             if (conf.y) {
                 System.err.printf("  Found Realignlgdel: %s %s 5' %s %s %s\n", bp, gt, p, seq, cnt);
             }
-            final Variation tv = getVariation(hash, bp, gt);
-            tv.qstd = true; // more accurate implementation lat
-            tv.pstd = true; // more accurate implementation lat
-            for (int tp = bp; tp < bp + dellen; tp++) {
-                incCnt(cov, tp, sc5v.cnt);
-            }
-            adjCnt(tv, sc5v, conf);
-            sc5v.used = true;
 
             // Work on the softclipped read at 3'
             int n = 0;
-            while (ref.containsKey(bp + n)
-                    && ref.containsKey(bp + dellen + n)
-                    && isEquals(ref.get(bp + n), ref.get(bp + dellen + n))) {
-                n++;
+
+            if (extra.isEmpty() && EXTRA.isEmpty()) {
+                while (ref.containsKey(bp + n)
+                        && ref.containsKey(bp + dellen + n)
+                        && isEquals(ref.get(bp + n), ref.get(bp + dellen + n))) {
+                    n++;
+                }
             }
             int sc3p = bp + n;
             StringBuilder str = new StringBuilder();
@@ -714,13 +810,44 @@ public class VariationRealigner {
                 mcnt++;
             }
             if (str.length() == 1) {
+                int nm = 0;
                 while (ref.containsKey(bp + n)
                         && ref.containsKey(bp + dellen + n)
                         && isEquals(ref.get(bp + n), ref.get(bp + dellen + n))) {
                     n++;
+                    if (n != 0) {
+                        nm++;
+                    }
                 }
-                sc3p = bp + n;
+                if (nm >= 3 && !sclip3.containsKey(sc3p)) {
+                    sc3p = bp + n;
+                }
             }
+
+            // likely a false positive
+            if (hash.containsKey(bp) && hash.get(bp).sv != null && !sclip3.containsKey(sc3p)) {
+                if (svcov == 0 && cnt <= conf.minr) {
+                    removeSV(hash, bp);
+                    continue;
+                }
+            }
+            final Variation tv = getVariation(hash, bp, gt);
+            //$hash->{$bp}->{ $gt }->{ cnt } = 0 unless( $hash->{$bp}->{ $gt }->{ cnt } );
+            tv.qstd = true; // more accurate implementation lat
+            tv.pstd = true; // more accurate implementation lat
+            adjCnt(tv, sc5v, conf);
+            // $sc5v->{ used } = $bp;
+            sc5v.used = bp != 0;
+            //$cov->{ $bp } = $cov->{ $p } unless( $cov->{ $bp } );
+            if (!cov.containsKey(bp) && cov.containsKey(p)) {
+                cov.put(bp, cov.get(p));
+            }
+            if (dellen < conf.indelsize) {
+                for (int tp = bp; tp < bp + dellen; tp++) {
+                    incCnt(cov, tp, sc5v.cnt);
+                }
+            }
+
             if (sclip3.containsKey(sc3p) && !sclip3.get(sc3p).used) {
                 Sclip sclip = sclip3.get(sc3p);
                 if (sc3p > bp) {
@@ -730,8 +857,10 @@ public class VariationRealigner {
                 }
 
                 if (sc3p == bp) {
-                    for (int tp = bp; tp < bp + dellen; tp++) {
-                        incCnt(cov, tp, sclip3.get(sc3p).cnt);
+                    if (dellen < conf.indelsize) {
+                        for (int tp = bp; tp < bp + dellen; tp++) {
+                            incCnt(cov, tp, sclip.cnt);
+                        }
                     }
                 }
                 for (int ip = bp + 1; ip < sc3p; ip++) {
@@ -740,19 +869,27 @@ public class VariationRealigner {
                     if (vv.cnt == 0) {
                         hash.get(ip).remove(ref.get(dellen + ip).toString());
                     }
-                    if (hash.get(ip).size() == 0) {
+                    if (hash.get(ip).isEmpty()) {
                         hash.remove(ip);
                     }
                 }
-                sclip.used = true;
+                sclip.used = bp != 0;
             }
             Map<Integer, Map<String, Integer>> dels5 = singletonMap(bp, singletonMap(gt, tv.cnt));
             realigndel(hash, dels5, cov, sclip5, sclip3, reference, region, chrs, rlen, bam, conf);
+
+            if (hash.containsKey(bp) && hash.get(bp).sv != null) {
+                hash.get(bp).sv.splits += tv.cnt - dels5.get(bp).get(gt);
+            }
+            if (svcov > tv.cnt) {
+                addVarFactor(tv, (svcov - tv.cnt) / (double)tv.cnt);
+            }
             if (conf.y) {
                 System.err.printf("  Found lgdel done: %s %s %s 5' %s %s\n\n", bp, gt, p, seq, tv.cnt);
             }
         }
 
+        // Work on 3' clipped reads
         tmp = new ArrayList<>();
         for (Map.Entry<Integer, Sclip> ent3 : sclip3.entrySet()) {
             int p = ent3.getKey();
@@ -763,86 +900,160 @@ public class VariationRealigner {
             tmp.add(tuple(ent3.getKey(), ent3.getValue()));
         }
         Collections.sort(tmp, COMP2);
+        svcov = 0;
+        clusters = 0;
+        pairs = 0;
         for (Tuple.Tuple2<Integer, Sclip> t : tmp) {
             int p = t._1;
             final Sclip sc3v = t._2;
             final int cnt = sc3v.cnt;
+            if (cnt < conf.minr) {
+                break;
+            }
             if (sc3v.used) {
                 continue;
             }
-            String seq = findconseq(sc3v, conf);
+            String seq = findconseq(sc3v, conf, 3);
             if (seq.isEmpty()) {
-                continue;
-            }
-            if (B_A7.matcher(seq).find() || B_T7.matcher(seq).find()) {
                 continue;
             }
             if (seq.length() < 7) {
                 continue;
             }
-            if (islowcomplexseq(seq)) {
-                continue;
-            }
-            int bp = findbp(seq, p + 5, ref, conf.indelsize, 1, chr, chrs, conf.y);
-            final int dellen = bp - p;
-            if (bp == 0) {
-                continue;
+
+            if (conf.y) {
+                System.err.printf("  Working Realignlgdel: 3' %s '%s' %s\n", p, seq, cnt);
             }
 
-            if (bp > region.end) {
+            int bp = findbp(seq, p + 5, ref, conf.indelsize, 1, chr, chrs, conf.y);
+            String extra = "";
+            String EXTRA = "";
+
+            if (bp == 0) {
+                //#next if ($SOFTP2SV{ $p } && $SOFTP2SV{ $p }->[0]->{ used });
+                if (islowcomplexseq(seq)) {
+                    continue;
+                }
+                Tuple.Tuple2<Integer, String> tp = findMatch(conf, seq, reference, p, 1, Configuration.SEED_1, 1);
+                bp = tp._1;
+                EXTRA = tp._2;
+                if (!(bp != 0 && bp - p > 15 && p - bp < Configuration.SVMAXLEN)) {
+                    continue;
+                }
+
+                Tuple.Tuple3<Integer, Integer, Integer> svMark = markSV(p, bp, Arrays.asList(svfdel, svrdel), rlen, conf);
+                svcov = svMark._1;
+                clusters = svMark._2;
+                pairs = svMark._3;
+                if (svcov == 0) {
+                    if (cnt <= conf.minr) { //a little more stringent
+                        continue;
+                    }
+                }
+
+                VariationMap.SV sv = getSV(hash, p);
+                sv.type = "DEL";
+                sv.pairs += pairs;
+                sv.splits += cnt;
+                sv.clusters += clusters;
+
+                if (bp > region.end) {
 //              my ($tts, $tte) = ($bp - $RLEN <= $END ? $END + 1 : $bp - $RLEN, $bp + $RLEN);
 //		        getREF($chr, $tts, $tte, $REF, $RLEN) unless( isLoaded( $chr, $tts, $tte, $REF ) );
 //		        parseSAM($chr, $bp - $RLEN <= $END ? $END + 1 : $bp - $RLEN, $bp + $RLEN, $bams, $REF, $hash, $cov, $sclip5, $sclip3, 1);
-                int tts = bp - rlen;
-                int tte = bp + rlen;
-                if (bp - rlen <= region.end) {
-                    tts = region.end + 1;
+                    int tts = bp - rlen;
+                    int tte = bp + rlen;
+                    if (bp - rlen <= region.end) {
+                        tts = region.end + 1;
+                    }
+                    Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
+                    if (!isLoaded(chr, tts, tte, reference)) {
+                        getREF(modifiedRegion, chrs, conf, rlen, reference);
+                    }
+                    parseSAM(modifiedRegion, bam, chrs, sample, splice, ampliconBasedCalling,
+                            rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
                 }
-                Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
-                if(!isLoaded(chr, tts, tte, reference)) {
-                    getREF(modifiedRegion, chrs, conf, rlen, reference);
-                }
-                parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
-                        rlen, reference, conf, hash, iHash, cov, sclip5, sclip3, true);
             }
 
-
-            StringBuilder extra = new StringBuilder();
+            int dellen = bp - p;
             int en = 0;
-            while (en < seq.length() && isNotEquals(seq.charAt(en), ref.get(bp + en))) {
-                extra.append(seq.charAt(en));
-                en++;
-            }
-            bp = p; // Set it to 5'
-            final String gt;
-            if (extra.length() > 0) {
-                gt = "-" + dellen + "&" + extra;
+            if (!EXTRA.isEmpty()) {
+                dellen -= EXTRA.length();
             } else {
-                gt = "-" + dellen;
-                while (isEquals(ref.get(bp - 1), ref.get(bp + dellen - 1))) {
+                while (en < seq.length() && isNotEquals(seq.charAt(en), ref.get(bp + en))) {
+                    extra += seq.charAt(en);
+                    en++;
+                }
+            }
+            String gt = "-" + dellen;
+            int sc5p = bp;
+            bp = p; // Set it to 5'
+            if (!extra.isEmpty()) {
+                gt = "-" + dellen + "&" + extra;
+                sc5p += extra.length();
+            } else if (!EXTRA.isEmpty()) {
+                gt = "-" + dellen + "&" + EXTRA;
+            } else {
+                // 5' adjustment
+                while (ref.containsKey(bp - 1) && ref.containsKey(bp + dellen - 1)
+                        && isEquals(ref.get(bp - 1), ref.get(bp + dellen - 1))) {
                     bp--;
+                    if (bp != 0) {
+                        sc5p--;
+                    }
+                }
+                if (bp != p && hash.containsKey(p) && hash.get(p).sv != null) {
+                    VariationMap.SV sv = getSV(hash, bp);
+                    sv.clusters = hash.get(p).sv.clusters;
+                    sv.pairs = hash.get(p).sv.pairs;
+                    sv.splits = hash.get(p).sv.splits;
+                    sv.type = hash.get(p).sv.type;
+                    removeSV(hash, p);
+                }
+            }
+
+            if (hash.containsKey(bp) && hash.get(bp).sv != null && !sclip5.containsKey(sc5p)) {
+                if (svcov == 0 && cnt <= conf.minr) {
+                    removeSV(hash, bp);
+                    continue;
                 }
             }
             if (conf.y) {
-                System.err.printf("  Found Realignlgdel: %s %s 3' %s %s %s\n", bp, gt, p, seq, cnt);
+                System.err.printf("  Found Realignlgdel: bp: %s %s 3' %s 5'clip: %s '%s' %s\n", bp, gt, p, sc5p, seq, cnt);
             }
+
             Variation tv = getVariation(hash, bp, gt);
             tv.qstd = true; // more accurate implementation later
             tv.pstd = true; // more accurate implementation later
-            for (int tp = bp; tp < bp + dellen; tp++) {
-                incCnt(cov, tp, sc3v.cnt);
+            if (dellen < conf.indelsize) {
+                for (int tp = bp; tp < bp + dellen + extra.length() + EXTRA.length(); tp++) {
+                    incCnt(cov, tp, sc3v.cnt);
+                }
+            }
+            //$cov->{$bp} = $cov->{ $p - 1 } ? $cov->{ $p - 1 } : $sc3v->{ cnt } unless( $cov->{ $bp } );
+            if (!cov.containsKey(bp)) {
+                if (cov.containsKey(p - 1)) {
+                    cov.put(bp, cov.get(p - 1));
+                } else cov.put(bp, sc3v.cnt);
             }
             sc3v.pmean += dellen * sc3v.cnt;
             adjCnt(tv, sc3v, conf);
-            sc3v.used = true;
+            sc3v.used = p + dellen != 0;
 
             Map<Integer, Map<String, Integer>> dels5 = new HashMap<>();
             HashMap<String, Integer> map = new HashMap<>();
             map.put(gt, tv.cnt);
             dels5.put(bp, map);
             realigndel(hash, dels5, cov, sclip5, sclip3, reference, region, chrs, rlen, bam, conf);
+
+            if (hash.containsKey(bp) && hash.get(bp).sv != null) {
+                hash.get(bp).sv.splits += tv.cnt - dels5.get(bp).get(gt);
+            }
             if (conf.y) {
-                System.err.printf("  Found lgdel: %s %s $p 3' %s %s\n\n", bp, gt, p, tv.cnt);
+                System.err.printf("  Found lgdel: %s %s %s 3' '%s' %s\n\n", bp, gt, p, seq, tv.cnt);
+            }
+            if (svcov > tv.cnt) {
+                addVarFactor(tv, (svcov - tv.cnt) / (double) tv.cnt);
             }
         }
         if (conf.y) {
@@ -877,6 +1088,8 @@ public class VariationRealigner {
                              Map<String, Integer> chrs,
                              int rlen,
                              String bam,
+                             List<Sclip> svfdup,
+                             List<Sclip> svrdup,
                              Configuration conf) throws IOException {
         String chr = region.chr;
         Map<Integer, Character> ref = reference.referenceSequences;
@@ -897,48 +1110,90 @@ public class VariationRealigner {
         for (Tuple.Tuple2<Integer, Sclip> t : tmp) {
             int p = t._1;
             Sclip sc5v = t._2;
+            int cnt = t._2.cnt;
+            if (cnt < conf.minr) {
+                break;
+            }
             //already been used in
             if (sc5v.used) {
                 continue;
             }
-            String seq = findconseq(sc5v, conf);
+            String seq = findconseq(sc5v, conf, 0);
             if (seq.isEmpty()) {
                 continue;
             }
             if (conf.y) {
-                System.err.println("  Working lgins: 5: " + p + " " + seq);
-            }
-            if (B_A8.matcher(seq).find() || B_T8.matcher(seq).find()) {
-                continue;
+                System.err.println("  Working lgins: 5: " + p + " " + seq + " cnt: " + cnt);
             }
             if (seq.length() < 12) {
                 continue;
             }
-            if (islowcomplexseq(seq)) {
-                continue;
-            }
+
             Tuple.Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, -1, chr, chrs);
-            final int bi = tpl._1;
-            final String ins = tpl._2;
+            int bi = tpl._1;
+            String ins = tpl._2;
+            String EXTRA = "";
+
             if (bi == 0) {
-                continue;
+                //#next if ($SOFTP2SV{ $p } && $SOFTP2SV{ $p }->[0]->{ used });
+                if (islowcomplexseq(seq)) {
+                    continue;
+                }
+                Tuple.Tuple2<Integer, String>  tp = findMatch(conf, seq, reference, p, -1, Configuration.SEED_1, 1);
+                bi = tp._1;
+                EXTRA = tp._2;
+                if (!(bi != 0 && bi - p > 15 && bi - p < Configuration.SVMAXLEN)) {
+                    continue;
+                }
+
+                // For large insertions
+                if (bi > region.end) {
+                    //my ($tts, $tte) = ($bi - $RLEN <= $END ? $END + 1 : $bi - $RLEN, $bi + $RLEN);
+                    int tts = bi - rlen;
+                    int tte = bi + rlen;
+                    if (bi - rlen <= region.end) {
+                        tts = region.end + 1;
+                    }
+                    Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
+                    if(!isLoaded(chr, tts, tte, reference)) {
+                        getREF(modifiedRegion, chrs, conf, rlen, reference);
+                    }
+                    parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
+                            rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                }
+                if (bi - p > conf.SVMINLEN + 2 * Configuration.SVFLANK ) {
+                    ins = joinRef(ref, p, p + Configuration.SVFLANK - 1);
+                    ins += "<dup" + (bi - p - 2 * Configuration.SVFLANK + 1) + ">";
+                    ins += joinRefFor5Lgins(ref, bi - Configuration.SVFLANK + 1, bi, seq, EXTRA);
+                } else {
+                    ins = joinRefFor5Lgins(ref, p, bi, seq, EXTRA);
+                }
+                ins += EXTRA;
+
+                Tuple.Tuple2<Integer, Integer> tp2 = markDUPSV(p, bi, Arrays.asList(svfdup, svrdup), rlen, conf);
+                int clusters = tp2._1;
+                int pairs = tp2._2;
+                if (!cov.containsKey(p - 1) || (cov.containsKey(bi) && cov.containsKey(p - 1)
+                        && cov.get(p - 1) < cov.get(bi))) {
+                    if (cov.containsKey(bi)) {
+                        cov.put(p - 1, cov.get(bi));
+                    } else {
+                        cov.put(p - 1, sc5v.cnt);
+                    }
+                } else {
+                    if (sc5v.cnt > cov.get(p - 1)) {
+                        incCnt(cov, p - 1, sc5v.cnt);
+                    }
+                }
+
+                bi = p - 1;
+                VariationMap.SV sv = getSV(hash, bi);
+                sv.type = "DUP";
+                sv.pairs += pairs;
+                sv.splits += cnt;
+                sv.clusters += clusters;
             }
 
-            // For large insertions
-            if (bi > region.end) {
-                //my ($tts, $tte) = ($bi - $RLEN <= $END ? $END + 1 : $bi - $RLEN, $bi + $RLEN);
-                int tts = region.end + 1;
-                int tte = bi + rlen;
-                if (bi - rlen <= region.end) {
-                    tts = bi - rlen;
-                }
-                Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
-                if(!isLoaded(chr, tts, tte, reference)) {
-                    getREF(modifiedRegion, chrs, conf, rlen, reference);
-                }
-                parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
-                        rlen, reference, conf, hash, iHash, cov, sclip5, sclip3, true);
-            }
             if (conf.y) {
                 System.err.printf("  Found candidate lgins from 5: %s +%s %s %s\n", bi, ins, p, seq);
             }
@@ -953,7 +1208,10 @@ public class VariationRealigner {
                     break;
                 }
             }
-            incCnt(cov, bi, sc5v.cnt);
+
+            if (hash.containsKey(bi) && hash.get(bi).sv == null) {
+                incCnt(cov, bi, sc5v.cnt);
+            }
             int len = ins.length();
             if (ins.indexOf('&') != -1) {
                 len--;
@@ -974,16 +1232,25 @@ public class VariationRealigner {
                     incCnt(cov, pii, tv.cnt);
                 }
             }
-            sc5v.used = true;
+            sc5v.used = bi + len != 0;
+
             Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.cnt));
-            realignins(hash, iHash, tins, cov, sclip5, sclip3, reference, region, chrs, rlen, conf);
+            String newins = realignins(hash, iHash, tins, cov, sclip5, sclip3, reference, region, chrs, rlen, conf);
+            if (newins.isEmpty()) {
+                newins = "+" + ins;
+            }
             Variation mref = getVariationMaybe(hash, bi, ref.get(bi));
+            Variation kref = getVariation(iHash, bi, newins);
+
+            if (hash.containsKey(bi) && hash.get(bi).sv != null) {
+                hash.get(bi).sv.splits += kref.cnt - tins.get(bi).get("+" + ins);
+            }
             if (rpflag && bams.length > 0 && ins.length() >= 5
                     && ins.length() < rlen - 10
                     && mref != null && mref.cnt != 0
                     && noPassingReads(chr, bi, bi + ins.length(), bams, conf)
-                    && iref.cnt > 2 * mref.cnt) {
-                adjCnt(iref, mref, mref, conf);
+                    && kref.cnt > 2 * mref.cnt) {
+                adjCnt(kref, mref, mref, conf);
             }
         }
 
@@ -997,58 +1264,115 @@ public class VariationRealigner {
             tmp.add(tuple(ent3.getKey(), ent3.getValue()));
         }
         Collections.sort(tmp, COMP2);
+
         for (Tuple.Tuple2<Integer, Sclip> t : tmp) {
-            final int p = t._1;
+            int p = t._1;
             final Sclip sc3v = t._2;
+            final int cnt = t._2.cnt;
+            if (cnt < conf.minr) {
+                break;
+            }
             if (sc3v.used) {
                 continue;
             }
-            String seq = findconseq(sc3v, conf);
+            String seq = findconseq(sc3v, conf, 0);
             if (seq.isEmpty()) {
                 continue;
             }
             if (conf.y) {
-                System.err.println("  Working lgins 3: " + seq);
-            }
-            if (B_A7.matcher(seq).find() || B_T7.matcher(seq).find()) {
-                continue;
+                System.err.println("  Working lgins 3: " + p + " " + seq + " cnt: " + cnt);
             }
             if (seq.length() < 12) {
                 continue;
             }
-            if (islowcomplexseq(seq)) {
-                continue;
-            }
+
             Tuple.Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, 1, chr, chrs);
-            final int bi = tpl._1;
-            final String ins = tpl._2;
+            int bi = tpl._1;
+            String ins = tpl._2;
+            String EXTRA = "";
 
             if (bi == 0) {
-                continue;
+                // #next if ($SOFTP2SV{ $p } && $SOFTP2SV{ $p }->[0]->{ used });
+                if (islowcomplexseq(seq)) {
+                    continue;
+                }
+                Tuple.Tuple2<Integer, String>  tp = findMatch(conf, seq, reference, p, 1, Configuration.SEED_1, 1);
+                bi = tp._1;
+                EXTRA = tp._2;
+                if (!(bi != 0 && p - bi > 15 && p - bi < Configuration.SVMAXLEN)) {
+                    continue;
+                }
+
+                // For large insertions
+                if (bi < region.start) {
+                    //my ($tts, $tte) = ($bi - $RLEN, $bi + $RLEN >= $START ? $START - 1 : $bi + $RLEN);
+                    //getREF($chr, $tts, $tte, $REF, $RLEN) unless( isLoaded( $chr, $tts, $tte, $REF ) );
+                    //parseSAM($chr, $bi - $RLEN, $bi + $RLEN >= $START ? $START - 1 : $bi + $RLEN, $bams, $REF, $hash, $cov, $sclip5, $sclip3, 1);
+                    int tts = bi - rlen;
+                    int tte = bi + rlen;
+                    if (bi + rlen >= region.start) {
+                        tte = region.start - 1;
+                    }
+                    Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
+                    if(!isLoaded(chr, tts, tte, reference)) {
+                        getREF(modifiedRegion, chrs, conf, rlen, reference);
+                    }
+                    parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
+                            rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                }
+                int shift5 = 0;
+                while (ref.containsKey(p - 1) && ref.containsKey(bi - 1)
+                        && ref.get(p - 1).equals(ref.get(bi - 1))) {
+                    p--;
+                    bi--;
+                    shift5++;
+                }
+                if (p - bi > conf.SVMINLEN + 2 * Configuration.SVFLANK ) {
+//                    join("", (map {$_-$bi >= $shift5 && $_-$bi-$shift5 < seq.length() - EXTRA.length()
+//                            ? substr(seq, $_-bi-shift5+EXTRA.length(), 1)
+//                            : $REF->{ $_ };} (bi .. (bi+Configuration.SVFLANK-1))));
+                    ins = joinRefFor3Lgins(ref, bi, bi + Configuration.SVFLANK - 1, shift5, seq, EXTRA);
+                    ins += "<dup" + (p - bi - 2 * Configuration.SVFLANK) + ">";
+                    ins += joinRef(ref, p - Configuration.SVFLANK, p - 1);
+                } else {
+                    ins =  joinRefFor3Lgins(ref, bi, p - 1, shift5, seq, EXTRA);
+                }
+                ins += EXTRA;
+                Tuple.Tuple2<Integer, Integer> tp2 = markDUPSV(bi, p - 1, Arrays.asList(svfdup, svrdup), rlen, conf);
+                int clusters = tp2._1;
+                int pairs = tp2._2;
+                bi = bi - 1;
+
+                VariationMap.SV sv = getSV(hash, bi);
+                sv.type = "DUP";
+                sv.pairs += pairs;
+                sv.splits += cnt;
+                sv.clusters += clusters;
+                if (!cov.containsKey(bi) || (cov.containsKey(p) && cov.containsKey(bi)
+                        && cov.get(bi) < cov.get(p))) {
+                    if (cov.containsKey(p)) {
+                        cov.put(bi, cov.get(p));
+                    } else {
+                        cov.put(bi, sc3v.cnt);
+                    }
+                } else {
+                    if (sc3v.cnt > cov.get(bi)) {
+                        incCnt(cov, bi, sc3v.cnt);
+                    }
+                }
             }
 
-            // For large insertions
-            if (bi < region.start) {
-                //my ($tts, $tte) = ($bi - $RLEN, $bi + $RLEN >= $START ? $START - 1 : $bi + $RLEN);
-                //getREF($chr, $tts, $tte, $REF, $RLEN) unless( isLoaded( $chr, $tts, $tte, $REF ) );
-                //parseSAM($chr, $bi - $RLEN, $bi + $RLEN >= $START ? $START - 1 : $bi + $RLEN, $bams, $REF, $hash, $cov, $sclip5, $sclip3, 1);
-                int tts = bi - rlen;
-                int tte = bi + rlen;
-                if (bi + rlen >= region.start) {
-                    tte = region.start - 1;
-                }
-                Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
-                if(!isLoaded(chr, tts, tte, reference)) {
-                    getREF(modifiedRegion, chrs, conf, rlen, reference);
-                }
-                parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
-                        rlen, reference, conf, hash, iHash, cov, sclip5, sclip3, true);
+            if (conf.y) {
+                System.err.printf("  Found candidate lgins from 3: %s +%s %s %s\n", bi, ins, p, seq);
             }
 
             final Variation iref = getVariation(iHash, bi, "+" + ins);
             iref.pstd = true;
             iref.qstd = true;
-            final Variation lref = getVariationMaybe(hash, bi, ref.get(bi));
+            Variation lref = getVariationMaybe(hash, bi, ref.get(bi));
+            if (p - bi > sc3v.pmean/cnt) {
+                lref = null;
+            }
             adjCnt(iref, sc3v, lref, conf);
             boolean rpflag = true;
             for (int i = 0; i < ins.length(); i++) {
@@ -1083,12 +1407,14 @@ public class VariationRealigner {
             sc3v.used = true;
             Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.cnt));
             realignins(hash, iHash, tins, cov, sclip5, sclip3, reference, region, chrs, rlen, conf);
+            if (hash.containsKey(bi) && hash.get(bi).sv != null) {
+                hash.get(bi).sv.splits += iref.cnt - tins.get(bi).get("+" + ins);
+            }
             Variation mref = getVariationMaybe(hash, bi, ref.get(bi));
             if (rpflag && bams.length > 0 && ins.length() >= 5 && ins.length() < rlen - 10
                     && mref != null && mref.cnt != 0
                     && noPassingReads(chr, bi, bi + ins.length(), bams, conf)
                     && iref.cnt > 2 * mref.cnt) {
-
                 adjCnt(iref, mref, mref, conf);
             }
         }
@@ -1159,17 +1485,20 @@ public class VariationRealigner {
                 final int p3 = t3._1;
                 final Sclip sc3v = t3._2;
                 final int cnt3 = t3._3;
+                if (sc5v.used) {
+                    break;
+                }
                 if (sc3v.used) {
                     continue;
                 }
-                if (p5 - p3 > rlen / 1.5) {
+                if (p5 - p3 > rlen * 2.5) {
                     continue;
                 }
                 if (p3 - p5 > rlen - 10) { // if they're too far away, don't even try
                     continue;
                 }
-                final String seq5 = findconseq(sc5v, conf);
-                final String seq3 = findconseq(sc3v, conf);
+                final String seq5 = findconseq(sc5v, conf, 5);
+                final String seq3 = findconseq(sc3v, conf, 3);
                 //next until at least one of consensus sequences has length > 10
                 if (seq5.length() <= 10 || seq3.length() <= 10) {
                     continue;
@@ -1178,7 +1507,12 @@ public class VariationRealigner {
                     System.err.printf("  Working lgins30: %s %s 3: %s %s 5: %s %s\n",
                             p3, p5, seq3, cnt3, new StringBuilder(seq5).reverse(), cnt5);
                 }
-                Tuple.Tuple3<Integer, Integer, Integer> tpl = find35match(seq5, seq3, p5, p3, ref);
+                // Don't even try if there're extreme bias
+
+                if (!(cnt5/(double)cnt3 >= 0.08 && cnt5/(double) cnt3 <= 12)) {
+                    continue;
+                }
+                Tuple.Tuple3<Integer, Integer, Integer> tpl = find35match(seq5, seq3, p5, p3, ref, conf);
                 int bp5 = tpl._1;
                 int bp3 = tpl._2;
                 //length of match
@@ -1187,14 +1521,17 @@ public class VariationRealigner {
                 if (score == 0) {
                     continue;
                 }
+
+                //to ensure higher quality of bases are used as read ends are usually poor quality
+                int smscore = (int) (score/2);
                 //add matched part of seq3 (left clip)
-                String ins = bp3 > 1 ? substr(seq3, 0, -bp3 + 1) : seq3;
-                if (bp5 > 0) { //add not matched part of seq5 (right clip)
-                    ins += new StringBuilder(substr(seq5, 0, bp5)).reverse();
+                String ins = bp3 + smscore > 1 ? substr(seq3, 0, -(bp3 + smscore) + 1) : seq3;
+                if (bp5 + smscore > 0) { //add not matched part of seq5 (right clip)
+                    ins += reverse(substr(seq5, 0, bp5 + smscore));
                 }
                 if (islowcomplexseq(ins)) {
                     if (conf.y) {
-                        System.err.println("  Discard low complex insertion found " + ins + ".");
+                        System.err.println("  Discard low complexity insertion found " + ins + ".");
                     }
                     continue;
                 }
@@ -1209,7 +1546,7 @@ public class VariationRealigner {
                         continue;
                     }
                     if (seq5.length() > ins.length()
-                            && !ismatch(substr(seq5, ins.length()), joinRef(ref, p3 - seq5.length() - ins.length() - 2, p3 - 1), -1, conf.y)) {
+                            && !ismatch(substr(seq5, ins.length()), joinRef(ref, p3 - (seq5.length() - ins.length()) - 2, p3 - 1), -1, conf.y)) {
                         continue;
                     }
                     if (conf.y) {
@@ -1242,13 +1579,35 @@ public class VariationRealigner {
                             && !ismatch(substr(seq5, ins.length()), joinRef(ref, p3 - (seq5.length() - ins.length()) - 2, p3 - 1), -1, conf.y)) {
                         continue;
                     }
-                    String tmp = ins.length() > p3 - p5
-                            ? joinRef(ref, p5, p3)
-                            : joinRef(ref, p5, p5 + (p3 - p5 - ins.length()) / 2); // Tandem duplication
+                    String tmp = "";
+                    if (ins.length() <= p3 - p5) { // Tandex duplication
+                        int rpt = 2;
+                        int tnr = 3;
+                        while(((p3 - p5 + ins.length()) / (double) tnr )/ (double) ins.length() > 1 ) {
+                            if ((p3 - p5 + ins.length()) % tnr == 0) {
+                                rpt++;
+                            }
+                            tnr++;
+                        }
+                        //TODO: maybe here in Perl we must cast position "to" to int?
+                        // -1 because joinRef works to the bound exactly
+                        tmp += joinRef(ref, p5, (p5 + (p3 - p5 + ins.length())/ (double) rpt - ins.length()));
+                        ins = "+" + tmp + "" + ins;
+                    } else {
+                        // -1 because joinRef works to the bound exactly
+                        tmp += joinRef(ref, p5, p3 - 1);
+                        if ((ins.length() - tmp.length()) % 2 == 0) {
+                            int tex = (ins.length() - tmp.length()) / 2;
+                            ins = (tmp + substr(ins, 0, tex)).equals(substr(ins, tex))
+                                    ? ("+" + substr(ins, tex))
+                                    : "+" + tmp + "" +  ins;
+                        } else {
+                            ins = "+" + tmp + "" + ins;
+                        }
+                    }
                     if (conf.y) {
                         System.err.printf("Found lgins30: %s %s %s %s + %s\n", p3, p5, ins.length(), tmp, ins);
                     }
-                    ins = "+" + tmp + ins;
                     bi = p5 - 1;
                     vref = getVariation(iHash, bi, ins);
                 }
@@ -1266,7 +1625,7 @@ public class VariationRealigner {
                     adjCnt(vref, sc3v, mvref, conf);
                     adjCnt(vref, sc5v, conf);
                     if (bams != null && bams.length > 0
-                            && p3 - p5 >= 5 && p3 - p5 > rlen - 10
+                            && p3 - p5 >= 5 && p3 - p5 < rlen - 10
                             && mvref != null && mvref.cnt != 0
                             && vref.cnt > 2 * mvref.cnt
                             && noPassingReads(chr, p5, p3, bams, conf)) {
@@ -1284,7 +1643,7 @@ public class VariationRealigner {
                     Map<String, Integer> map = new HashMap<>();
                     map.put(ins, vref.cnt);
                     tdel.put(bi, map);
-                    realigndel(hash, tdel, cov, sclip5, sclip3, reference, region, chrs, rlen, bam, conf);
+                    realigndel(hash, tdel, cov, sclip5, sclip3, reference, region, chrs, rlen, null, conf);
                 } else {
                     adjCnt(vref, sc3v, conf);
                     adjCnt(vref, sc5v, conf);
@@ -1297,8 +1656,10 @@ public class VariationRealigner {
         }
     }
 
-    static List<Object[]> fillTmp(Map<Integer, Map<String, Integer>> changes) {
-        List<Object[]> tmp = new ArrayList<>();
+    static List<Tuple.Tuple3<Integer, String, Integer>> fillTmp(Map<Integer, Map<String, Integer>> changes) {
+        //TODO: perl here have non-deterministic results because of hash, maybe we need to
+        // make the sort in Perl more stringent (except simple sort b[2]<=>a[2]
+        List<Tuple.Tuple3<Integer, String, Integer>> tmp = new ArrayList<>();
         for (Map.Entry<Integer, Map<String, Integer>> ent : changes.entrySet()) {
             int p = ent.getKey();
             Map<String, Integer> v = ent.getValue();
@@ -1311,32 +1672,27 @@ public class VariationRealigner {
                 // if (mtch.find()) {
                 // ecnt = mtch.group(1).length();
                 // }
-                tmp.add(new Object[] { p, vn, cnt, /* ecnt */});
+                //, /* ecnt */
+                tmp.add(new Tuple.Tuple3<> (p, vn, cnt));
             }
         }
-        Collections.sort(tmp, REALIGNDEL_COMPARATOR);
-        return tmp;
-    }
-
-    private static final Comparator<Object[]> REALIGNDEL_COMPARATOR = new Comparator<Object[]>() {
-        @Override
-        public int compare(Object[] o1, Object[] o2) {
-            int x1 = (Integer)o1[2];
-            int x2 = (Integer)o2[2];
+        Collections.sort(tmp, (o1, o2) -> {
+            int x1 = o1._3;
+            int x2 = o2._3;
             int f = Integer.compare(x2, x1);
             if (f != 0)
                 return f;
-            x1 = (Integer)o1[0];
-            x2 = (Integer)o2[0];
+            x1 = o1._1;
+            x2 = o2._1;
             f =  Integer.compare(x1, x2);
             if (f != 0)
                 return f;
-            String s1 = (String)o1[1];
-            String s2 = (String)o2[1];
+            String s1 = o1._2;
+            String s2 = o2._2;
             return s2.compareTo(s1);
-
-        }
-    };
+        });
+        return tmp;
+    }
 
     /**
      * Test whether the two soft-clipped reads match
@@ -1352,11 +1708,13 @@ public class VariationRealigner {
                                                                String seq3,
                                                                int p5,
                                                                int p3,
-                                                               Map<Integer, Character> ref) {
-        final int longmm = 3;
+                                                               Map<Integer, Character> ref,
+                                                               Configuration conf) {
+        final int longmm = 2;
         int max = 0;
         int b3 = 0;
         int b5 = 0;
+
         for (int i = 0; i < seq5.length() - 8; i++) {
             for (int j = 1; j < seq3.length() - 8; j++) {
                 int nm = 0;
@@ -1372,12 +1730,16 @@ public class VariationRealigner {
                 }
                 if (n - nm > max
                         && n - nm > 8
-                        && nm / (double)n < 0.1d
+                        && nm / (double) n < 0.1d
                         && (n + j >= seq3.length() || i + n >= seq5.length())) {
 
                     max = n - nm;
                     b3 = j;
                     b5 = i;
+                    if (conf.y) {
+                        System.err.printf("      Found 35 Match, %s %s %s\n", seq5, seq3,
+                                join("\t", n + j, seq3.length(), i + n, seq5.length(), n, nm, i, j));
+                    }
                     return tuple(b5, b3, max);
                 }
             }
@@ -1400,7 +1762,7 @@ public class VariationRealigner {
                                   int s,
                                   int e,
                                   String[] bams,
-                                  Configuration conf) throws IOException {
+                                  Configuration conf) {
         int cnt = 0;
         int midcnt = 0; // Reads end in the middle
         int dlen = e - s;
@@ -1764,10 +2126,20 @@ public class VariationRealigner {
      */
     static void adjRefCnt(Variation tv,
                           Variation ref,
-                          int len) {
+                          int len,
+                          Configuration conf) {
         if (ref == null) {
             return;
         }
+
+        if (conf.y) {
+            String refCnt = ref.cnt != 0 ? String.valueOf(ref.cnt) : "NA";
+            System.err.printf("    AdjRefCnt: '+' %s %s %s %s Ref: %s\n",
+                    ref.cnt, tv.cnt, ref.getDir(false), tv.getDir(false), refCnt);
+            System.err.printf("    AdjRefCnt: '-' %s %s %s %s Ref: %s\n",
+                    ref.cnt, tv.cnt, ref.getDir(true), tv.getDir(true), refCnt);
+        }
+
         double f = tv.pmean != 0 ? (tv.pmean / (double)tv.cnt - len + 1) / (tv.pmean / (double)tv.cnt) : 0; // the adjustment factor
         if (f < 0) {
             return;
@@ -1808,7 +2180,7 @@ public class VariationRealigner {
             return;
         }
         if (debugLog) {
-            System.err.printf("adjRefFactor(%s, %s);\n", ref.cnt, factor_f);
+            System.err.printf("    AdjRefFactor: %s %s\n", ref.cnt, factor_f);
         }
 
         ref.cnt -= (int) (factor_f * ref.cnt);
@@ -1855,14 +2227,12 @@ public class VariationRealigner {
      * @param ref map of reference bases
      * @param p position
      * @param wupseq sequence
-     * @param len not used
      * @param sclip5 map of 5' softclips
      * @return MismatchResult contains mismatches lists and clipping positions
      */
     static MismatchResult findMM5(Map<Integer, Character> ref,
                                   int p,
                                   String wupseq,
-                                  int len,
                                   Map<Integer, Sclip> sclip5) {
         String seq = wupseq.replaceAll("#|\\^", "");
         int longmm = 3;
@@ -1885,7 +2255,9 @@ public class VariationRealigner {
         if (str.length() == 1) {
             while (isHasAndEquals(charAt(seq, -1 - n), ref, p - n)) {
                 n++;
-                mn++;
+                if (n != 0) {
+                    mn++;
+                }
             }
             if (mn > 1) {
                 int n2 = 0;
@@ -1918,14 +2290,12 @@ public class VariationRealigner {
      * @param ref map of reference bases
      * @param p position
      * @param sanpseq sequence
-     * @param len not used
      * @param sclip3 map of 3' softclips
      * @return MismatchResult contains mismatches lists and clipping positions
      */
     static MismatchResult findMM3(Map<Integer, Character> ref,
                                   int p,
                                   String sanpseq,
-                                  int len,
                                   Map<Integer, Sclip> sclip3) {
         String seq = sanpseq.replaceAll("#|\\^", ""); // ~ s/#|\^//g;
         final int longmm = 3;
@@ -1936,7 +2306,7 @@ public class VariationRealigner {
         int mcnt = 0;
         List<Integer> sc3p = new ArrayList<>();
         StringBuilder str = new StringBuilder();
-        while (n < seq.length() && isEquals(ref.get(p + n), seq.charAt(n))) {
+        while (n < seq.length() && ref.containsKey(p + n) && isEquals(ref.get(p + n), seq.charAt(n))) {
             n++;
         }
         sc3p.add(p + n);
@@ -1953,7 +2323,9 @@ public class VariationRealigner {
         if (str.length() == 1) {
             while (n < seq.length() && isHasAndEquals(seq.charAt(n), ref, p + n)) {
                 n++;
-                mn++;
+                if (n != 0) {
+                    mn++;
+                }
             }
             if (mn > 1) {
                 int n2 = 0;

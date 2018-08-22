@@ -322,7 +322,7 @@ public class SAMFileParser {
                                                 n += m;
                                                 offset = 0;
                                                 // Had to reset the start due to softclipping adjustment
-                                                start = record.getAlignmentStart();
+                                                start = position;
 
                                                 continue;
                                             }
@@ -340,7 +340,7 @@ public class SAMFileParser {
                                                     n += m;
                                                     offset = 0;
                                                     // Had to reset the start due to softclipping adjustment
-                                                    start = record.getAlignmentStart();
+                                                    start = position;
                                                     if (conf.y) {
                                                         System.err.println(sequence + " at 5' is a chimeric at "
                                                                 + start + " by SEED " + Configuration.SEED_1);
@@ -407,7 +407,7 @@ public class SAMFileParser {
                                                 n += m;
                                                 offset = 0;
                                                 // Had to reset the start due to softclipping adjustment
-                                                start = record.getAlignmentStart();
+                                                start = position;
 
                                                 continue;
                                             }
@@ -422,7 +422,7 @@ public class SAMFileParser {
                                                     n += m;
                                                     offset = 0;
                                                     // Had to reset the start due to softclipping adjustment
-                                                    start = record.getAlignmentStart();
+                                                    start = position;
                                                     if (conf.y) {
                                                         System.err.println(sequence  + " at 3' is a chimeric at "
                                                                 + start + " by SEED " + Configuration.SEED_1);
@@ -490,6 +490,7 @@ public class SAMFileParser {
                                 offset = 0;
                                 //Inserted segment of read sequence
                                 StringBuilder s = new StringBuilder(substr(querySequence, n, m));
+
                                 //Quality of this segment
                                 StringBuilder q = new StringBuilder(substr(queryQuality, n, m));
                                 //Sequence to be appended if next segment is matched
@@ -523,7 +524,6 @@ public class SAMFileParser {
 
                                     int begin = n + m;
                                     appendSegments(querySequence, queryQuality, cigar, ci, s, q, mLen, indelLen, begin, true);
-
                                     //add length of next segment to both multoffs and multoffp
                                     //add length of next-next segment to multoffp (for insertion) or to multoffs (for deletion)
                                     multoffs += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D ? indelLen : 0);
@@ -599,6 +599,7 @@ public class SAMFileParser {
                                     }
                                     //add '+' + s to insertions at inspos
                                     incCnt(getOrElse(ins, inspos, new HashMap<>()), "+" + s, 1);
+
                                     //add insertion to table of variations
                                     Variation hv = getVariation(iHash, inspos, "+" + s); //variant structure for this insertion
                                     hv.incDir(dir);
@@ -913,7 +914,7 @@ public class SAMFileParser {
                             //variation string. Initialize to first base of the read sequence
                             final char ch1 = querySequence.charAt(n);
                             String s = String.valueOf(ch1);
-                            boolean startWithDelition = false;
+                            boolean startWithDeletion = false;
                             //skip if base is unknown
                             if (ch1 == 'N') {
                                 if (conf.includeNInTotalDepth) {
@@ -1020,7 +1021,7 @@ public class SAMFileParser {
                                 s = s.replaceFirst("&", "");
                                 //prepend s with deletion of length of next CIGAR segment + '&' delimiter
                                 s = "-" + cigar.getCigarElement(ci + 1).getLength() + "&" + s;
-                                startWithDelition = true;
+                                startWithDeletion = true;
                                 ddlen = cigar.getCigarElement(ci + 1).getLength();
                                 ci += 1;
 
@@ -1067,12 +1068,12 @@ public class SAMFileParser {
                                 final int pos = start - qbases + 1;
                                 if (pos >= region.start && pos <= region.end) {
                                     addVariationForMatchingPart(conf, hash, cov, mnp, dels5, mappingQuality, nm, p,
-                                            dir, start, rlen1, nmoff, s, startWithDelition, q, qbases, qibases, ddlen, pos);
+                                            dir, start, rlen1, nmoff, s, startWithDeletion, q, qbases, qibases, ddlen, pos);
                                 }
                             }
 
                             //If variation starts with a deletion ('-' character)
-                            if (startWithDelition) {
+                            if (startWithDeletion) {
                                 start += ddlen;
                             }
 
@@ -1131,7 +1132,8 @@ public class SAMFileParser {
 
         if (conf.performLocalRealignment) {
             VariationRealigner.realignIndels(region, chrs, rlen, reference, conf, bam, hash, iHash, cov, sclip3,
-                    sclip5, sample, splice, ampliconBasedCalling, ins, dels5);
+                    sclip5, sample, splice, ampliconBasedCalling, ins, dels5,
+                    svStructures);
         }
 
         if(!conf.disableSV) {
@@ -1168,7 +1170,7 @@ public class SAMFileParser {
         }
 
         //increment count
-        ++hv.cnt;
+        hv.cnt++;
 
         //minimum of positions from start of read and end of read
         int tp = p < rlen1 - p ? p + 1 : rlen1 - p;
@@ -1370,8 +1372,9 @@ public class SAMFileParser {
                 int idx = si;
                 Map<Character, Integer> cnts = sclip.nt.get(idx);
                 if (cnts == null) {
-                    cnts = new LinkedHashMap<>();
+                    cnts = new HashMap<>();
                     sclip.nt.put(idx, cnts);
+
                 }
                 incCnt(cnts, ch, 1);
                 Variation variation = getVariationFromSeq(sclip, idx, ch);
@@ -1398,7 +1401,7 @@ public class SAMFileParser {
                 int idx = m - 1 - si;
                 Map<Character, Integer> cnts = sclip.nt.get(idx);
                 if (cnts == null) {
-                    cnts = new LinkedHashMap<>();
+                    cnts = new HashMap<>();
                     sclip.nt.put(idx, cnts);
                 }
                 incCnt(cnts, ch, 1);
@@ -1448,14 +1451,14 @@ public class SAMFileParser {
                     String left = substr(mnt, 0, i + 1);
                     if (left.length() > 1) {
                         StringBuilder sb = new StringBuilder(left);
-                        sb.insert(0, "&");
+                        sb.insert(1, "&");
                         left = sb.toString();
                     }
 
                     String right = substr(mnt, -(mnt.length() - i - 1));
                     if (right.length() > 1) {
                         StringBuilder sb = new StringBuilder(right);
-                        sb.insert(0, "&");
+                        sb.insert(1, "&");
                         right = sb.toString();
                     }
                     {
@@ -1466,7 +1469,7 @@ public class SAMFileParser {
                             }
                             if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= i + 1) {
                                 if (conf.y) {
-                                    System.err.printf(" AdjMnt Left: %s %s Left: %s Cnt: %s\n",p, vn, left, tref.cnt);
+                                    System.err.printf("    AdjMnt Left: %s %s Left: %s Cnt: %s\n",p, vn, left, tref.cnt);
                                 }
                                 adjCnt(vref, tref, conf);
                                 hashP.remove(left);
@@ -1482,7 +1485,7 @@ public class SAMFileParser {
                             // #&& tref.pmean / tref.cnt <= mnt.length() - i - 1)
                             if (tref.cnt < vref.cnt) {
                                 if (conf.y) {
-                                    System.err.printf(" AdjMnt Right: %s %s Right: %s Cnt: %s\n", p, vn, right, tref.cnt);
+                                    System.err.printf("    AdjMnt Right: %s %s Right: %s Cnt: %s\n", p, vn, right, tref.cnt);
                                 }
                                 adjCnt(vref, tref, conf);
                                 incCnt(cov, p, tref.cnt);
@@ -1494,7 +1497,7 @@ public class SAMFileParser {
                 if (sclip3.containsKey(p)) {
                     final Sclip sc3v = sclip3.get(p);
                     if (!sc3v.used) {
-                        final String seq = findconseq(sc3v, conf);
+                        final String seq = findconseq(sc3v, conf, 0);
                         if (seq.startsWith(mnt)) {
                             if(seq.length() == mnt.length()
                                     || ismatchref(seq.substring(mnt.length()), ref, p + mnt.length(), 1, conf.y)) {
@@ -1508,7 +1511,7 @@ public class SAMFileParser {
                 if (sclip5.containsKey(p + mnt.length())) {
                     final Sclip sc5v = sclip5.get(p + mnt.length());
                     if (!sc5v.used) {
-                        String seq =  findconseq(sc5v, conf);
+                        String seq =  findconseq(sc5v, conf, 0);
                         if (!seq.isEmpty() && seq.length() >= mnt.length()) {
                             seq =  new StringBuffer(seq).reverse().toString();
                             if (seq.endsWith(mnt)) {

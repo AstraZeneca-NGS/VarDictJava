@@ -12,7 +12,7 @@ public class Cluster extends Mate {
     }
 
     public Cluster(int mateStart_ms, int mateEnd_me, int cnt, int mateLength_mlen, int start_s, int end_e,
-                   int pmean_rp, double qmean_q, int Qmean_Q, int nm) {
+                   double pmean_rp, double qmean_q, double Qmean_Q, double nm) {
         this.cnt = cnt;
         this.mateStart_ms = mateStart_ms;
         this.mateEnd_me = mateEnd_me;

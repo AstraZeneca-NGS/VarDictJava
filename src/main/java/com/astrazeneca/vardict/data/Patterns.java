@@ -23,15 +23,18 @@ public class Patterns {
 
     //ATGC patterns
     public static final Pattern CARET_ATGNC = Pattern.compile("\\^([ATGNC]+)");
+    public static final Pattern CARET_ATGC_END = Pattern.compile("\\^([ATGC]+)$");
     public static final Pattern AMP_ATGC = Pattern.compile("&([ATGC]+)");
     public static final Pattern BEGIN_PLUS_ATGC = Pattern.compile("^\\+([ATGC]+)");
     public static final Pattern HASH_ATGC = Pattern.compile("#([ATGC]+)");
     public static final Pattern ATGSs_AMP_ATGSs_END = Pattern.compile("(\\+[ATGC]+)&[ATGC]+$");
     public static final Pattern MINUS_NUMBER_AMP_ATGCs_END = Pattern.compile("(-\\d+)&[ATGC]+$");
+    public static final Pattern MINUS_NUMBER_ATGNC_SV_ATGNC_END = Pattern.compile("^-\\d+\\^([ATGNC]+)<...\\d+>([ATGNC]+)$");
     public static final Pattern BEGIN_ATGC_END = Pattern.compile("^[ATGC]+$");
 
     //SV patterns
     public static final Pattern DUP_NUM = Pattern.compile("<dup(\\d+)");
+    public static final Pattern DUP_NUM_ATGC = Pattern.compile("<dup(\\d+)>([ATGC]+)$");
     public static final Pattern INV_NUM = Pattern.compile("<inv(\\d+)");
     public static final Pattern SOME_SV_NUMBERS = Pattern.compile("<(...)\\d+>");
     public static final Pattern ANY_SV = Pattern.compile("<(...)>");
