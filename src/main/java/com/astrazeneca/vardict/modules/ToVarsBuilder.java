@@ -21,7 +21,6 @@ import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.*;
 import static com.astrazeneca.vardict.modules.SAMFileParser.parseSAM;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
-import static java.lang.String.format;
 
 public class ToVarsBuilder {
 
@@ -147,7 +146,7 @@ public class ToVarsBuilder {
                 //strand bias flag (0, 1 or 2)
                 int bias = strandBias(fwd, rev, conf.bias, conf.minb);
                 //mean base quality for variant
-                double vqual = round(cnt.qmean / cnt.cnt, 1); // base quality
+                double vqual = cnt.qmean / cnt.cnt; // base quality
                 //mean mapping quality for variant
                 double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
                 //number of high-quality reads for variant
@@ -172,7 +171,7 @@ public class ToVarsBuilder {
                 tvref.rev = rev;
                 tvref.bias = String.valueOf(bias);
                 tvref.freq = cnt.cnt / (double)ttcov;
-                tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
+                tvref.pmean = cnt.pmean / (double)cnt.cnt;
                 tvref.pstd = cnt.pstd;
                 tvref.qual = vqual;
                 tvref.qstd = cnt.qstd;
@@ -189,7 +188,7 @@ public class ToVarsBuilder {
 
                 //append variant record
                 var.add(tvref);
-                debugVariantsContent(conf, tmp, n, tvref, false);
+                tvref.debugVariantsContent(conf, tmp, n , false);
             }
 
             //Handle insertions separately
@@ -208,7 +207,7 @@ public class ToVarsBuilder {
                     //strand bias flag (0, 1 or 2)
                     int bias = strandBias(fwd, rev, conf.bias, conf.minb);
                     //mean base quality for variant
-                    double vqual = round(cnt.qmean / cnt.cnt, 1); // base quality
+                    double vqual = cnt.qmean / cnt.cnt; // base quality
                     //mean mapping quality for variant
                     double mq = cnt.Qmean / (double)cnt.cnt; // mapping quality
                     //number of high-quality reads for variant
@@ -243,7 +242,7 @@ public class ToVarsBuilder {
                     tvref.rev = rev;
                     tvref.bias = String.valueOf(bias);
                     tvref.freq = cnt.cnt / (double)ttcov;
-                    tvref.pmean = round(cnt.pmean / (double)cnt.cnt, 1);
+                    tvref.pmean = cnt.pmean / (double)cnt.cnt;
                     tvref.pstd = cnt.pstd;
                     tvref.qual = vqual;
                     tvref.qstd = cnt.qstd;
@@ -259,7 +258,7 @@ public class ToVarsBuilder {
                     tvref.duprate = duprate;
 
                     var.add(tvref);
-                    debugVariantsContent(conf, tmp, n, tvref, true);
+                    tvref.debugVariantsContent(conf, tmp, n, true);
                 }
             }
 
@@ -601,9 +600,6 @@ public class ToVarsBuilder {
                             .replace("#", "")
                             .replace("^", "i");
                     //convert extrafreq, freq, hifreq, msi fields to strings
-                    vref.extrafreq = round(vref.extrafreq, 4);
-                    vref.freq = round(vref.freq, 4);
-                    vref.hifreq = round(vref.hifreq, 4);
                     vref.msi = msi;
                     vref.msint = msint.length();
                     vref.shift3 = shift3;
@@ -649,7 +645,6 @@ public class ToVarsBuilder {
                 vref.shift3 = 0;
                 vref.sp = p;
                 vref.ep = p;
-                vref.hifreq = round(vref.hifreq, 4);
                 String r = ref.containsKey(p) ? ref.get(p).toString() : "";
                 //both refallele and varallele are 1 base from reference string
                 vref.refallele = r;
@@ -676,31 +671,6 @@ public class ToVarsBuilder {
             System.err.println("TIME: Finish preparing vars:" + LocalDateTime.now());
         }
         return tuple(Rlen, vars);
-    }
-
-    private static void debugVariantsContent(Configuration conf,
-                                             List<String> tmp, String n, Variant tvref,
-                                             boolean isInsertion) {
-        if (conf.debug) {
-            StringBuilder sb = new StringBuilder();
-            if (isInsertion) {
-                sb.append("I");
-            }
-            sb.append(n
-                    + ":" + (tvref.fwd + tvref.rev)
-                    + ":F-" + tvref.fwd
-                    + ":R-" + tvref.rev
-                    + ":" + format("%.3f", tvref.freq)
-                    + ":" + tvref.bias
-                    + ":" + tvref.pmean
-                    + ":" + tvref.pstd
-                    + ":" + tvref.qual
-                    + ":" + tvref.qstd
-                    + ":" + format("%.3f", tvref.hifreq)
-                    + ":" + tvref.mapq
-                    + ":" + tvref.qratio);
-            tmp.add(sb.toString());
-        }
     }
 
     private static int calcHicov(VariationMap<String, Variation> iv,

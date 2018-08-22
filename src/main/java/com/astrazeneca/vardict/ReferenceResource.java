@@ -13,7 +13,6 @@ import java.util.*;
 import static com.astrazeneca.vardict.Utils.substr;
 
 public class ReferenceResource {
-    private static final int DEFAULT_REFERENCE_EXTENSION = 1200;
     private static ThreadLocal<Map<String, IndexedFastaSequenceFile>> threadLocalFastaFiles = ThreadLocal.withInitial(HashMap::new);
 
     synchronized private static IndexedFastaSequenceFile fetchFasta(String file) {
@@ -53,7 +52,7 @@ public class ReferenceResource {
      */
     public static Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf) {
         Reference ref = new Reference();
-        return getREF(region, chrs, conf, DEFAULT_REFERENCE_EXTENSION, ref);
+        return getREF(region, chrs, conf, conf.referenceExtension, ref);
     }
 
     /**
@@ -78,7 +77,7 @@ public class ReferenceResource {
         String[] subSeq = retrieveSubSeq(conf.fasta, region.chr, sequenceStart, sequenceEnd);
         //Header doesn't used
         //String header = subSeq[0];
-        String exon = subSeq[1];
+        String exon = subSeq[1].toUpperCase();
 
         if (isLoaded(region.chr, sequenceStart, sequenceEnd, ref)) {
             return ref;
@@ -86,22 +85,20 @@ public class ReferenceResource {
         Reference.LoadedRegion loadedRegion = new Reference.LoadedRegion(region.chr, sequenceStart, sequenceEnd);
         ref.loadedRegions.add(loadedRegion);
 
-        for (int i = 0; i < exon.length(); i++) { // TODO why '<=' in Perl?
+        for (int i = 0; i < exon.length() - Configuration.SEED_1; i++) { // TODO why '<=' in Perl?
             // don't process it more than once
             if (ref.referenceSequences.containsKey(i + sequenceStart)) {
                 continue;
             }
-            ref.referenceSequences.put(i + sequenceStart, Character.toUpperCase(exon.charAt(i)));
+            ref.referenceSequences.put(i + sequenceStart, exon.charAt(i));
 
             // Fill the seed map by sequences of SEED_1 and SEED_2 length
-            if (exon.length() - i > Configuration.SEED_1) {
-                String keySequence = substr(exon, i, Configuration.SEED_1).toUpperCase();
-                ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
-            }
-            if (exon.length() - i > Configuration.SEED_2) {
-                String keySequence = substr(exon, i, Configuration.SEED_2).toUpperCase();
-                ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
-            }
+            String keySequence = substr(exon, i, Configuration.SEED_1);
+            ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
+
+            keySequence = substr(exon, i, Configuration.SEED_2);
+            ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
+
         }
 
         if (conf.y) {

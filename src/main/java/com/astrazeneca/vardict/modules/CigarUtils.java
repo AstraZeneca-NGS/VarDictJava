@@ -421,7 +421,8 @@ public class CigarUtils {
             //number of bases after refoff/rdoff that match in reference and read sequences
             int rn = 0;
             Set<Character> RN = new HashSet<>();
-            while (rn < soft && isHasAndEquals(ref, refoff + rn, querySeq, rdoff + rn)) {
+            while (rn < soft && isHasAndEquals(ref, refoff + rn, querySeq, rdoff + rn)
+                    && queryQual.charAt(rdoff + rn) - 33 > lowqual) {
                 rn++;
             }
             if (rn > 0) {
@@ -526,7 +527,8 @@ public class CigarUtils {
             //number of bases before matched sequence that match in reference and read sequences
             int rn = 0;
             Set<Character> RN = new HashSet<>();
-            while (rn < soft && isHasAndEquals(ref, position - rn - 1, querySeq, soft - rn - 1)) {
+            while (rn < soft && isHasAndEquals(ref, position - rn - 1, querySeq, soft - rn - 1)
+                    && queryQual.charAt(soft - rn - 1) - 33 > lowqual) {
                 rn++;
             }
 

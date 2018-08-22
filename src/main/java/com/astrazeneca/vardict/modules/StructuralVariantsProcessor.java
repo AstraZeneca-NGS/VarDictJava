@@ -684,19 +684,19 @@ public class StructuralVariantsProcessor {
     /**
      * Given a candidate SV identified by clipped reads, check whether there're mates to support it
      */
-    static Tuple.Tuple5<Integer, Integer, Double, Integer, Integer> checkPairs(String chr,
+    static Tuple.Tuple5<Integer, Double, Double, Double, Double> checkPairs(String chr,
                                                                                int start,
                                                                                int end,
                                                                                List<List<Sclip>> sv,
                                                                                int RLEN,
                                                                                Configuration conf) {
         int pairs = 0;
-        int pmean = 0;
+        double pmean = 0;
         double qmean = 0;
-        int Qmean = 0;
-        int nm = 0;
+        double Qmean = 0;
+        double nm = 0;
 
-        Tuple.Tuple5<Integer, Integer, Double, Integer, Integer> tuple5 = tuple(pairs, pmean, qmean, Qmean, nm);
+        Tuple.Tuple5<Integer, Double, Double, Double, Double> tuple5 = tuple(pairs, pmean, qmean, Qmean, nm);
 
         for (List<Sclip> svcluster: sv) {
             for(Sclip svr : svcluster) {
@@ -802,12 +802,12 @@ public class StructuralVariantsProcessor {
             if (bp != 0) {
                 // candidate deletion
                 if (bp < p5) {
-                    Tuple.Tuple5<Integer, Integer, Double, Integer, Integer> tuplePairs = checkPairs(region.chr, bp, p5, Arrays.asList(svfdel, svrdel), RLEN, conf);
+                    Tuple.Tuple5<Integer, Double, Double, Double, Double> tuplePairs = checkPairs(region.chr, bp, p5, Arrays.asList(svfdel, svrdel), RLEN, conf);
                     int pairs = tuplePairs._1;
-                    int pmean = tuplePairs._2;
+                    double pmean = tuplePairs._2;
                     double qmean = tuplePairs._3;
-                    int Qmean = tuplePairs._4;
-                    int nm = tuplePairs._5;
+                    double Qmean = tuplePairs._4;
+                    double nm = tuplePairs._5;
                     if (pairs == 0) {
                         continue;
                     }
@@ -927,12 +927,12 @@ public class StructuralVariantsProcessor {
             String EXTRA = tuple2._2;
             if (bp != 0) {
                 if (bp > p3) { // candidate deletion
-                    Tuple.Tuple5<Integer, Integer, Double, Integer, Integer> tuplePairs = checkPairs(region.chr, p3, bp, Arrays.asList(svfdel, svrdel), RLEN, conf);
+                    Tuple.Tuple5<Integer, Double, Double, Double, Double> tuplePairs = checkPairs(region.chr, p3, bp, Arrays.asList(svfdel, svrdel), RLEN, conf);
                     int pairs = tuplePairs._1;
-                    int pmean = tuplePairs._2;
+                    double pmean = tuplePairs._2;
                     double qmean = tuplePairs._3;
-                    int Qmean = tuplePairs._4;
-                    int nm = tuplePairs._5;
+                    double Qmean = tuplePairs._4;
+                    double nm = tuplePairs._5;
                     if (pairs == 0) {
                         continue;
                     }
@@ -1059,10 +1059,10 @@ public class StructuralVariantsProcessor {
             int ms = invf5.mstart;
             int end = invf5.end;
             int start = invf5.start;
-            int nm = invf5.nm;
-            int pmean = invf5.pmean;
+            double nm = invf5.nm;
+            double pmean = invf5.pmean;
             double qmean = invf5.qmean;
-            int Qmean = invf5.Qmean;
+            double Qmean = invf5.Qmean;
             if (!(Qmean/ (double) cnt > Configuration.DISCPAIRQUAL)) {
                 continue;
             }
@@ -1073,10 +1073,10 @@ public class StructuralVariantsProcessor {
                 int rcnt = invr5.cnt;
                 int rstart = invr5.start;
                 int rms = invr5.mstart;
-                int rnm = invr5.nm;
-                int rpmean = invr5.pmean;
+                double rnm = invr5.nm;
+                double rpmean = invr5.pmean;
                 double rqmean = invr5.qmean;
-                int rQmean = invr5.Qmean;
+                double rQmean = invr5.Qmean;
                 if (!(rQmean/(double)rcnt > Configuration.DISCPAIRQUAL)) {
                     continue;
                 }
@@ -1088,7 +1088,7 @@ public class StructuralVariantsProcessor {
                     int pe = abs((me+rms)/2);
                     if (!ref.containsKey(pe)) {
                         Region modifiedRegion = Region.newModifiedRegion(region, pe - 150, pe + 150);
-                        getREF(modifiedRegion, chrs, conf, 100, reference);
+                        getREF(modifiedRegion, chrs, conf, 300, reference);
                     }
                     int len = pe - bp + 1;
 
@@ -1145,10 +1145,10 @@ public class StructuralVariantsProcessor {
             int cnt = invf3.cnt;
             int me = invf3.mend;
             int end = invf3.end;
-            int nm = invf3.nm;
-            int pmean = invf3.pmean;
+            double nm = invf3.nm;
+            double pmean = invf3.pmean;
             double qmean = invf3.qmean;
-            int Qmean = invf3.Qmean;
+            double Qmean = invf3.Qmean;
             for (Sclip invr3 : svrinv3) {
                 if (invr3.used) {
                     continue;
@@ -1156,10 +1156,10 @@ public class StructuralVariantsProcessor {
                 int rcnt = invr3.cnt;
                 int rstart = invr3.start;
                 int rms = invr3.mstart;
-                int rnm = invr3.nm;
-                int rpmean = invr3.pmean;
+                double rnm = invr3.nm;
+                double rpmean = invr3.pmean;
                 double rqmean = invr3.qmean;
-                int rQmean = invr3.Qmean;
+                double rQmean = invr3.Qmean;
                 if (!(rQmean/ (double)rcnt > Configuration.DISCPAIRQUAL)) {
                     continue;
                 }
@@ -1171,7 +1171,7 @@ public class StructuralVariantsProcessor {
                     int bp = abs((me + rms)/2);
                     if (!ref.containsKey(bp)) {
                         Region modifiedRegion = Region.newModifiedRegion(region, bp - 150, bp + 150);
-                        getREF(modifiedRegion, chrs, conf, 100, reference);
+                        getREF(modifiedRegion, chrs, conf, 300, reference);
                     }
                     int len = pe - bp + 1;
                     String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp, bp + Configuration.SVFLANK - 1));
@@ -1252,10 +1252,10 @@ public class StructuralVariantsProcessor {
             int cnt = dup.cnt;
             int end = dup.end;
             int start = dup.start;
-            int pmean = dup.pmean;
+            double pmean = dup.pmean;
             double qmean = dup.qmean;
-            int Qmean = dup.Qmean;
-            int nm = dup.nm;
+            double Qmean = dup.Qmean;
+            double nm = dup.nm;
             if (!(cnt >= conf.minr + 5)) {
                 continue;
             }
@@ -1268,7 +1268,7 @@ public class StructuralVariantsProcessor {
 
             if(!ReferenceResource.isLoaded(region.chr, ms, me, reference)) {
                 if (!ref.containsKey(bp)) {
-                    getREF(Region.newModifiedRegion(region, bp - 150, bp + 150), chrs, conf, 500, reference);
+                    getREF(Region.newModifiedRegion(region, bp - 150, bp + 150), chrs, conf, 300, reference);
                 }
                 parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice, ampliconBasedCalling, RLEN, reference, conf, hash,
                         iHash, cov, sclip5, sclip3, true);
@@ -1278,12 +1278,12 @@ public class StructuralVariantsProcessor {
             int cntr = cnt;
             double qmeanf = qmean;
             double qmeanr = qmean;
-            int Qmeanf = Qmean;
-            int Qmeanr = Qmean;
-            int pmeanf = pmean;
-            int pmeanr = pmean;
-            int nmf = nm;
-            int nmr = nm;
+            double Qmeanf = Qmean;
+            double Qmeanr = Qmean;
+            double pmeanf = pmean;
+            double pmeanr = pmean;
+            double nmf = nm;
+            double nmr = nm;
 
             if (!dup.soft.isEmpty()) {
                 List<Map.Entry<Integer, Integer>> soft = new ArrayList<>(dup.soft.entrySet());
@@ -1388,10 +1388,10 @@ public class StructuralVariantsProcessor {
             int cnt = dup.cnt;
             int end = dup.end;
             int start = dup.start;
-            int pmean = dup.pmean;
+            double pmean = dup.pmean;
             double qmean = dup.qmean;
-            int Qmean = dup.Qmean;
-            int nm = dup.nm;
+            double Qmean = dup.Qmean;
+            double nm = dup.nm;
             if (cnt < conf.minr + 5) {
                 continue;
             }
@@ -1404,7 +1404,7 @@ public class StructuralVariantsProcessor {
             int tpe = pe;
             if (!ReferenceResource.isLoaded(region.chr, ms, me, reference) ) {
                 if (!ref.containsKey(pe)) {
-                    getREF(Region.newModifiedRegion(region, pe - 150, pe + 150), chrs, conf, 500, reference);
+                    getREF(Region.newModifiedRegion(region, pe - 150, pe + 150), chrs, conf, 300, reference);
                 }
                 parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice, ampliconBasedCalling, RLEN, reference, conf, hash,
                         iHash, cov, sclip5, sclip3, true);
@@ -1413,12 +1413,12 @@ public class StructuralVariantsProcessor {
             int cntr = cnt;
             double qmeanf = qmean;
             double qmeanr = qmean;
-            int Qmeanf = Qmean;
-            int Qmeanr = Qmean;
-            int pmeanf = pmean;
-            int pmeanr = pmean;
-            int nmf = nm;
-            int nmr = nm;
+            double Qmeanf = Qmean;
+            double Qmeanr = Qmean;
+            double pmeanf = pmean;
+            double pmeanr = pmean;
+            double nmf = nm;
+            double nmr = nm;
             if (!dup.soft.isEmpty()) {
                 List<Map.Entry<Integer, Integer>> soft = new ArrayList<>(dup.soft.entrySet());
                 soft.sort(comparing((Map.Entry<Integer, Integer> entry) -> entry.getValue(),
@@ -1876,7 +1876,7 @@ public class StructuralVariantsProcessor {
                     continue; // next unless( $seq && length($seq) >= $SEED2 );
                 }
                 if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 500, reference);
+                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
                     parseSAM(Region.newModifiedRegion(region, del.mstart - 200, del.mend + 200),
                             bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf, hash,
                             iHash, cov, sclip3, sclip5, true);
@@ -1938,7 +1938,7 @@ public class StructuralVariantsProcessor {
                 }
             } else { // Look within a read length
                 if(!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 500, reference);
+                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
                 }
                 if (conf.y) {
                     System.err.printf("%n%nWorking DEL 5' no softp mate cluster cnt: %d%n", del.cnt);
@@ -2039,7 +2039,7 @@ public class StructuralVariantsProcessor {
                     continue;
                 }
                 if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 500, reference);
+                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
                     parseSAM(Region.newModifiedRegion(region, del.mstart - 200, del.mend + 200), bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
                 }
                 Tuple.Tuple2<Integer, String> match = findMatch(conf, seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
@@ -2088,7 +2088,9 @@ public class StructuralVariantsProcessor {
                 if (conf.y) {
                     System.err.printf("%n%nWorking DEL 3' no softp mate cluster %s %d %d cnt: %d%n", region.chr, del.mstart, del.mend, del.cnt);
                 }
-                if (!isLoaded(region.chr, del.mstart, del.mend, reference)) getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 500, reference);
+                if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
+                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
+                }
                 for (Map.Entry<Integer, Sclip> entry : sclip5.entrySet()) {
                     int i = entry.getKey();
                     Sclip scv = entry.getValue();

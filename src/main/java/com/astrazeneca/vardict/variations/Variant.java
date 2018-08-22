@@ -1,7 +1,14 @@
 package com.astrazeneca.vardict.variations;
 
+import com.astrazeneca.vardict.Configuration;
+import com.astrazeneca.vardict.data.Region;
+
+import java.io.PrintStream;
+import java.text.DecimalFormat;
+import java.util.List;
 import java.util.regex.Matcher;
 
+import static com.astrazeneca.vardict.Utils.join;
 import static com.astrazeneca.vardict.data.Patterns.ANY_SV;
 import static com.astrazeneca.vardict.Utils.substr;
 
@@ -173,6 +180,8 @@ public class Variant {
      */
     public String refallele;
 
+    public String vartype;
+
     /**
      * Debug information
      */
@@ -241,6 +250,204 @@ public class Variant {
             this.refallele = substr(refAllele, 0, 1 - n);
             this.varallele = substr(varAllele, 0, 1 - n);
             this.rightseq = substr(refAllele, 1 - n, n - 1) + substr(this.rightseq, 0, 1 - n);
+        }
+    }
+
+    public void callingSimpleVariant(String sample, Region region, PrintStream out, String sv) {
+        out.println(join("\t",
+                joinSimpleVariant(sample, region),
+                region.chr + ":" + region.start + "-" + region.end,
+                vartype,
+                duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate),
+                sv.equals("") ? 0 : sv
+        ));
+    }
+
+    public String joinSimpleVariant(String sample, Region region) {
+        return join("\t",
+                outputStartOfVariantLine(sample, region),
+
+                joinVar2("\t"),
+
+                shift3,
+                msi == 0 ? 0 : new DecimalFormat("0.000").format(msi),
+                msint,
+                new DecimalFormat("0.0").format(nm),
+                hicnt,
+                hicov,
+                leftseq.isEmpty() ? "0" : leftseq,
+                rightseq.isEmpty() ? "0" : rightseq
+        );
+    }
+
+    public static void callingEmptySimpleVariant(Region region, String sample, PrintStream out,
+                                                 int position) {
+        out.println(join("\t",
+                sample, region.gene, region.chr,
+                position,
+                position,
+                "", "", 0, 0, 0, 0, 0, 0, "", 0, "0;0", 0, 0,
+                0, 0, 0, "", 0, 0, 0, 0, 0, 0, "", "", 0, 0,
+                region.chr + ":" + region.start + "-" + region.end,
+                "", 0, 0
+        ));
+    }
+
+    public void callingOneSample(Region region, String sample,
+                                 PrintStream out, String tvf, String type, String sv, boolean isFirstCover) {
+        String infoVariantWithNM = isFirstCover
+                ? join("\t", tvf, joinVariantWithNM(this))
+                : join("\t", joinVariantWithNM(this), tvf);
+
+        String infoDuprateSV = isFirstCover
+                ? join("\t", 0, 0,
+                duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate), sv.equals("") ? 0 : sv)
+                : join("\t",
+                duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate), sv.equals("") ? 0 : sv, 0, 0);
+
+        out.println(join("\t",
+                outputStartOfVariantLine(sample, region),
+                infoVariantWithNM,
+                outputMiddleOfVariantLine(this),
+                outputEndOfVariantLine(region, type),
+                infoDuprateSV)
+        );
+    }
+
+    public void constructBothSamplesWithoutSecondVariant(Region region, String sample,
+                                                         PrintStream out, String info, String type,
+                                                         Variant variant2,
+                                                         String v1sv, String v2sv) {
+        out.println(join("\t",
+                outputStartOfVariantLine(sample, region),
+                info,
+                outputMiddleOfVariantLine(this),
+                outputEndOfVariantLine(region, type),
+                outputEndOfVariantDuprate(v1sv, v2sv, variant2))
+        );
+    }
+
+    public void constructBothSamplesWithZeroDuprateSecondVariant(Region region, String sample,
+                                                         PrintStream out, String info, String type,
+                                                         String v2sv) {
+        out.println(join("\t",
+                outputStartOfVariantLine(sample, region),
+                info,
+                outputMiddleOfVariantLine(this),
+                outputEndOfVariantLine(region, type),
+                0, 0,
+                duprate == 0 ? 0 : new DecimalFormat("0.000").format(duprate),
+                v2sv.equals("") ? 0 : v2sv
+        ));
+    }
+
+    public void constructBothSamplesWithSecondVariant(Region region, String sample, PrintStream out,
+                                                      String info, Variant variant2, String type,
+                                                      String v1sv, String v2sv) {
+        out.println(join("\t",
+                outputStartOfVariantLine(sample, region),
+                info,
+                outputMiddleOfVariantLine(variant2),
+                outputEndOfVariantLine(region, type),
+                outputEndOfVariantDuprate(v1sv, v2sv, variant2))
+        );
+    }
+
+    private String outputStartOfVariantLine(String sample, Region region) {
+        return join("\t",
+                sample,
+                region.gene,
+                region.chr,
+                sp,
+                ep,
+                refallele,
+                varallele
+        );
+    }
+
+    private String outputMiddleOfVariantLine(Variant variant) {
+        return join("\t",
+                variant.shift3,
+                variant.msi == 0 ? 0 : new DecimalFormat("0.000").format(variant.msi),
+                variant.msint,
+                variant.leftseq.isEmpty() ? "0" : leftseq,
+                variant.rightseq.isEmpty() ? "0" : rightseq
+        );
+    }
+
+    private String outputEndOfVariantLine(Region region, String type) {
+        return join("\t",
+                region.chr + ":" + region.start + "-" + region.end,
+                type,
+                vartype
+        );
+    }
+
+    private String outputEndOfVariantDuprate(String v1sv, String v2sv, Variant variant2) {
+        return join("\t",
+                duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate),
+                v1sv.equals("") ? 0 : v1sv,
+                variant2.duprate == 0 ? 0 : new DecimalFormat("0.0").format(variant2.duprate),
+                v2sv.equals("") ? 0 : v2sv
+        );
+    }
+
+    public String joinVar2(String delm) {
+        return join(delm,
+                tcov,
+                cov,
+                rfc,
+                rrc,
+                fwd,
+                rev,
+                genotype == null ? "0" : genotype,
+                freq == 0 ? 0 : new DecimalFormat("0.0000").format(freq),
+                bias,
+                new DecimalFormat("0.0").format(pmean),
+                pstd ? 1 : 0,
+                new DecimalFormat("0.0").format(qual),
+                qstd ? 1 : 0,
+                new DecimalFormat("0.0").format(mapq),
+                new DecimalFormat("0.000").format(qratio),
+                hifreq == 0 ? 0 : new DecimalFormat("0.0000").format(hifreq),
+                extrafreq == 0 ? 0 : new DecimalFormat("0.0000").format(extrafreq)
+        );
+    }
+
+    public static String joinVariantWithNM(Variant variant) {
+        return join("\t",
+                variant.joinVar2("\t"),
+                new DecimalFormat("0.0").format(variant.nm)
+        );
+    }
+
+    public static String joinEmptyVariantWithTcov(int tcov) {
+        return join("\t", tcov, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+
+    public void debugVariantsContent(Configuration conf,
+                                             List<String> tmp, String n,
+                                             boolean isInsertion) {
+        if (conf.debug) {
+            StringBuilder sb = new StringBuilder();
+            if (isInsertion) {
+                sb.append("I");
+            }
+            sb.append(n
+                    + ":" + (fwd + rev)
+                    + ":F-" + fwd
+                    + ":R-" + rev
+                    + ":" + new DecimalFormat("0.000").format(freq)
+                    + ":" + bias
+                    + ":" + new DecimalFormat("0.0").format(pmean)
+                    + ":" + pstd
+                    + ":" + new DecimalFormat("0.0").format(qual)
+                    + ":" + qstd
+                    + ":" + new DecimalFormat("0.000").format(hifreq)
+                    + ":" + mapq
+                    + ":" + qratio);
+            tmp.add(sb.toString());
         }
     }
 

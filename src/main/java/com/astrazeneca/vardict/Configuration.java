@@ -254,6 +254,12 @@ public class Configuration {
 
     public static final String DEFAULT_AMPLICON_PARAMETERS = "10:0.95";
 
+    /**
+     * Default reference extension $REFEXT
+     */
+    public int referenceExtension = 1200;
+
+
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;
     }

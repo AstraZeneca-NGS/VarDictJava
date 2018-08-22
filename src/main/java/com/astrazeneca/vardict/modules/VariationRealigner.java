@@ -1777,9 +1777,9 @@ public class VariationRealigner {
             f = 1;
         }
 
-        ref.cnt -= f * tv.cnt;
-        ref.hicnt -= f * tv.hicnt;
-        ref.locnt -= f * tv.locnt;
+        ref.cnt -= (int) (f * tv.cnt);
+        ref.hicnt -= (int) (f * tv.hicnt);
+        ref.locnt -= (int) (f * tv.locnt);
         ref.pmean -= f * tv.pmean;
         ref.qmean -= f * tv.qmean;
         ref.Qmean -= f * tv.Qmean;
@@ -1811,15 +1811,15 @@ public class VariationRealigner {
             System.err.printf("adjRefFactor(%s, %s);\n", ref.cnt, factor_f);
         }
 
-        ref.cnt -= (int) factor_f * ref.cnt;
-        ref.hicnt -= (int) factor_f * ref.hicnt;
-        ref.locnt -= (int) factor_f * ref.locnt;
+        ref.cnt -= (int) (factor_f * ref.cnt);
+        ref.hicnt -= (int) (factor_f * ref.hicnt);
+        ref.locnt -= (int) (factor_f * ref.locnt);
         ref.pmean -= factor_f * ref.pmean;
         ref.qmean -= factor_f * ref.qmean;
         ref.Qmean -= factor_f * ref.Qmean;
         ref.nm -= factor_f * ref.nm;
-        ref.dirPlus -= (int) factor_f * ref.dirPlus;
-        ref.dirMinus -= (int) factor_f * ref.dirMinus;
+        ref.dirPlus -= (int) (factor_f * ref.dirPlus);
+        ref.dirMinus -= (int) (factor_f * ref.dirMinus);
 
         correctCnt(ref);
     }
@@ -1838,15 +1838,15 @@ public class VariationRealigner {
             return;
         }
 
-        vref.cnt += (int) factor_f * vref.cnt;
-        vref.hicnt += (int) factor_f * vref.hicnt;
-        vref.locnt += (int) factor_f * vref.locnt;
+        vref.cnt += (int) (factor_f * vref.cnt);
+        vref.hicnt += (int) (factor_f * vref.hicnt);
+        vref.locnt += (int) (factor_f * vref.locnt);
         vref.pmean += factor_f * vref.pmean;
         vref.qmean += factor_f * vref.qmean;
         vref.Qmean += factor_f * vref.Qmean;
         vref.nm += factor_f * vref.nm;
-        vref.dirPlus += (int) factor_f * vref.dirPlus;
-        vref.dirMinus += (int) factor_f * vref.dirMinus;
+        vref.dirPlus += (int) (factor_f * vref.dirPlus);
+        vref.dirMinus += (int) (factor_f * vref.dirMinus);
     }
 
 

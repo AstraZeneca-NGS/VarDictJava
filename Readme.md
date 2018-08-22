@@ -316,7 +316,10 @@ The VarDictJava program follows the workflow:
    The insert size STD. Used for SV calling. Default: 100
 - `-A INT` INSERT_STD_AMT  
    The number of STD. A pair will be considered for DEL if INSERT > INSERT_SIZE + INSERT_STD_AMT * INSERT_STD. Default: 4
-           
+- `-Y|--ref-extension INT`  
+    Extension of bp of reference to build lookup table. Default to 1200 bp. Increase the number will slowdown the program. 
+    The main purpose is to call large indels with 1000 bp that can be missed by discordant mate pairs. 
+      
 ## Output columns
 
 1. Sample - sample name

@@ -17,6 +17,9 @@ import java.util.regex.Pattern;
 
 import static com.astrazeneca.vardict.ReferenceResource.getREF;
 import static com.astrazeneca.vardict.modules.ToVarsBuilder.toVars;
+import static com.astrazeneca.vardict.variations.Variant.callingEmptySimpleVariant;
+import static com.astrazeneca.vardict.variations.Variant.joinEmptyVariantWithTcov;
+import static com.astrazeneca.vardict.variations.Variant.joinVariantWithNM;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.Utils.*;
@@ -526,41 +529,21 @@ public class VarDict {
                 continue;
             }
 
-            String vartype = "";
-
             if (v1 == null) { // no coverage for sample 1
                 if (v2.var.isEmpty()) {
                     continue;
                 }
                 for (Variant variant : v2.var) {
-                    vartype = variant.varType();
-                    if (!isGoodVar(variant, v2.ref, vartype, splice, conf)) {
+                    variant.vartype = variant.varType();
+                    if (!isGoodVar(variant, v2.ref, variant.vartype, splice, conf)) {
                         continue;
                     }
-                    if (vartype.equals("Complex")) {
+                    if (variant.vartype.equals("Complex")) {
                         variant.adjComplex();
                     }
-                    out.println(join("\t", sample, segs.gene, segs.chr,
-                            variant.sp,
-                            variant.ep,
-                            variant.refallele,
-                            variant.varallele,
 
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-
-                            joinVar2(variant, "\t"),
-                            format("%.1f", variant.nm),
-
-                            variant.shift3,
-                            variant.msi == 0 ? 0 : format("%.3f", variant.msi),
-                            variant.msint,
-                            variant.leftseq,
-                            variant.rightseq,
-
-                            segs.chr + ":" + segs.start + "-" + segs.end,
-                            "Deletion", vartype, 0, 0,
-                            format("%.0f", variant.duprate),
-                            v2.sv.equals("") ? 0 : v2.sv));
+                    String tvf = joinEmptyVariantWithTcov(0);
+                    variant.callingOneSample(segs, sample, out, tvf, "Deletion", v2.sv, true);
                 }
 
             } else if (v2 == null) { // no coverage for sample 2
@@ -568,36 +551,15 @@ public class VarDict {
                     continue;
                 }
                 for (Variant variant : v1.var) {
-                    vartype = variant.varType();
-                    if (!isGoodVar(variant, v1.ref, vartype, splice, conf)) {
+                    variant.vartype = variant.varType();
+                    if (!isGoodVar(variant, v1.ref, variant.vartype, splice, conf)) {
                         continue;
                     }
-                    if (vartype.equals("Complex")) {
+                    if (variant.vartype.equals("Complex")) {
                         variant.adjComplex();
                     }
-                    out.println(join("\t", sample, segs.gene, segs.chr,
-
-                            variant.sp,
-                            variant.ep,
-                            variant.refallele,
-                            variant.varallele,
-
-                            joinVar2(variant, "\t"),
-                            format("%.1f", variant.nm),
-
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-
-                            variant.shift3,
-                            variant.msi == 0 ? 0 : format("%.3f", variant.msi),
-                            variant.msint,
-                            variant.leftseq,
-                            variant.rightseq,
-
-                            segs.chr + ":" + segs.start + "-" + segs.end,
-                            "SampleSpecific", vartype,
-                            format("%.0f", variant.duprate),
-                            v1.sv.equals("") ? 0 : v1.sv,
-                            0, 0));
+                    String tvf = joinEmptyVariantWithTcov(0);
+                    variant.callingOneSample(segs, sample, out, tvf, "SampleSpecific", v1.sv, false);
                 }
 
             } else { // both samples have coverage
@@ -610,41 +572,15 @@ public class VarDict {
                             && isGoodVar(v1.var.get(n), v1.ref, v1.var.get(n).varType(), splice, conf)) {
                         final Variant vref = v1.var.get(n);
                         final String nt = vref.n;
-                        // also is commented in perl
-//                        if (nt.length() > 1
-//                                && vref.refallele.length() == vref.varallele.length()
-//                                && (!isGoodVar(getVarMaybe(vars2, p, varn, nt), null, null, splice, conf))
-//                                && !vref.genotype.contains("-")
-//                                && !vref.genotype.contains("m")
-//                                && !vref.genotype.contains("i")) {
-//
-//                            String fnt = substr(nt, 0, -1).replaceFirst("&$", "");
-//                            String lnt = substr(nt, 1).replaceFirst("^&", "");
-//                            if (lnt.length() > 1) {
-//                                lnt = lnt.charAt(0) + "&" + lnt.substring(1);
-//                            }
-//                            Variant vf = getVarMaybe(v2, varn, fnt);
-//                            Variant vl = getVarMaybe(vars2, p + nt.length() - 2, varn, lnt);
-//                            if (vf != null && isGoodVar(vf, v2.ref, null, splice, conf)) {
-//                                vref.sp += vref.refallele.length() - 1;
-//                                vref.refallele = substr(vref.refallele, -1);
-//                                vref.varallele = substr(vref.varallele, -1);
-//                            } else if (vl != null && isGoodVar(vl, getVarMaybe(vars2, p + nt.length() - 2,
-//                                  VarsType.ref), null, splice, conf)) {
-//                                vref.ep += vref.refallele.length() - 1;
-//                                vref.refallele = substr(vref.refallele, 0, -1);
-//                                vref.varallele = substr(vref.varallele, 0, -1);
-//                            }
-//
-//                        }
-                        vartype = vref.varType();
-                        if (vartype.equals("Complex")) {
+
+                        vref.vartype = vref.varType();
+                        if (vref.vartype.equals("Complex")) {
                             vref.adjComplex();
                         }
                         Variant v2nt = getVarMaybe(v2, varn, nt);
                         if (v2nt != null) {
                             String type;
-                            if (isGoodVar(v2nt, v2.ref, vartype, splice, conf)) {
+                            if (isGoodVar(v2nt, v2.ref, vref.vartype, splice, conf)) {
                                 if (vref.freq > (1 - conf.lofreq) && v2nt.freq < 0.8d && v2nt.freq > 0.2d) {
                                     type = "LikelyLOH";
                                 } else {
@@ -661,38 +597,19 @@ public class VarDict {
                                     type = "AFDiff";
                                 }
                             }
-                            if (v2nt.isNoise(conf.goodq, conf.lofreq) && vartype.equals("SNV")) {
+                            if (v2nt.isNoise(conf.goodq, conf.lofreq) && vref.vartype.equals("SNV")) {
                                 type = "StrongSomatic";
                             }
-                            out.println(join("\t", sample, segs.gene, segs.chr,
-                                    vref.sp,
-                                    vref.ep,
-                                    vref.refallele,
-                                    vref.varallele,
 
-                                    joinVar2(vref, "\t"),
-                                    format("%.1f", vref.nm),
-
-                                    joinVar2(v2nt, "\t"),
-                                    format("%.1f", v2nt.nm),
-
-                                    v2nt.shift3,
-                                    v2nt.msi == 0 ? 0 : format("%.3f", v2nt.msi),
-                                    v2nt.msint,
-                                    v2nt.leftseq,
-                                    v2nt.rightseq,
-
-                                    segs.chr + ":" + segs.start + "-" + segs.end,
-                                    type, vartype,
-                                    format("%.0f", vref.duprate),
-                                    v1.sv.equals("") ? 0 : v1.sv,
-                                    format("%.0f", v2nt.duprate),
-                                    v2.sv.equals("") ? 0 : v2.sv));
+                            String info = join("\t",
+                                    joinVariantWithNM(vref),
+                                    joinVariantWithNM(v2nt));
+                            vref.constructBothSamplesWithSecondVariant(segs, sample, out, info, v2nt, type, v1.sv, v2.sv);
 
                         } else { // sample 1 only, should be strong somatic
                             String type = "StrongSomatic";
                             jregex.Matcher mm = MINUS_NUM_NUM.matcher(nt);
-                            if (!vartype.equals("SNV") && nt.length() > 10 || mm.find()) {
+                            if (!vref.vartype.equals("SNV") && nt.length() > 10 || mm.find()) {
                                 v2nt = new Variant();
                                 v2.varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
                                 if (vref.cov < conf.minr + 3 && !nt.contains("<")) {
@@ -714,60 +631,22 @@ public class VarDict {
                                 if (v2.ref == null) {
                                     Variant v2m = getVarMaybe(v2, var, 0);
                                     int tcov = v2m != null && v2m.tcov != 0 ? v2m.tcov : 0;
-                                    tvf = join("\t", tcov, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                                    tvf = joinEmptyVariantWithTcov(tcov);
                                 } else {
                                     Variant v2ref = v2.ref;
-                                    tvf = join("\t", joinVar2(v2ref, "\t"), format("%.1f", v2ref.nm));
+                                    tvf = joinVariantWithNM(v2ref);
                                 }
-                                out.println(join("\t", sample, segs.gene, segs.chr,
-                                        vref.sp,
-                                        vref.ep,
-                                        vref.refallele,
-                                        vref.varallele,
-
-                                        joinVar2(vref, "\t"),
-                                        format("%.1f", vref.nm),
-
-                                        tvf,
-                                        vref.shift3,
-                                        vref.msi == 0 ? 0 : format("%.3f", vref.msi),
-                                        vref.msint,
-                                        vref.leftseq,
-                                        vref.rightseq,
-
-                                        segs.chr + ":" + segs.start + "-" + segs.end,
-                                        "StrongSomatic", vartype,
-                                        format("%.0f", vref.duprate),
-                                        v1.sv.equals("") ? 0 : v1.sv,
-                                        format("%.0f", vref.duprate),
-                                        v2.sv.equals("") ? 0 : v2.sv
-                                ));
+                                String info = join("\t",
+                                        joinVariantWithNM(vref),
+                                        tvf);
+                                vref.constructBothSamplesWithSecondVariant(segs, sample, out, info, vref,
+                                        "StrongSomatic", v1.sv, v2.sv);
                             } else {
-                                out.println(join("\t", sample, segs.gene, segs.chr,
-
-                                        vref.sp,
-                                        vref.ep,
-                                        vref.refallele,
-                                        vref.varallele,
-
-                                        joinVar2(vref, "\t"),
-                                        format("%.1f", vref.nm),
-
-                                        joinVar2(v2nt, "\t"),
-                                        format("%.1f", v2nt.nm),
-
-                                        vref.shift3,
-                                        vref.msi == 0 ? 0 : format("%.3f", vref.msi),
-                                        vref.msint,
-                                        vref.leftseq,
-                                        vref.rightseq,
-                                        segs.chr + ":" + segs.start + "-" + segs.end,
-
-                                        type, vartype,
-                                        format("%.0f", vref.duprate),
-                                        v1.sv.equals("") ? 0 : v1.sv,
-                                        format("%.0f", v2nt.duprate),
-                                        v2.sv.equals("") ? 0 : v2.sv));
+                                String info = join("\t",
+                                        joinVariantWithNM(vref),
+                                        joinVariantWithNM(v2nt));
+                                vref.constructBothSamplesWithoutSecondVariant(segs, sample, out, info, type, v2nt,
+                                        v1.sv, v2.sv);
                             }
                         }
                         n++;
@@ -777,8 +656,8 @@ public class VarDict {
                             continue;
                         }
                         for (Variant v2var : v2.var) {
-                            vartype = v2var.varType();
-                            if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
+                            v2var.vartype = v2var.varType();
+                            if (!isGoodVar(v2var, v2.ref, v2var.vartype, splice, conf)) {
                                 continue;
                             }
                             // potential LOH
@@ -786,34 +665,15 @@ public class VarDict {
                             Variant v1nt = getVarMaybe(v1, varn, nt);
                             if (v1nt != null) {
                                 String type = v1nt.freq < conf.lofreq ? "LikelyLOH" : "Germline";
-                                if ("Complex".equals(vartype)) {
+                                if ("Complex".equals(v2var.vartype)) {
                                     v1nt.adjComplex();
                                 }
-                                out.println(join("\t", sample, segs.gene, segs.chr,
-                                        v1nt.sp,
-                                        v1nt.ep,
-                                        v1nt.refallele,
-                                        v1nt.varallele,
 
-                                        joinVar2(v1nt, "\t"),
-                                        format("%.1f", v1nt.nm),
-
-                                        joinVar2(v2var, "\t"),
-                                        format("%.1f", v2var.nm),
-
-                                        v2var.shift3,
-                                        v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
-                                        v2var.msint,
-                                        v2var.leftseq,
-                                        v2var.rightseq,
-
-                                        segs.chr + ":" + segs.start + "-" + segs.end,
-                                        type, v1nt.varType(),
-                                        format("%.0f", v1nt.duprate),
-                                        v1.sv.equals("") ? 0 : v1.sv,
-                                        format("%.0f", v2var.duprate),
-                                        v2.sv.equals("") ? 0 : v2.sv
-                                ));
+                                v1nt.vartype = v1nt.varType();
+                                String info = join("\t",
+                                        joinVariantWithNM(v1nt),
+                                        joinVariantWithNM(v2var));
+                                v1nt.constructBothSamplesWithSecondVariant(segs, sample, out, info, v2var, type, v1.sv, v2.sv);
                             } else {
                                 String th1;
                                 Variant v1var = getVarMaybe(v1, var, 0);
@@ -828,38 +688,21 @@ public class VarDict {
                                 String genotype = v1var != null ? v1var.genotype :
                                       (v1ref != null ? v1ref.n + "/" + v1ref.n : "N/N");
                                 th1 = join("\t", th1, genotype);
-                                if ("Complex".equals(vartype)) {
+
+                                if ("Complex".equals(v2var.vartype)) {
                                     v2var.adjComplex();
                                 }
-                                out.println(join("\t", sample, segs.gene, segs.chr,
-                                        v2var.sp,
-                                        v2var.ep,
-                                        v2var.refallele,
-                                        v2var.varallele,
+                                String info = join("\t",
                                         th1,
-
-                                        joinVar2(v2var, "\t"),
-                                        format("%.1f", v2var.nm),
-
-                                        v2var.shift3,
-                                        v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
-                                        v2var.msint,
-                                        v2var.leftseq,
-                                        v2var.rightseq,
-
-                                        segs.chr + ":" + segs.start + "-" + segs.end,
-                                        "StrongLOH", vartype,
-                                        0, 0,
-                                        format("%.0f", v2var.duprate),
-                                        v2.sv.equals("") ? 0 : v2.sv
-                                ));
+                                        joinVariantWithNM(v2var));
+                                v2var.constructBothSamplesWithZeroDuprateSecondVariant(segs, sample, out, info, "StrongLOH", v2.sv);
                             }
                         }
                     }
                 } else if (v2.var.size() > 0) { // sample 1 has only reference
                     for (Variant v2var : v2.var) {
-                        vartype = v2var.varType();
-                        if (!isGoodVar(v2var, v2.ref, vartype, splice, conf)) {
+                        v2var.vartype = v2var.varType();
+                        if (!isGoodVar(v2var, v2.ref, v2var.vartype, splice, conf)) {
                             continue;
                         }
                         // potential LOH
@@ -887,98 +730,25 @@ public class VarDict {
                         String th1;
                         if (newtype.length() > 0) {
                             type = newtype;
-                            th1 = join("\t",
-                                    joinVar2(v1nt, "\t"),
-                                    format("%.1f", v1nt.nm)
-                            );
+                            th1 = joinVariantWithNM(v1nt);
                         } else {
                             Variant v1ref = v1.ref;
-                            th1 = join("\t",
-                                    joinVar2(v1ref, "\t"),
-                                    format("%.1f", v1ref.nm)
-                            );
+                            th1 = joinVariantWithNM(v1ref);
                         }
 
-                        if ("Complex".equals(vartype)) {
+                        if ("Complex".equals(v2var.vartype)) {
                             v2var.adjComplex();
                         }
-                        out.println(join("\t", sample, segs.gene, segs.chr,
-                                v2var.sp,
-                                v2var.ep,
-                                v2var.refallele,
-                                v2var.varallele,
-
+                        String info = join("\t",
                                 th1,
-
-                                joinVar2(v2var, "\t"),
-                                format("%.1f", v2var.nm),
-
-                                v2var.shift3,
-                                v2var.msi == 0 ? 0 : format("%.3f", v2var.msi),
-                                v2var.msint,
-                                v2var.leftseq,
-                                v2var.rightseq,
-
-                                segs.chr + ":" + segs.start + "-" + segs.end,
-                                type, vartype,
-                                0, 0,
-                                format("%.0f", v2var.duprate),
-                                v2.sv.equals("") ? 0 : v2.sv
-                        ));
+                                joinVariantWithNM(v2var));
+                        v2var.constructBothSamplesWithZeroDuprateSecondVariant(segs, sample, out, info, type, v2.sv);
                     }
                 }
             }
         }
 
         return rlen;
-    }
-
-    private static String joinVar2(Variant var,
-                                   String delimiter) {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(var.tcov).append(delimiter);
-        sb.append(var.cov).append(delimiter);
-        sb.append(var.rfc).append(delimiter);
-        sb.append(var.rrc).append(delimiter);
-        sb.append(var.fwd).append(delimiter);
-        sb.append(var.rev).append(delimiter);
-        sb.append(var.genotype != null ? var.genotype : 0).append(delimiter);
-        sb.append(var.freq == 0 ? 0 : format("%.4f", var.freq)).append(delimiter);
-        sb.append(var.bias).append(delimiter);
-        sb.append(format("%.1f", var.pmean)).append(delimiter);
-        sb.append(var.pstd ? 1 : 0).append(delimiter);
-        sb.append(format("%.1f", var.qual)).append(delimiter);
-        sb.append(var.qstd ? 1 : 0).append(delimiter);
-        sb.append(format("%.1f", var.mapq)).append(delimiter);
-        sb.append(format("%.3f", var.qratio)).append(delimiter);
-        sb.append(var.hifreq == 0 ? 0 : format("%.4f", var.hifreq)).append(delimiter);
-        sb.append(var.extrafreq == 0 ? 0 : format("%.4f", var.extrafreq));
-
-        return sb.toString();
-    }
-
-    private static String joinVar1(Variant var,
-                                   String delimiter) {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(var.sp).append(delimiter);
-        sb.append(var.ep).append(delimiter);
-        sb.append(var.refallele).append(delimiter);
-        sb.append(var.varallele).append(delimiter);
-
-        sb.append(joinVar2(var, delimiter)).append(delimiter);
-
-        sb.append(var.shift3).append(delimiter);
-        sb.append(var.msi == 0 ? 0 : format("%.3f", var.msi)).append(delimiter);
-        sb.append(var.msint).append(delimiter);
-        sb.append(format("%.1f", var.nm)).append(delimiter);
-        sb.append(var.hicnt).append(delimiter);
-        sb.append(var.hicov).append(delimiter);
-        sb.append(var.leftseq).append(delimiter);
-        sb.append(var.rightseq);
-
-        return sb.toString();
     }
 
     /**
@@ -1074,7 +844,7 @@ public class VarDict {
                     return tuple(rlen, "FALSE");
                 }
 
-                var2.freq = round(var2.cov / (double)var2.tcov, 4);
+                var2.freq = var2.cov / (double)var2.tcov;
                 var2.qratio = var1.qratio; // Can't back calculate and should be inaccurate
                 var2.genotype = vref.genotype;
                 var2.bias = strandBias(var2.rfc, var2.rrc, conf.bias, conf.minb) + ";" +
@@ -1125,13 +895,10 @@ public class VarDict {
                 //Variant vref = getVarMaybe(vars, p, ref);
                 Variant vref = pv.ref;
                 if (vref == null) {
-                    out.println(join("\t", sample, region.gene, region.chr, p, p,
-                            "", "", 0, 0, 0, 0, 0, 0, "", 0, "0;0", 0, 0, 0, 0, 0, "", 0, 0, 0, 0, 0, 0, "", "", 0, 0,
-                            region.chr + ":" + region.start + "-" + region.end, "", 0, 0
-                            ));
+                    callingEmptySimpleVariant(region, sample, out, p);
                     continue;
                 }
-                vts.add("");
+                vref.vartype = "";
                 vrefs.add(vref);
             } else {
                 List<Variant> vvar = pv.var;
@@ -1140,56 +907,22 @@ public class VarDict {
                     if (vref.refallele.contains("N")) {
                         continue;
                     }
-                    String vartype = vref.varType();
-                    if (!isGoodVar(vref, pv.ref, vartype, splice, conf)) {
+                    vref.vartype = vref.varType();
+                    if (!isGoodVar(vref, pv.ref, vref.vartype, splice, conf)) {
                         if (!conf.doPileup) {
                             continue;
                         }
                     }
-
-                    vts.add(vartype);
                     vrefs.add(vref);
                 }
             }
-            for (int vi = 0; vi < vts.size(); vi++) {
-                String vartype = vts.get(vi);
+            for (int vi = 0; vi < vrefs.size(); vi++) {
                 Variant vref = vrefs.get(vi);
-                if ("Complex".equals(vartype)) {
+                if ("Complex".equals(vref.vartype)) {
                     vref.adjComplex();
                 }
-                out.println(join("\t", sample, region.gene, region.chr,
-                        vref.sp, vref.ep, vref.refallele, vref.varallele,
-                        vref.tcov,
-                        vref.cov,
-                        vref.rfc,
-                        vref.rrc,
-                        vref.fwd,
-                        vref.rev,
-                        vref.genotype,
-                        format("%.4f", vref.freq),
-                        vref.bias,
-                        format("%.1f", vref.pmean),
-                        vref.pstd ? 1 : 0,
-                        format("%.1f", vref.qual),
-                        vref.qstd ? 1 : 0,
-                        format("%.1f", vref.mapq),
-                        format("%.3f", vref.qratio),
-                        vref.hifreq == 0 ? 0 : format("%.4f", vref.hifreq),
-                        vref.extrafreq == 0 ? 0 : format("%.4f", vref.extrafreq),
-                        vref.shift3,
-                        vref.msi == 0 ? 0 : format("%.3f", vref.msi),
-                        vref.msint,
-                        format("%.1f", vref.nm),
-                        vref.hicnt,
-                        vref.hicov,
-                        vref.leftseq.isEmpty() ? "0" : vref.leftseq,
-                        vref.rightseq.isEmpty() ? "0" : vref.rightseq,
-                        region.chr + ":" + region.start + "-" + region.end,
-                        vartype,
-                        format("%.0f", vref.duprate),
-                        pv.sv.equals("") ? 0 : pv.sv
+                vref.callingSimpleVariant(sample, region, out, pv.sv);
 
-                ));
                 if (conf.debug) {
                     out.println("\t" + vref.DEBUG);
                 }
@@ -1600,19 +1333,19 @@ public class VarDict {
                 if (vartype.equals("Complex")) {
                     vref.adjComplex();
                 }
-                out.print(join("\t", sample, rg.gene, rg.chr,
-                        joinVar1(vref, "\t"), goodVariants.get(0)._2, vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
+                out.print(join("\t",
+                        vref.joinSimpleVariant(sample, rg), goodVariants.get(0)._2, vartype, gvscnt, gvscnt + badv.size(), nocov, flag ? 1 : 0));
                 if (conf.debug) {
                     out.print("\t" + vref.DEBUG);
                 }
                 if (conf.debug) {
                     for (int gvi = 0; gvi < goodVariants.size(); gvi++) {
                         Tuple2<Variant, String> tp = goodVariants.get(gvi);
-                        out.print("\tGood" + gvi + " " + join(" ", joinVar2(tp._1, " "), tp._2));
+                        out.print("\tGood" + gvi + " " + join(" ", tp._1.joinVar2(" "), tp._2));
                     }
                     for (int bvi = 0; bvi < badv.size(); bvi++) {
                         Tuple2<Variant, String> tp = badv.get(bvi);
-                        out.print("\tBad" + bvi + " " + join(" ", joinVar2(tp._1, " "), tp._2));
+                        out.print("\tBad" + bvi + " " + join(" ", tp._1.joinVar2(" "), tp._2));
                     }
                 }
                 out.println();

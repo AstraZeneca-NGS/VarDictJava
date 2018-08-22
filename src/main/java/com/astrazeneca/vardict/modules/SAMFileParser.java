@@ -414,7 +414,7 @@ public class SAMFileParser {
                                         } else if (m >= Configuration.SEED_1) {
                                             Map<String, List<Integer>> referenceSeedMap = reference.seed;
                                             String sequence = getReverseComplementedSequence(record, -m, m);
-                                            String reverseComplementedSeed = sequence.substring(0, Configuration.SEED_1);
+                                            String reverseComplementedSeed = substr(sequence, -Configuration.SEED_1, Configuration.SEED_1);
 
                                             if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
                                                 List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
@@ -514,7 +514,9 @@ public class SAMFileParser {
                                         && cigar.getCigarElement(ci + 1).getLength() <= conf.vext
                                         && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
                                         && (cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.I
-                                        || cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.D)) {
+                                        || cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.D)
+                                        && cigar.getCigarElement(ci + 3).getOperator()  == CigarOperator.I
+                                        && cigar.getCigarElement(ci + 3).getOperator()  == CigarOperator.D) {
 
                                     int mLen = cigar.getCigarElement(ci + 1).getLength();
                                     int indelLen = cigar.getCigarElement(ci + 2).getLength();
@@ -712,7 +714,9 @@ public class SAMFileParser {
                                         && cigar.getCigarElement(ci + 1).getLength() <= conf.vext
                                         && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
                                         && (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
-                                        || cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D)) {
+                                        || cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D)
+                                        && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
+                                        && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
 
                                     int mLen = cigar.getCigarElement(ci + 1).getLength();
                                     int indelLen = cigar.getCigarElement(ci + 2).getLength();

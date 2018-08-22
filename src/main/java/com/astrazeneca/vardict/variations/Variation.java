@@ -22,7 +22,7 @@ public class Variation {
     /**
      * Sum of variant positions in read
      */
-    public int pmean;
+    public double pmean;
 
     /**
      * Sum of base qualities for variant
@@ -32,12 +32,12 @@ public class Variation {
     /**
      * Sum of mapping qualities for variant
      */
-    public int Qmean;
+    public double Qmean;
 
     /**
      * Sum of number of mismatches for variant
      */
-    public int nm;
+    public double nm;
 
     /**
      * Number of low-quality reads with the variant

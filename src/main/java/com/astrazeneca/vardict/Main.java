@@ -147,6 +147,7 @@ public class Main {
         conf.SVMINLEN = getIntValue(cmd, "L", 1000);
 
         conf.threads = Math.max(readThreadsCount(cmd), 1);
+        conf.referenceExtension = getIntValue(cmd, "Y", 1200);
 
         VarDict.start(conf);
 
@@ -488,6 +489,16 @@ public class Main {
                 .withType(Number.class)
                 .isRequired(false)
                 .create('L'));
+
+        options.addOption(OptionBuilder.withArgName("INT")
+                .hasArg(true)
+                .withDescription("Extension of bp of reference to build lookup table. Default to 1200 bp." +
+                        " Increase the number will slowdown the program. The main purpose is to call large indels with 1000 bp" +
+                        " that can be missed by discordant mate pairs.")
+                .withType(Number.class)
+                .isRequired(false)
+                .withLongOpt("ref-extension")
+                .create('Y'));
 
         return options;
     }

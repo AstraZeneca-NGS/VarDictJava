@@ -86,19 +86,6 @@ public final class Utils {
         return v;
     }
 
-    /**
-     * Method rounds value with the specified precision
-     * @param value value to round
-     * @param dp precision
-     * @return rounded value
-     */
-    public static double round(double value, int dp) {
-        double mf = Math.pow(10, dp);
-        double d = value * mf;
-        return Math.round(d) / mf;
-
-    }
-
     public static int toInt(String intStr) {
         return Integer.parseInt(intStr);
     }
