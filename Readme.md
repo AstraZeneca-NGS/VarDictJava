@@ -283,13 +283,13 @@ The VarDictJava program follows the workflow:
     The lowest frequency in a normal sample allowed for a putative somatic mutations.  Defaults to `0.05`
 - `-I INT`  
     The indel size.  Default: 50bp
-- `-M INT`
+- `-M INT`  
     The minimum matches for a read to be considered.  If, after soft-clipping, the matched bp is less than INT, then the 
     read is discarded.  It's meant for PCR based targeted sequencing where there's no insert and the matching is only the primers.
     Default: 0, or no filtering
 - `-th [threads]`  
     If this parameter is missing, then the mode is one-thread. If you add the     -th parameter, the number of threads equals to the number of processor cores. The parameter -th threads sets the number of threads explicitly.
-- `-VS STRICT | LENIENT | SILENT` 
+- `-VS STRICT | LENIENT | SILENT`   
     How strict to be when reading a SAM or BAM.
      `STRICT`   - throw an exception if something looks wrong.
      `LENIENT`  - Emit warnings but keep going if possible.
@@ -301,10 +301,25 @@ The VarDictJava program follows the workflow:
 - `-UN`  
     Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using **first** read only.
     Default: unique mode disabled, all reads are counted.
-- `--chimeric`
-    Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction, 
+- `--chimeric`  
+    Indicate to turn off chimeric reads filtering. Chimeric reads are artifacts from library construction, 
     where a read can be split into two segments, each will be aligned within 1-2 read length distance,
     but in opposite direction. Default: filtering enabled
+- `-U|--nosv`  
+    Turn off structural variant calling
+- `-L INT`   
+   The minimum structural variant length to be presented using \<DEL\> \<DUP\> \<INV\> \<INS\>, etc. 
+   Default: 1000. Any indel, complex variants less than this will be spelled out with exact nucleotides
+- `-w|--insert-size INT` INSERT_SIZE  
+   The insert size. Used for SV calling. Default: 300
+- `-W|--insert-std INT` INSERT_STD  
+   The insert size STD. Used for SV calling. Default: 100
+- `-A INT` INSERT_STD_AMT  
+   The number of STD. A pair will be considered for DEL if INSERT > INSERT_SIZE + INSERT_STD_AMT * INSERT_STD. Default: 4
+- `-Y|--ref-extension INT`  
+    Extension of bp of reference to build lookup table. Default to 1200 bp. Increase the number will slowdown the program. 
+    The main purpose is to call large indels with 1000 bp that can be missed by discordant mate pairs. 
+      
 ## Output columns
 
 1. Sample - sample name

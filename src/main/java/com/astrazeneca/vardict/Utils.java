@@ -1,5 +1,8 @@
 package com.astrazeneca.vardict;
 
+import htsjdk.samtools.SAMRecord;
+import htsjdk.samtools.util.SequenceUtil;
+
 import java.util.*;
 
 public final class Utils {
@@ -81,19 +84,6 @@ public final class Utils {
             map.put(key, v);
         }
         return v;
-    }
-
-    /**
-     * Method rounds value with the specified precision
-     * @param value value to round
-     * @param dp precision
-     * @return rounded value
-     */
-    public static double round(double value, int dp) {
-        double mf = Math.pow(10, dp);
-        double d = value * mf;
-        return Math.round(d) / mf;
-
     }
 
     public static int toInt(String intStr) {
@@ -201,5 +191,56 @@ public final class Utils {
 
     }
 
+    /**
+     * Method returns reverse complemented sequence for the part of the record. Can work with 3' and 5' ends
+     * (if start index < 0, then it will found the index in the end of sequence by adding the length of record).
+     * @param record read from SAM file to process
+     * @param startIndex index where start the sequence
+     * @param length length of pert of sequence
+     * @return reverse complemented part of record
+     */
+    public static String getReverseComplementedSequence(SAMRecord record, int startIndex, int length) {
+        if (startIndex < 0) {
+            startIndex = record.getReadLength() + startIndex;
+        }
+        byte[] rangeBytes = Arrays.copyOfRange(record.getReadBases(), startIndex, startIndex + length);
+        SequenceUtil.reverseComplement(rangeBytes);
+        return new String(rangeBytes);
+    }
+
+    public static String reverse(String string) {
+        return new StringBuffer(string).reverse().toString();
+    }
+
+    public static String complement(String string) {
+        final byte[] bases = htsjdk.samtools.util.StringUtil.stringToBytes(string);
+        complement(bases);
+        return htsjdk.samtools.util.StringUtil.bytesToString(bases);
+    }
+
+    public static void complement(byte[] bases) {
+        final int lastIndex = bases.length;
+
+        for (int i = 0; i < lastIndex; i++) {
+            bases[i] = SequenceUtil.complement(bases[i]);
+        }
+    }
+
+    public static char complement(char character) {
+        byte base = htsjdk.samtools.util.StringUtil.charToByte(character);
+        base = SequenceUtil.complement(base);
+        return htsjdk.samtools.util.StringUtil.byteToChar(base);
+    }
+
+    public static String correctChr(Map<String, Integer> chrs, String chr) {
+        if (!chrs.containsKey(chr)) {
+            if (chr.startsWith("chr")) {
+                chr = chr.substring("chr".length());
+            } else {
+                chr = "chr" + chr;
+            }
+        }
+        return chr;
+    }
 
 }

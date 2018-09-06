@@ -8,202 +8,202 @@ public class Configuration {
     /**
      * Print a header row describing columns
      */
-    boolean printHeader; //-h
+    public boolean printHeader; //-h
     /**
      * The delimiter for split region_info
      */
-    String delimiter; // -d
+    public String delimiter; // -d
     /**
      * Path to bed file with regions
      */
-    String bed;
+    public String bed;
     /**
      * The number of nucleotide to extend for each segment
      */
-    int numberNucleotideToExtend; // -x
+    public int numberNucleotideToExtend; // -x
     /**
      * Indicate whether is zero-based coordinates, as IGV does
      * When use -R option, it is set to false TODO: is it so? In perl it doesn't changed
      */
-    Boolean zeroBased; // -z
+    public Boolean zeroBased; // -z
     /**
      * Indicate it's amplicon based calling.  Reads don't map to the amplicon will be skipped.
      * A read pair is considered belonging the amplicon if the edges are less than int bp to the amplicon,
      * and overlap fraction is at least float. Default: 10:0.95
      */
-    String ampliconBasedCalling; //-a
+    public String ampliconBasedCalling; //-a
 
-    int columnForChromosome = -1; //-c
+    public int columnForChromosome = -1; //-c
 
-    BedRowFormat bedRowFormat;
+    public BedRowFormat bedRowFormat;
     /**
      * The regular expression to extract sample name from bam filenames.
      */
-    String sampleNameRegexp; // -n
+    public String sampleNameRegexp; // -n
     /**
      * The sample name to be used directly
      */
-    String sampleName; //-N
+    public String sampleName; //-N
     /**
      * The reference fasta
      */
-    String fasta; // -G
+    public String fasta; // -G
     /**
      * The indexed BAM file name(s)
      */
-    BamNames bam; //-b
+    public BamNames bam; //-b
     /**
      * For downsampling fraction
      */
-    Double downsampling; //-Z
+    public Double downsampling; //-Z
 
-    boolean chromosomeNameIsNumber; // -C
+    public boolean chromosomeNameIsNumber; // -C
     /**
      * If set, reads with mapping quality less than INT will be filtered and ignored
      */
-    Integer mappingQuality;//-Q
+    public Integer mappingQuality;//-Q
     /**
      * Indicate to remove duplicated reads
      */
-    boolean removeDuplicatedReads; //-t
+    public boolean removeDuplicatedReads; //-t
     /**
      * If set, reads with mismatches more than INT will be filtered and ignored
      */
-    int mismatch; //-m, default = 8
+    public int mismatch; //-m, default = 8
     /**
      * Verbose mode. Will output variant calling process.
      */
-    boolean y; //-y
+    public boolean y; //-y
     /**
      * The phred score for a base to be considered a good call
      */
-    double goodq; // -q, default = 22.5
+    public double goodq; // -q, default = 22.5
     /**
-     * Extension of bp to look for mismatches after insersion or deletion
+     * Extension of bp to look for mismatches after insertion or deletion
      */
-    int vext = 3; // -X, default 3
+    public int vext = 3; // -X, default 3
     /**
      * Trim bases after [INT] bases in the reads
      */
-    int trimBasesAfter = 0; // -T
+    public int trimBasesAfter = 0; // -T
     /**
      * Indicate whether to perform local realignment
      */
-    boolean performLocalRealignment; // -k, default false
+    public boolean performLocalRealignment; // -k, default false
     /**
      * The indel size
      */
-    int indelsize = 50; // -I, default 50
+    public int indelsize = 50; // -I, default 50
     /**
      * The cutoff to decide whether a position has read strand bias
      */
-    double bias = 0.05d;
+    public double bias = 0.05d;
     /**
      * The minimum reads for bias calculation. Default: 2
      */
-    int minb = 2; // -B
+    public int minb = 2; // -B
     /**
      * The minimum # of variance reads. Default: 2. If -p, it is set to 0.
      */
-    int minr = 2; // -r
+    public int minr = 2; // -r
 
     /**
      * Debug mode. Will print some error messages and append full genotype at the end.
      */
-    boolean debug = false; // -D
+    public boolean debug = false; // -D
     /**
      * The threshold for allele frequency. If -p it is set to -1.
      */
-    double freq = 0.01; // -f
+    public double freq = 0.01; // -f
     /**
      * Indicate to move indels to 3-prime if alternative alignment can be achieved.
      */
-    boolean moveIndelsTo3 = false; //-3
+    public boolean moveIndelsTo3 = false; //-3
 
     /**
      * The hexical to filter reads.
      */
-    String samfilter = "0x500"; //-F
+    public String samfilter = "0x500"; //-F
     /**
      * chr:start[-end]. If end is omitted, then a single position.
      */
-    String regionOfInterest; //-R
+    public String regionOfInterest; //-R
     /**
      * The read position filter. Default: 5
      */
-    int readPosFilter = 5; // -P
+    public int readPosFilter = 5; // -P
     /**
      * The Qratio of (good_quality_reads)/(bad_quality_reads+0.5)
      */
-    double qratio = 1.5; // -o
+    public double qratio = 1.5; // -o
     /**
      * The minimum mean mapping quality to be considered. Default: 0.
      */
-    double mapq = 0; // -O
+    public double mapq = 0; // -O
     /**
      * Do pileup regardless the frequency
      */
-    boolean doPileup = false; // -p
+    public boolean doPileup = false; // -p
     /**
      * The lowest allele frequency in normal sample allowed for a putative somatic mutations. Default: 0.05.
      */
-    double lofreq = 0.05d; // -V
+    public double lofreq = 0.05d; // -V
 
     /**
      * Any base with quality <=10 will be consider low quality in soft-clipped seq and extension will stop.
      */
-    final int lowqual = 10;
+    public static final int LOWQUAL = 10;
 
     /**
      * The minimum matches for a read to be considered
      */
-    int minmatch = 0; // -M
+    public int minmatch = 0; // -M
     /**
      *  Output splicing read counts
      */
-    boolean outputSplicing = false; // -i
+    public boolean outputSplicing = false; // -i
 
     /**
      * How strict to be when reading a SAM or BAM.
      */
-    ValidationStringency validationStringency = ValidationStringency.LENIENT; // -VS
+    public ValidationStringency validationStringency = ValidationStringency.LENIENT; // -VS
     
     /**
      * Include Ns in the total depth calculation.
      */
-    boolean includeNInTotalDepth = false; // -K
+    public boolean includeNInTotalDepth = false; // -K
 
     /**
      * Indicate unique mode, which when mate pairs overlap,
      * the overlapping part will be counted only once using forward read only.
      */
-    boolean uniqueModeAlignmentEnabled = false; // -u
+    public boolean uniqueModeAlignmentEnabled = false; // -u
 
     /**
      * Indicate unique mode, which when mate pairs overlap,
      * the overlapping part will be counted only once using first read only.
      */
-    boolean uniqueModeSecondInPairEnabled = false; // -UN
+    public boolean uniqueModeSecondInPairEnabled = false; // -UN
 
     /**
      * Threads count to use in multithreading mode
      */
-    int threads; //-th
+    public int threads; //-th
 
     /**
      * The larger seed size
      */
-    int seed1 = 17;
+    public static final int SEED_1 = 17;
 
     /**
      * The smaller seed size
      */
-    int seed2 = 12;
+    public static final int SEED_2 = 12;
 
     /**
      * The adaptor size
      */
-    int adseed = 6;
+    public static final int adseed = 6;
     /**
      *
      * Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction,
@@ -215,7 +215,50 @@ public class Configuration {
     /**
      * Turn off structural variant calling when set to true
      */
-    boolean disableSV = false; //-U
+    public boolean disableSV = false; //-U
+
+    /**
+     * The minimum distance between two SV clusters in term of read length
+     */
+    public static final double MINSVCDIST = 1.5;
+    /**
+     * Mean Insert size
+     */
+    public int INSSIZE = 300; //-w
+    /**
+     * Insert std
+     */
+    public int INSSTD = 100; //-W
+    /**
+     * Insert std amount
+     */
+    public int INSSTDAMT = 4; //-A
+    /**
+     * The minimum structural variant length to be presented using <DEL> <DUP> <INV> <INS>, etc.
+     */
+    public int SVMINLEN = 1000; //-L
+    /**
+     * Max Structure variant size to be called in realignment step
+     */
+    public static final int SVMAXLEN = 150000;
+    /**
+     * the flanking sequence length for SV
+     */
+    public static final int SVFLANK = 50;
+    /**
+     * The minimum mapping quality when structural variant is only supported by discordant pairs
+     */
+    public static final int DISCPAIRQUAL = 35;
+
+    public static final int EXTENSION = 5000;
+
+    public static final String DEFAULT_AMPLICON_PARAMETERS = "10:0.95";
+
+    /**
+     * Default reference extension $REFEXT
+     */
+    public int referenceExtension = 1200;
+
 
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;
