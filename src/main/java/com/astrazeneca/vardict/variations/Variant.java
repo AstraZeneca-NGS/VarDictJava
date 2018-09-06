@@ -1,6 +1,5 @@
 package com.astrazeneca.vardict.variations;
 
-import com.astrazeneca.vardict.Configuration;
 import com.astrazeneca.vardict.data.Region;
 
 import java.io.PrintStream;
@@ -426,29 +425,34 @@ public class Variant {
     }
 
 
-    public void debugVariantsContent(Configuration conf,
-                                             List<String> tmp, String n,
-                                             boolean isInsertion) {
-        if (conf.debug) {
-            StringBuilder sb = new StringBuilder();
-            if (isInsertion) {
-                sb.append("I");
-            }
-            sb.append(n
-                    + ":" + (fwd + rev)
-                    + ":F-" + fwd
-                    + ":R-" + rev
-                    + ":" + new DecimalFormat("0.000").format(freq)
-                    + ":" + bias
-                    + ":" + new DecimalFormat("0.0").format(pmean)
-                    + ":" + pstd
-                    + ":" + new DecimalFormat("0.0").format(qual)
-                    + ":" + qstd
-                    + ":" + new DecimalFormat("0.000").format(hifreq)
-                    + ":" + mapq
-                    + ":" + qratio);
-            tmp.add(sb.toString());
-        }
+    public void debugVariantsContentSimple(List<String> tmp, String n) {
+        StringBuilder sb = debugVariantsContent(n);
+        tmp.add(sb.toString());
+    }
+
+    public void debugVariantsContentInsertion(List<String> tmp, String n) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("I");
+        sb.append(debugVariantsContent(n));
+        tmp.add(sb.toString());
+    }
+
+    private StringBuilder debugVariantsContent(String n) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(n
+                + ":" + (fwd + rev)
+                + ":F-" + fwd
+                + ":R-" + rev
+                + ":" + new DecimalFormat("0.000").format(freq)
+                + ":" + bias
+                + ":" + new DecimalFormat("0.0").format(pmean)
+                + ":" + (pstd ? "1" : "0")
+                + ":" + new DecimalFormat("0.0").format(qual)
+                + ":" + (qstd ? "1" : "0")
+                + ":" + new DecimalFormat("0.000").format(hifreq)
+                + ":" + mapq
+                + ":" + new DecimalFormat("0.000").format(qratio));
+        return sb;
     }
 
     /**

@@ -19,8 +19,7 @@ public class VariationMap<K,V> extends LinkedHashMap<K,V> {
     }
 
     public static SV getSV(Map<Integer, VariationMap<String, Variation>> hash,
-                    int start,
-                    Variation vref) {
+                           int start) {
         VariationMap<String, Variation> map = hash.get(start);
         if (map == null) {
             map = new VariationMap<>();
@@ -30,8 +29,18 @@ public class VariationMap<K,V> extends LinkedHashMap<K,V> {
         if (sv == null) {
             sv = new VariationMap.SV();
             map.sv = sv;
-            map.put("SV", vref);
+            map.put("SV", new Variation());
+        }
+        if (!map.containsKey("SV")) {
+            map.put("SV", new Variation());
         }
         return sv;
+    }
+
+    public static void removeSV (Map<Integer, VariationMap<String, Variation>> hash, int start) {
+        hash.get(start).sv = null;
+        if (hash.get(start).containsKey("SV")) {
+            hash.get(start).remove("SV");
+        }
     }
 }

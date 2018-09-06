@@ -3,6 +3,7 @@ package com.astrazeneca.vardict;
 import htsjdk.samtools.SAMRecord;
 import htsjdk.samtools.util.SequenceUtil;
 
+import java.text.DecimalFormat;
 import java.util.*;
 
 public final class Utils {
@@ -88,6 +89,17 @@ public final class Utils {
 
     public static int toInt(String intStr) {
         return Integer.parseInt(intStr);
+    }
+
+    /**
+     * Method return double rounded by specified pattern with HALF_EVEN round
+     * (the same as in Perl)
+     * @param pattern string contains pattern like "0.000"
+     * @param value double value to round
+     * @return rounded double
+     */
+    public static double roundHalfEven(String pattern, double value) {
+        return Double.parseDouble(new DecimalFormat(pattern).format(value));
     }
 
     /**

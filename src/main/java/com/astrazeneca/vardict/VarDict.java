@@ -41,7 +41,8 @@ public class VarDict {
             System.out.println(join("\t",
                     "Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt", "Depth", "AltDepth", "RefFwdReads",
                     "RefRevReads", "AltFwdReads", "AltRevReads", "Genotype", "AF", "Bias", "PMean", "PStd",
-                    "QMean", "QStd", "5pFlankSeq", "3pFlankSeq"));
+                    "QMean", "QStd", "MQ", "Sig_Noise", "HiAF", "ExtraAF", "shift3", "MSI", "MSI_NT", "NM",
+                    "HiCnt", "HiCov", "5pFlankSeq", "3pFlankSeq", "Seg", "VarType", "Duprate", "SV_info"));
         }
 
         Tuple2<String, String> stpl = getSampleNames(conf.bam.getBamRaw(), conf.sampleName, conf.sampleNameRegexp);

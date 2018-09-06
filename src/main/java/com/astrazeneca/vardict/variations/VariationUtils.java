@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 
+import static com.astrazeneca.vardict.Utils.charAt;
 import static com.astrazeneca.vardict.data.Patterns.B_A7;
 import static com.astrazeneca.vardict.data.Patterns.B_T7;
 import static com.astrazeneca.vardict.modules.VariationRealigner.islowcomplexseq;
@@ -69,7 +70,7 @@ public class VariationUtils {
      * @return consensus sequence
      */
     public static String findconseq(Sclip softClip,
-                                    Configuration conf) {
+                                    Configuration conf, int dir) {
         if (softClip.sequence != null) {
             return softClip.sequence;
         }
@@ -89,7 +90,8 @@ public class VariationUtils {
                 Character nt = ent.getKey();
                 int ncnt = ent.getValue();
                 tt += ncnt;
-                if (ncnt > max && softClip.seq.containsKey(i) && softClip.seq.get(i).containsKey(nt) && softClip.seq.get(i).get(nt).qmean > maxq) {
+                if (ncnt > max  || (softClip.seq.containsKey(i) && softClip.seq.get(i).containsKey(nt)
+                        && softClip.seq.get(i).get(nt).qmean > maxq)) {
                     max = ncnt;
                     mnt = nt;
                     maxq = softClip.seq.get(i).get(nt).qmean;
@@ -110,33 +112,35 @@ public class VariationUtils {
                 seq.append(mnt);
             }
         }
-
-        Integer ntSize = softClip.nt.lastKey();
+        String SEQ = "";
+        Integer ntSize = softClip.nt.size();
         if (total != 0
                 && match / (double)total > 0.9
                 && seq.length() / 1.5 > ntSize - seq.length()
                 && (seq.length() / (double)ntSize > 0.8
                 || ntSize - seq.length() < 10
                 || seq.length() > 25)) {
-            softClip.sequence = seq.toString();
+            SEQ = seq.toString();
         } else {
-            softClip.sequence = "";
+            SEQ = "";
         }
 
-        if (!softClip.sequence.isEmpty() && seq.length() > Configuration.SEED_2) {
-            Matcher mm1  =  B_A7.matcher(seq);
-            Matcher mm2  =  B_T7.matcher(seq);
+        if (!SEQ.isEmpty() && SEQ.length() > Configuration.SEED_2) {
+            Matcher mm1  =  B_A7.matcher(SEQ);
+            Matcher mm2  =  B_T7.matcher(SEQ);
             if (mm1.find() || mm2.find()) {
                 softClip.used = true;
             }
-            if (islowcomplexseq(seq.toString())) {
+            if (islowcomplexseq(SEQ)) {
                 softClip.used = true;
             }
         }
+        softClip.sequence = SEQ;
+
         if (conf.y) {
-            System.err.printf("  Candidate consensus: %s Reads: %s M: %s T: %s Final: %s\n", seq, softClip.cnt, match, total, softClip.sequence);
+            System.err.printf("  Candidate consensus: %s Reads: %s M: %s T: %s Final: %s\n", seq, softClip.cnt, match, total, SEQ);
         }
-        return softClip.sequence;
+        return SEQ;
     }
 
     // TODO: Need to implement in adaptor task
@@ -165,9 +169,10 @@ public class VariationUtils {
      * @return reference sequence starting at from and ending at to
      */
     public static String joinRef(Map<Integer, Character> baseToPosition,
-                          int from,
-                          int to) {
+                                 int from,
+                                 int to) {
         StringBuilder sb = new StringBuilder();
+
         for (int i = from; i <= to; i++) {
             Character ch = baseToPosition.get(i);
             if (ch != null) {
@@ -176,6 +181,83 @@ public class VariationUtils {
         }
         return sb.toString();
     }
+
+    /**
+     * Construct reference sequence
+     * @param baseToPosition map of reference bases    $ref
+     * @param from start position
+     * @param to end position in double (for end with deletion)
+     * @return reference sequence starting at from and ending at to
+     */
+    public static String joinRef(Map<Integer, Character> baseToPosition,
+                                 int from,
+                                 double to) {
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = from; i < to; i++) {
+            Character ch = baseToPosition.get(i);
+            if (ch != null) {
+                sb.append(ch);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Construct reference sequence
+     * @param baseToPosition map of reference bases    $ref
+     * @param from start position
+     * @param to end position
+     * @return reference sequence starting at from and ending at to
+     */
+    public static String joinRefFor5Lgins(Map<Integer, Character> baseToPosition,
+                                          int from,
+                                          int to,
+                                          String seq,
+                                          String EXTRA) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = from; i <= to; i++) {
+            if (to - i < seq.length() - EXTRA.length()) {
+                sb.append(charAt(seq, to - i + EXTRA.length()));
+            } else {
+                Character ch = baseToPosition.get(i);
+                if (ch != null) {
+                    sb.append(ch);
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Construct reference sequence
+     * @param baseToPosition map of reference bases    $ref
+     * @param from start position
+     * @param to end position
+     * @param shift5 shift positions
+     * @return reference sequence starting at from and ending at to
+     */
+    public static String joinRefFor3Lgins(Map<Integer, Character> baseToPosition,
+                                          int from,
+                                          int to,
+                                          int shift5,
+                                          String seq,
+                                          String EXTRA) {
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = from; i <= to; i++) {
+            if (i - from >= shift5 && i - from - shift5 < seq.length() - EXTRA.length()) {
+                sb.append(charAt(seq, i - from - shift5 + EXTRA.length()));
+            } else {
+                Character ch = baseToPosition.get(i);
+                if (ch != null) {
+                    sb.append(ch);
+                }
+            }
+        }
+        return sb.toString();
+    }
+
     /**
      * Adjust count. Don't adjust reference
      * @param varToAdd variant to add counts    $vref
@@ -213,7 +295,7 @@ public class VariationUtils {
         varToAdd.addDir(false, variant.getDir(false));
 
         if (conf.y) {
-            String refCnt = referenceVar != null ? String.valueOf(referenceVar.cnt) : "NA";
+            String refCnt = (referenceVar != null && referenceVar.cnt != 0) ? String.valueOf(referenceVar.cnt) : "NA";
             System.err.printf("    AdjCnt: '+' %s %s %s %s Ref: %s\n",
                     varToAdd.cnt, variant.cnt, varToAdd.getDir(false), variant.getDir(false), refCnt);
             System.err.printf("    AdjCnt: '-' %s %s %s %s Ref: %s\n",
@@ -270,9 +352,9 @@ public class VariationUtils {
     public static boolean isGoodVar(Variant vref, Variant referenceVar, String type,
                                     Set<String> splice,
                                     Configuration conf) {
-        if (vref == null || vref.refallele == null || vref.refallele.isEmpty())
+        if (vref == null || vref.refallele == null || vref.refallele.isEmpty()) {
             return false;
-
+        }
         if (type == null || type.isEmpty()) {
             type = vref.varType();
         }
@@ -286,8 +368,9 @@ public class VariationUtils {
         if (referenceVar != null && referenceVar.hicnt > conf.minr && vref.freq < 0.25d) {
             //The reference allele has much better mean mapq than var allele, thus likely false positives
             double d = vref.mapq + vref.refallele.length() + vref.varallele.length();
+            double f = (1 + d) / (referenceVar.mapq + 1);
             if ((d - 2 < 5 && referenceVar.mapq > 20)
-                    || (1 + d) / (referenceVar.mapq + 1) < 0.25d) {
+                    || f < 0.25d) {
                 return false;
             }
         }

@@ -18,11 +18,11 @@ import htsjdk.samtools.util.SequenceUtil;
 import java.io.IOException;
 import java.util.*;
 
+import static com.astrazeneca.vardict.collection.VariationMap.getSV;
 import static com.astrazeneca.vardict.data.Patterns.*;
 import static com.astrazeneca.vardict.ReferenceResource.getREF;
 import static com.astrazeneca.vardict.ReferenceResource.isLoaded;
 import static com.astrazeneca.vardict.collection.VariationMap.SV;
-import static com.astrazeneca.vardict.collection.VariationMap.getSV;
 import static com.astrazeneca.vardict.modules.SAMFileParser.getMrnm;
 import static com.astrazeneca.vardict.modules.SAMFileParser.ismatchref;
 import static com.astrazeneca.vardict.modules.SAMFileParser.parseSAM;
@@ -35,7 +35,6 @@ import static com.astrazeneca.vardict.Utils.*;
 import static java.lang.Math.abs;
 import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
-import static java.util.Objects.nonNull;
 import static java.util.stream.Collectors.toList;
 
 public class StructuralVariantsProcessor {
@@ -94,7 +93,7 @@ public class StructuralVariantsProcessor {
                 // deletion candidate
                 mlen = mstart > start ? mend - start : end - mstart;
                 if(abs(mlen) > conf.INSSIZE + conf.INSSTDAMT * conf.INSSTD ) {
-                    if (!dir) {
+                    if (dirNum == 1) {
                         if (svStructures.svfdel.size() == 0
                                 || start - svStructures.svdelfend > Configuration.MINSVCDIST * rlen) {
                             Sclip sclip = new Sclip();
@@ -102,7 +101,7 @@ public class StructuralVariantsProcessor {
                             svStructures.svfdel.add(sclip);
                         }
                         addSV(getLastSVStructure(svStructures.svfdel), start, end, mstart,
-                                mend, dir, rlen2, mlen, soft3, rlen/2,
+                                mend, dirNum, rlen2, mlen, soft3, rlen/2.0,
                                 queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                         svStructures.svdelfend = end;
                     } else {
@@ -113,7 +112,7 @@ public class StructuralVariantsProcessor {
                             svStructures.svrdel.add(sclip);
                         }
                         addSV(getLastSVStructure(svStructures.svrdel), start, end, mstart,
-                                mend, dir, rlen2, mlen, soft5, rlen/2,
+                                mend, dirNum, rlen2, mlen, soft5, rlen/2.0,
                                 queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                         svStructures.svdelrend = end;
                     }
@@ -147,7 +146,7 @@ public class StructuralVariantsProcessor {
                 }
             } else if (dirNum * mdirNum == -1 && dirNum * mlen < 0) {
                 //duplication
-                if (!dir) {
+                if (dirNum == 1) {
                     if (svStructures.svfdup.size() == 0
                             || start - svStructures.svdupfend > Configuration.MINSVCDIST * rlen) {
                         Sclip sclip = new Sclip();
@@ -155,7 +154,7 @@ public class StructuralVariantsProcessor {
                         svStructures.svfdup.add(sclip);
                     }
                     addSV(getLastSVStructure(svStructures.svfdup), start, end, mstart,
-                            mend, dir, rlen2, mlen, soft3, rlen/2,
+                            mend, dirNum, rlen2, mlen, soft3, rlen/2.0,
                             queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                     svStructures.svdupfend = end;
                 } else {
@@ -166,17 +165,17 @@ public class StructuralVariantsProcessor {
                         svStructures.svrdup.add(sclip);
                     }
                     addSV(getLastSVStructure(svStructures.svrdup), start, end, mstart,
-                            mend, dir, rlen2, mlen, soft5, rlen/2,
+                            mend, dirNum, rlen2, mlen, soft5, rlen/2.0,
                             queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                     svStructures.svduprend = end;
                 }
                 if (!svStructures.svfdup.isEmpty()
                         && abs(start - svStructures.svdupfend) <= Configuration.MINSVCDIST * rlen ) {
-                    adddisccnt(getLastSVStructure(svStructures.svfdup));
+                    getLastSVStructure(svStructures.svfdup).disc++;
                 }
                 if (!svStructures.svrdup.isEmpty()
                         && abs(start - svStructures.svduprend) <= Configuration.MINSVCDIST * rlen ) {
-                    adddisccnt(getLastSVStructure(svStructures.svrdup));
+                    getLastSVStructure(svStructures.svrdup).disc++;
                 }
                 if (!svStructures.svfdel.isEmpty() && abs(start - svStructures.svdelfend) <= MIN_D) {
                     adddisccnt(getLastSVStructure(svStructures.svfdel));
@@ -206,10 +205,10 @@ public class StructuralVariantsProcessor {
                             svStructures.svfinv3.add(sclip);
                         }
                         addSV(getLastSVStructure(svStructures.svfinv3), start, end, mstart,
-                                mend, dir, rlen2, mlen, soft3, rlen/2,
+                                mend, dirNum, rlen2, mlen, soft3, rlen/2.0,
                                 queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                         svStructures.svinvfend3 = end;
-                        adddisccnt(getLastSVStructure(svStructures.svfinv3));
+                        getLastSVStructure(svStructures.svfinv3).disc++;
                     } else if (mlen > 3 * rlen) {
                         if (svStructures.svfinv5.size() == 0
                                 || start - svStructures.svinvfend5 > Configuration.MINSVCDIST * rlen) {
@@ -218,10 +217,10 @@ public class StructuralVariantsProcessor {
                             svStructures.svfinv5.add(sclip);
                         }
                         addSV(getLastSVStructure(svStructures.svfinv5), start, end, mstart,
-                                mend, dir, rlen2, mlen, soft3, rlen/2,
+                                mend, dirNum, rlen2, mlen, soft3, rlen/2.0,
                                 queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                         svStructures.svinvfend5 = end;
-                        adddisccnt(getLastSVStructure(svStructures.svfinv5));
+                        getLastSVStructure(svStructures.svfinv5).disc++;
                     }
                 } else if (mlen != 0) {
                     if (mlen < -3 * rlen) {
@@ -232,10 +231,11 @@ public class StructuralVariantsProcessor {
                             svStructures.svrinv3.add(sclip);
                         }
                         addSV(getLastSVStructure(svStructures.svrinv3), start, end, mstart,
-                                mend, dir, rlen2, mlen, soft5, rlen/2,
+                                mend, dirNum, rlen2, mlen, soft5, rlen/2.0,
                                 queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                         svStructures.svinvrend3 = end;
-                        adddisccnt(getLastSVStructure(svStructures.svrinv3));
+                        getLastSVStructure(svStructures.svrinv3).disc++;
+
                     } else if (mlen > 3 * rlen) {
                         if (svStructures.svrinv5.size() == 0
                                 || start - svStructures.svinvrend5 > Configuration.MINSVCDIST * rlen) {
@@ -244,23 +244,23 @@ public class StructuralVariantsProcessor {
                             svStructures.svrinv5.add(sclip);
                         }
                         addSV(getLastSVStructure(svStructures.svrinv5), start, end, mstart,
-                                mend, dir, rlen2, mlen, soft5, rlen/2,
+                                mend, dirNum, rlen2, mlen, soft5, rlen/2.0,
                                 queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                         svStructures.svinvrend5 = end;
-                        adddisccnt(getLastSVStructure(svStructures.svrinv5));
+                        getLastSVStructure(svStructures.svrinv5).disc++;
                     }
                 }
                 if (mlen != 0) {
-                    if (!svStructures.svfdel.isEmpty() && abs(start - svStructures.svdelfend) <= MIN_D) {
+                    if (!svStructures.svfdel.isEmpty() && (start - svStructures.svdelfend) <= MIN_D) {
                         adddisccnt(getLastSVStructure(svStructures.svfdel));
                     }
-                    if (!svStructures.svrdel.isEmpty() && abs(start - svStructures.svdelrend) <= MIN_D) {
+                    if (!svStructures.svrdel.isEmpty() && (start - svStructures.svdelrend) <= MIN_D) {
                         adddisccnt(getLastSVStructure(svStructures.svrdel));
                     }
-                    if (!svStructures.svfdup.isEmpty() && abs(start - svStructures.svdupfend) <= MIN_D) {
+                    if (!svStructures.svfdup.isEmpty() && (start - svStructures.svdupfend) <= MIN_D) {
                         adddisccnt(getLastSVStructure(svStructures.svfdup));
                     }
-                    if (!svStructures.svrdup.isEmpty() && abs(start - svStructures.svduprend) <= MIN_D) {
+                    if (!svStructures.svrdup.isEmpty() && (start - svStructures.svduprend) <= MIN_D) {
                         adddisccnt(getLastSVStructure(svStructures.svrdup));
                     }
                 }
@@ -274,7 +274,7 @@ public class StructuralVariantsProcessor {
             } else if (record.getIntegerAttribute(SAMTag.MQ.name()) != null
                     && record.getIntegerAttribute(SAMTag.MQ.name()) < 15) {
                 // Ignore those with mate mapping quality less than 15
-            } else if (!dir) {
+            } else if (dirNum == 1) {
                 if (svStructures.svffus.get(mchr) == null
                         || start - svStructures.svfusfend.get(mchr) > Configuration.MINSVCDIST * rlen) {
                     Sclip sclip = new Sclip();
@@ -285,10 +285,10 @@ public class StructuralVariantsProcessor {
                 }
                 int svn = svStructures.svffus.get(mchr).size() - 1;
                 addSV(svStructures.svffus.get(mchr).get(svn), start, end, mstart,
-                        mend, dir, rlen2, 0, soft3, rlen/2,
+                        mend, dirNum, rlen2, 0, soft3, rlen/2.0,
                         queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                 svStructures.svfusfend.put(mchr, end);
-                adddisccnt(svStructures.svffus.get(mchr).get(svn));
+                svStructures.svffus.get(mchr).get(svn).disc++;
             } else {
                 if (svStructures.svrfus.get(mchr) == null
                         || start - svStructures.svfusrend.get(mchr) > Configuration.MINSVCDIST * rlen) {
@@ -300,10 +300,10 @@ public class StructuralVariantsProcessor {
                 }
                 int svn = svStructures.svrfus.get(mchr).size() - 1;
                 addSV(svStructures.svrfus.get(mchr).get(svn), start, end, mstart,
-                        mend, dir, rlen2, 0, soft5, rlen/2,
+                        mend, dirNum, rlen2, 0, soft5, rlen/2.0,
                         queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
                 svStructures.svfusrend.put(mchr, end);
-                adddisccnt(svStructures.svrfus.get(mchr).get(svn));
+                svStructures.svrfus.get(mchr).get(svn).disc++;
             }
             //TODO: There are no abs before (start - int) in perl, but otherwise here will be negative numbers
             //adddisccnt( $svrdel[$#svrdel] ) if ( @svrdel && ($start - $svdelrend) <= 25 );
@@ -332,7 +332,7 @@ public class StructuralVariantsProcessor {
                 adddisccnt(getLastSVStructure(svStructures.svrinv3));
             }
         }
-    }
+     }
 
     private static Sclip getLastSVStructure(List<Sclip> svStructure) {
         return svStructure.get(svStructure.size() - 1);
@@ -388,17 +388,17 @@ public class StructuralVariantsProcessor {
                                int end_e,
                                int mateStart_ms,
                                int mateEnd_me,
-                               boolean dir,
+                               int dir,
                                int rlen,
                                int mlen,
                                int softp,
-                               int pmean_rp,
-                               int qmean,
-                               int Qmean,
-                               int nm,
+                               double pmean_rp,
+                               double qmean,
+                               double Qmean,
+                               double nm,
                                Configuration conf) {
         sdref.cnt++;
-        sdref.incDir(dir);
+        sdref.incDir(dir == 1 ? false : true);
 
         if (qmean >= conf.goodq) {
             sdref.hicnt++;
@@ -422,7 +422,7 @@ public class StructuralVariantsProcessor {
             sdref.mend = mateStart_ms + rlen;
         }
         if (softp != 0) {
-            if (!dir) {
+            if (dir == 1) {
                 if (abs(softp - sdref.end) < 10 ) {
                     int softCount = sdref.soft.getOrDefault(softp, 0);
                     softCount++;
@@ -584,7 +584,7 @@ public class StructuralVariantsProcessor {
      * @param rlen read length
      * @param conf configuration of Vardict
      */
-    static Tuple.Tuple3<Integer, Integer, Integer> markSV(int start,
+    public static Tuple.Tuple3<Integer, Integer, Integer> markSV(int start,
                                                           int end,
                                                           List<List<Sclip>> structuralVariants_sv,
                                                           int rlen,
@@ -595,7 +595,9 @@ public class StructuralVariantsProcessor {
 
         for (List<Sclip> currentSclips_sr : structuralVariants_sv) {
             for (Sclip sv_r : currentSclips_sr) {
-                Tuple.Tuple2<Integer, Integer> tuple = sv_r.start < sv_r.mstart ? new Tuple.Tuple2<>(sv_r.end, sv_r.mstart) : new Tuple.Tuple2<>(sv_r.mend, sv_r.start);
+                Tuple.Tuple2<Integer, Integer> tuple = sv_r.start < sv_r.mstart
+                        ? new Tuple.Tuple2<>(sv_r.end, sv_r.mstart)
+                        : new Tuple.Tuple2<>(sv_r.mend, sv_r.start);
                 if (conf.y) {
                     System.err.printf("   Marking SV %s %s %s %s cnt: %s\n", start, end, tuple._1, tuple._2, sv_r.cnt);
                 }
@@ -633,8 +635,8 @@ public class StructuralVariantsProcessor {
         for (List<Sclip> currentSclips_sr : structuralVariants_sv) {
             for (Sclip sv_r : currentSclips_sr) {
                 Tuple.Tuple2<Integer, Integer> tuple = sv_r.start < sv_r.mstart
-                        ? new Tuple.Tuple2<>(sv_r.end, sv_r.mstart)
-                        : new Tuple.Tuple2<>(sv_r.mend, sv_r.start);
+                        ? new Tuple.Tuple2<>(sv_r.start, sv_r.mend)
+                        : new Tuple.Tuple2<>(sv_r.mstart, sv_r.end);
                 if (conf.y) {
                     System.err.printf("   Marking DUP SV %s %s %s %s cnt: %s\n", start, end, tuple._1, tuple._2, sv_r.cnt);
                 }
@@ -715,6 +717,7 @@ public class StructuralVariantsProcessor {
                 }
                 if (svr.cnt > pairs) {
                     tuple5 = tuple(svr.cnt, svr.pmean, svr.qmean, svr.Qmean, svr.nm);
+                    pairs = svr.cnt;
                 }
                 svr.used = true;
                 if (conf.y) {
@@ -788,7 +791,7 @@ public class StructuralVariantsProcessor {
             if (SOFTP2SV.get().containsKey(p5) && SOFTP2SV.get().get(p5).get(0).used) {
                 continue;
             }
-            String seq = findconseq(sc5v, conf);
+            String seq = findconseq(sc5v, conf, 0);
             if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                 continue;
             }
@@ -818,7 +821,7 @@ public class StructuralVariantsProcessor {
                     final Variation vref = getVariation(hash, bp, "-" + dellen);
                     vref.cnt = 0;
 
-                    SV sv = getSV(hash, bp, vref);
+                    SV sv = getSV(hash, bp);
                     sv.type = "DEL";
                     sv.pairs += pairs;
                     sv.splits += cnt5;
@@ -885,14 +888,14 @@ public class StructuralVariantsProcessor {
                 // TODO: 26/07/18 Seem that next statement is redundant since it assigns cnt to 0 if it is already 0
                 //	    $hash->{ $p5 }->{ $vn }->{ cnt } = 0 unless( $hash->{ $p5 }->{ $vn }->{ cnt } );
 
-                SV sv = getSV(hash, p5, vref);
+                SV sv = getSV(hash, p5);
                 sv.type = "INV";
                 sv.pairs += 0;
                 sv.splits += cnt5;
                 sv.clusters += 0;
 
                 adjCnt(vref, sc5v, conf);
-                cov.merge(p5, cnt5, (a1, a2) -> a1 + a2);
+                incCnt(cov, p5, cnt5);
                 if (cov.containsKey(bp) && cov.get(p5) < cov.get(bp)) {
                     cov.put(p5, cov.get(bp));
                 }
@@ -914,7 +917,7 @@ public class StructuralVariantsProcessor {
             if (SOFTP2SV.get().containsKey(p3) && SOFTP2SV.get().get(p3).get(0).used) {
                 continue;
             }
-            String seq = findconseq(sc3v, conf);
+            String seq = findconseq(sc3v, conf, 0);
             if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                 continue;
             }
@@ -949,7 +952,7 @@ public class StructuralVariantsProcessor {
                     final Variation vref = getVariation(hash, p3, "-" + dellen);
                     vref.cnt = 0;
 
-                    SV sv = getSV(hash, p3, vref);
+                    SV sv = getSV(hash, p3);
                     sv.type = "DEL";
                     sv.pairs += pairs;
                     sv.splits += cnt3;
@@ -1012,14 +1015,14 @@ public class StructuralVariantsProcessor {
                 // TODO: 26/07/18 Seem that next statement is redundant since it assigns cnt to 0 if it is already 0
                 //$hash->{ $p3 }->{ $vn }->{ cnt } = 0 unless( $hash->{ $p3 }->{ $vn }->{ cnt } );
 
-                SV sv = getSV(hash, p3, vref);
+                SV sv = getSV(hash, p3);
                 sv.type = "INV";
                 sv.pairs += 0;
                 sv.splits += cnt3;
                 sv.clusters += 0;
 
                 adjCnt(vref, sc3v, conf);
-                cov.merge(p3, cnt3, (a1, a2) -> a1 + a2);
+                incCnt(cov, p3, cnt3);
 
                 if (cov.containsKey(bp) && cov.get(p3) < cov.get(bp)) {
                     cov.put(p3, cov.get(bp));
@@ -1123,7 +1126,7 @@ public class StructuralVariantsProcessor {
                     tmp.nm = nm + rnm;
                     adjCnt(vref, tmp, conf);
 
-                    SV sv = getSV(hash, bp, vref);
+                    SV sv = getSV(hash, bp);
                     sv.type = "INV";
                     sv.pairs += cnt;
                     sv.splits += sclip5.containsKey(start) ? sclip5.get(start).cnt : 0;
@@ -1206,7 +1209,7 @@ public class StructuralVariantsProcessor {
 
                     adjCnt(vref, tmp, conf);
 
-                    SV sv = getSV(hash, bp, vref);
+                    SV sv = getSV(hash, bp);
                     sv.type = "INV";
                     sv.pairs += cnt;
                     sv.splits += sclip3.containsKey(end + 1) ? sclip3.get(end + 1).cnt : 0;
@@ -1270,8 +1273,9 @@ public class StructuralVariantsProcessor {
                 if (!ref.containsKey(bp)) {
                     getREF(Region.newModifiedRegion(region, bp - 150, bp + 150), chrs, conf, 300, reference);
                 }
-                parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice, ampliconBasedCalling, RLEN, reference, conf, hash,
-                        iHash, cov, sclip5, sclip3, true);
+                parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice,
+                        ampliconBasedCalling, RLEN, reference, conf, hash,
+                        iHash, cov, sclip3, sclip5, true);
             }
 
             int cntf = cnt;
@@ -1306,7 +1310,7 @@ public class StructuralVariantsProcessor {
                 pmeanf = currentSclip3.pmean;
                 nmf = currentSclip3.nm;
 
-                String seq = findconseq(currentSclip3, conf);
+                String seq = findconseq(currentSclip3, conf, 0);
                 Tuple.Tuple2<Integer, String> tuple = findMatch(conf, seq, reference, bp, 1);
                 int tbp = tuple._1;
                 String EXTRA = tuple._2;
@@ -1341,12 +1345,12 @@ public class StructuralVariantsProcessor {
             final Variation vref = getVariation(hash, bp, "+" + ins);
             vref.cnt = 0;
 
-            SV sv = getSV(hash, bp, vref);
+            SV sv = getSV(hash, bp);
             sv.type = "DUP";
             sv.pairs += cnt;
             sv.splits += dup.softp != 0 && sclip3.get(dup.softp) != null
                     ? sclip3.get(dup.softp).cnt : 0;
-            sv.clusters ++;
+            sv.clusters++;
 
             if (conf.y) {
                 System.err.printf("  Found DUP with discordant pairs only (forward): cnt: %d BP: %d END: %d %s Len: %d %d-%d<->%d-%d\n",
@@ -1406,8 +1410,9 @@ public class StructuralVariantsProcessor {
                 if (!ref.containsKey(pe)) {
                     getREF(Region.newModifiedRegion(region, pe - 150, pe + 150), chrs, conf, 300, reference);
                 }
-                parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice, ampliconBasedCalling, RLEN, reference, conf, hash,
-                        iHash, cov, sclip5, sclip3, true);
+                parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice,
+                        ampliconBasedCalling, RLEN, reference, conf, hash,
+                        iHash, cov, sclip3, sclip5, true);
             }
             int cntf = cnt;
             int cntr = cnt;
@@ -1439,7 +1444,7 @@ public class StructuralVariantsProcessor {
                 Qmeanr = currentSclip5.Qmean;
                 pmeanr = currentSclip5.pmean;
                 nmr = currentSclip5.nm;
-                String seq = findconseq(currentSclip5, conf);
+                String seq = findconseq(currentSclip5, conf, 0);
                 Tuple.Tuple2<Integer, String> tuple = findMatch(conf, seq, reference, pe, -1);
                 int tbp = tuple._1;
                 String EXTRA = tuple._2;
@@ -1469,7 +1474,7 @@ public class StructuralVariantsProcessor {
             final Variation vref = getVariation(hash, bp, "+" + ins);
             vref.cnt = 0;
 
-            SV sv = getSV(hash, bp, vref);
+            SV sv = getSV(hash, bp);
             sv.type = "DUP";
             sv.pairs += cnt;
             sv.splits += sclip5.containsKey(bp) ? sclip5.get(bp).cnt : 0;
@@ -1601,7 +1606,7 @@ public class StructuralVariantsProcessor {
     /**
      * Find matching on forward strand (with MM defined)
      */
-    static Tuple.Tuple2<Integer, String> findMatch(Configuration conf,
+    public static Tuple.Tuple2<Integer, String> findMatch(Configuration conf,
                                                    String seq,
                                                    Reference REF,
                                                    int position,
@@ -1738,12 +1743,12 @@ public class StructuralVariantsProcessor {
             }
             final Variation vref = getVariation(hash, bp, "-" + mlen);
             vref.cnt = 0;
-            SV sv = getSV(hash, bp, vref);
+            SV sv = getSV(hash, bp);
             sv.type = "DEL";
             sv.splits += sclip3.containsKey(del.end + 1) ? sclip3.get(del.end + 1).cnt : 0;
             sv.splits += sclip5.containsKey(del.mstart) ? sclip5.get(del.mstart).cnt : 0;
             sv.pairs += del.cnt;
-            sv.clusters += 1;
+            sv.clusters++;
 
             if (conf.y) {
                 System.err.printf(
@@ -1792,7 +1797,7 @@ public class StructuralVariantsProcessor {
             final Variation ref = getVariation(hash, bp, "-" + mlen);
             ref.cnt = 0;
 
-            SV sv = getSV(hash, bp, ref);
+            SV sv = getSV(hash, bp);
             sv.type = "DEL";
             sv.splits += sclip3.containsKey(del.mend + 1) ? sclip3.get(del.mend + 1).cnt : 0;
             sv.splits += sclip5.containsKey(del.start) ? sclip5.get(del.start).cnt : 0;
@@ -1871,7 +1876,7 @@ public class StructuralVariantsProcessor {
                 if (scv.used) {
                     continue;
                 }
-                String seq = findconseq(scv, conf);
+                String seq = findconseq(scv, conf, 0);
                 if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                     continue; // next unless( $seq && length($seq) >= $SEED2 );
                 }
@@ -1890,24 +1895,24 @@ public class StructuralVariantsProcessor {
                 if (!(bp - softp > 30 && isOverlap(softp, bp, Tuple.tuple(del.end, del.mstart), rlen))) {
                     continue;
                 }
-                bp -= 1;
+                bp--;
                 int dellen = bp - softp + 1;
                 Map<Integer, Character> ref = reference.referenceSequences;
                 while(ref.containsKey(bp) && ref.containsKey(softp - 1) && ref.get(bp).equals(ref.get(softp - 1))) {
-                    bp -= 1;
+                    bp --;
                     if (bp != 0) {
-                        softp -= 1;
+                        softp--;
                     }
                 }
 
                 final Variation variation = getVariation(hash, softp, "-" + dellen);
                 variation.cnt = 0;
 
-                SV sv = getSV(hash, softp, variation);
+                SV sv = getSV(hash, softp);
                 sv.type = "DEL";
                 sv.pairs += del.cnt;
                 sv.splits += scv.cnt;
-                sv.clusters += 1;
+                sv.clusters++;
 
                 if (!(cov.containsKey(softp) && cov.get(softp) > del.cnt)) {
                     cov.put(softp, del.cnt);
@@ -1954,7 +1959,7 @@ public class StructuralVariantsProcessor {
                     if (!(i >= del.end -3 && i - del.end < 3 * rlen)) {
                         continue;
                     }
-                    String seq = findconseq(scv, conf);
+                    String seq = findconseq(scv, conf, 0);
                     if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                         continue;
                     }
@@ -1971,17 +1976,17 @@ public class StructuralVariantsProcessor {
                         continue;
                     }
                     if (!(bp - softp > 30 && isOverlap(softp, bp, Tuple.tuple(del.end, del.mstart), rlen))) continue;
-                    bp -= 1;
+                    bp--;
                     int dellen = bp - softp + 1;
 
                     final Variation variation = getVariation(hash, softp, "-" + dellen);
                     variation.cnt = 0;
 
-                    SV sv = getSV(hash, softp, variation);
+                    SV sv = getSV(hash, softp);
                     sv.type = "DEL";
                     sv.pairs += del.cnt;
                     sv.splits += scv.cnt;
-                    sv.clusters += 1;
+                    sv.clusters++;
 
                     if (!(cov.containsKey(softp) && cov.get(softp) > del.cnt)) {
                         cov.put(softp, del.cnt);
@@ -2034,32 +2039,39 @@ public class StructuralVariantsProcessor {
                 if (scv.used) {
                     continue;
                 }
-                String seq = findconseq(scv, conf);
+                String seq = findconseq(scv, conf, 0);
                 if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                     continue;
                 }
                 if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
                     getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
-                    parseSAM(Region.newModifiedRegion(region, del.mstart - 200, del.mend + 200), bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                    parseSAM(Region.newModifiedRegion(region, del.mstart - 200, del.mend + 200),
+                            bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf,
+                            hash, iHash, cov, sclip3, sclip5, true);
                 }
                 Tuple.Tuple2<Integer, String> match = findMatch(conf, seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
                 int bp = match._1;
                 String EXTRA = match._2;
                 if (bp == 0) {
+                    match = findMatch(conf, seq, reference, softp, -1, Configuration.SEED_2, 0);
+                    bp = match._1;
+                    EXTRA = match._2;
+                }
+                if (bp == 0) {
                     continue;
                 }
                 if (!(softp - bp > 30 && isOverlap(bp, softp, Tuple.tuple(del.mend, del.start), rlen))) continue;
-                bp += 1;
-                softp -= 1;
+                bp++;
+                softp--;
                 int dellen = softp - bp + 1;
                 final Variation variation = getVariation(hash, bp, "-" + dellen);
                 variation.cnt = 0;
 
-                SV sv = getSV(hash, bp, variation);
+                SV sv = getSV(hash, bp);
                 sv.type = "DEL";
                 sv.pairs += del.cnt;
                 sv.splits += scv.cnt;
-                sv.clusters += 1;
+                sv.clusters++;
 
                 adjCnt(variation, scv, conf);
                 if (!(cov.containsKey(bp) && cov.get(bp) > del.cnt)) {
@@ -2100,7 +2112,7 @@ public class StructuralVariantsProcessor {
                     if (!(i <= del.start + 3 && del.start - i < 3 * rlen)) {
                         continue;
                     }
-                    String seq = findconseq(scv, conf);
+                    String seq = findconseq(scv, conf, 0);
                     if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                         continue;
                     }
@@ -2119,18 +2131,18 @@ public class StructuralVariantsProcessor {
                     if (!(softp - bp > 30 && isOverlap(bp, softp, Tuple.tuple(del.mend, del.start), rlen))) {
                         continue;
                     }
-                    bp += 1;
-                    softp -= 1;
+                    bp++;
+                    softp--;
                     int dellen = softp - bp + 1;
 
                     final Variation variation = getVariation(hash, bp, "-" + dellen);
                     variation.cnt = 0;
 
-                    SV sv = getSV(hash, bp, variation);
+                    SV sv = getSV(hash, bp);
                     sv.type = "DEL";
                     sv.pairs += del.cnt;
                     sv.splits += scv.cnt;
-                    sv.clusters += 1;
+                    sv.clusters++;
 
                     adjCnt(variation, scv, conf);
                     if (!cov.containsKey(bp)) {
@@ -2139,7 +2151,7 @@ public class StructuralVariantsProcessor {
                     if (cov.containsKey(softp) && cov.get(softp) > cov.get(bp)) {
                         cov.put(bp, cov.get(softp));
                     }
-                    cov.merge(bp, scv.cnt, (oldValue, newValue) -> oldValue + newValue);
+                    incCnt(cov, bp, scv.cnt);
 
                     int mcnt = del.cnt;
                     Variation tv = new Variation();
@@ -2229,7 +2241,9 @@ public class StructuralVariantsProcessor {
             if (conf.y) System.err.printf("%n%nWorking INV %d %d %s pair_cnt: %d%n", softp, dir, side, inv.cnt);
             if (!isLoaded(region.chr, inv.mstart, inv.mend, reference)) {
                 getREF(Region.newModifiedRegion(region, inv.mstart, inv.mend), chrs, conf, 500, reference);
-                parseSAM(Region.newModifiedRegion(region, inv.mstart - 200, inv.mend + 200), bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                parseSAM(Region.newModifiedRegion(region, inv.mstart - 200, inv.mend + 200),
+                        bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf, hash,
+                        iHash, cov, sclip3, sclip5, true);
             }
             int bp = 0;
             Sclip scv = new Sclip();
@@ -2243,7 +2257,7 @@ public class StructuralVariantsProcessor {
                 if (scv.used) {
                     continue;
                 }
-                seq = findconseq(scv, conf);
+                seq = findconseq(scv, conf, 0);
                 if (seq.isEmpty()) {
                     continue;
                 }
@@ -2270,7 +2284,7 @@ public class StructuralVariantsProcessor {
                     if (scv.used) {
                         continue;
                     }
-                    seq = findconseq(scv, conf);
+                    seq = findconseq(scv, conf, 0);
                     if (seq.isEmpty()) {
                         continue;
                     }
@@ -2298,37 +2312,38 @@ public class StructuralVariantsProcessor {
             }
             if (side == Side._5) {
                 if (dir == -1) {
-                    bp -= 1;
+                    bp--;
                 }
             } else {
                 if (dir == 1) {
-                    bp += 1;
+                    bp++;
                     if (bp != 0) {
-                        softp -= 1;
+                        softp--;
                     }
                 } else {
-                    softp -= 1;
+                    softp--;
                 }
             }
             if (side == Side._3) {
+                int tmp = bp;
                 bp = softp;
-                softp = bp;
+                softp = tmp;
             }
             Map<Integer, Character> ref = reference.referenceSequences;
             if ((dir == -1 && side == Side._5) || dir == 1 && side == Side._3) {
                 while (ref.containsKey(softp) && ref.containsKey(bp)
                         && ref.get(softp) == complement(ref.get(bp))) {
-                    softp += 1;
+                    softp++;
                     if (softp != 0) {
-                        bp -= 1;
+                        bp--;
                     }
                 }
             }
             while(ref.containsKey(softp - 1) && ref.containsKey(bp + 1)
                     && ref.get(softp - 1) == complement(ref.get(bp + 1))) {
-                softp -= 1;
+                softp--;
                 if (softp != 0) {
-                    bp += 1;
+                    bp++;
                 }
             }
             if (bp > softp && bp - softp > 150 && (bp - softp) / (double) abs(inv.mlen) < 1.5) {
@@ -2354,11 +2369,11 @@ public class StructuralVariantsProcessor {
                 vref.pstd = true;
                 vref.qstd = true;
 
-                SV sv = getSV(hash, softp, vref);
+                SV sv = getSV(hash, softp);
                 sv.type = "INV";
-                sv.splits += nonNull(scv) ? scv.cnt : 0;
+                sv.splits += scv.cnt;
                 sv.pairs += inv.cnt;
-                sv.clusters += 1;
+                sv.clusters++;
 
                 Variation vrefSoftp = dir == -1
                         ? (hash.containsKey(softp) && ref.containsKey(softp) ? hash.get(softp).get(ref.get(softp).toString()) : null )
@@ -2400,7 +2415,7 @@ public class StructuralVariantsProcessor {
             if (sclip_sc.cnt < conf.minr) {
                 continue;
             }
-            String seq = findconseq(sclip_sc, conf);
+            String seq = findconseq(sclip_sc, conf, 0);
             if (!seq.isEmpty() && seq.length() > Configuration.SEED_2) {
                 seq = new StringBuilder(seq).reverse().toString();
                 System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.cnt, seq);
@@ -2416,7 +2431,7 @@ public class StructuralVariantsProcessor {
             if (sclip_sc.cnt < conf.minr) {
                 continue;
             }
-            String seq = findconseq(sclip_sc, conf);
+            String seq = findconseq(sclip_sc, conf, 0);
             if (!seq.isEmpty() && seq.length() > Configuration.SEED_2) {
                 System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.cnt, seq);
             }
