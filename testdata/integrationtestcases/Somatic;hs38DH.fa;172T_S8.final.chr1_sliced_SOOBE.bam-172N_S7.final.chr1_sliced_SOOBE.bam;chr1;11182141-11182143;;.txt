@@ -1,1 +1,0 @@
-Somatic,hs38DH.fa,172T_S8.final.chr1_sliced_SOOBE.bam|172N_S7.final.chr1_sliced_SOOBE.bam,chr1,11182141,11182143,

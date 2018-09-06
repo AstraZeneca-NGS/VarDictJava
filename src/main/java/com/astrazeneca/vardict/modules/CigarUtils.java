@@ -460,10 +460,10 @@ public class CigarUtils {
                         if (!ref.containsKey(refoff - rrn - 1)) {
                             break;
                         }
-                        if (isHasAndNotEquals(ref, refoff - rrn - 1, querySeq, rdoff - rrn - 1)) {
+                        if (rrn < rdoff && isHasAndNotEquals(ref, refoff - rrn - 1, querySeq, rdoff - rrn - 1)) {
                             rn = rrn + 1;
                             rmch = 0;
-                        } else if (isHasAndEquals(ref, refoff - rrn - 1, querySeq, rdoff - rrn - 1)) {
+                        } else if (rrn < rdoff && isHasAndEquals(ref, refoff - rrn - 1, querySeq, rdoff - rrn - 1)) {
                             rmch++;
                         }
                         rrn++;
@@ -500,10 +500,10 @@ public class CigarUtils {
                 if (!ref.containsKey(refoff - rrn - 1)) {
                     break;
                 }
-                if (isHasAndNotEquals(ref, refoff - rrn - 1, querySeq, rdoff - rrn - 1)) {
+                if (rrn < rdoff && isHasAndNotEquals(ref, refoff - rrn - 1, querySeq, rdoff - rrn - 1)) {
                     rn = rrn + 1;
                     rmch = 0;
-                } else if (isHasAndEquals(ref, refoff - rrn - 1, querySeq, rdoff - rrn - 1)) {
+                } else if (rrn < rdoff && isHasAndEquals(ref, refoff - rrn - 1, querySeq, rdoff - rrn - 1)) {
                     rmch++;
                 }
                 rrn++;
