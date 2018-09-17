@@ -25,6 +25,10 @@ VarDictJava can run in single sample (see Single sample mode section), paired sa
 3. Perl (uses /usr/bin/env perl)
 4. Internet connection to download dependencies using gradle.
 
+To see the help page for the program, run
+```
+ <path_to_vardict_folder>/build/install/VarDict/bin/VarDict -H.
+```
 ## Getting started
 
 ### Getting source code
@@ -64,9 +68,36 @@ or
 ./gradlew distTar
 ```
 
+#### Distribution Package Structure
+When the build command completes successfully, the `build/install/VarDict` folder contains the distribution package.
+
+The distribution package has the following structure:
+* `bin/` - contains the launch scripts
+* `lib/` - has the jar file that contains the compiled project code and the jar files of the third-party libraries that the project uses.
+
+You can move the distribution package (the content of the `build/install/VarDict` folder) to any convenient location.
+
+Generated zip and tar releases will also contain scripts from VarDict Perl repository in `bin/` directory (`teststrandbias.R`, 
+`testsomatic.R`, `var2vcf_valid.pl`, `var2vcf_paired.pl`).
+
+You can add VarDictJava on PATH by adding this line to `.bashrc`:
+```
+export PATH=/path/to/VarDict/bin:$PATH
+```
+After that you can run VarDict by `Vardict` command instead of full path to `<path_to_vardict_folder>/build/install/VarDict/bin/VarDict`. 
+
+#### Third-Party Libraries
+Currently, the project uses the following third-party libraries:
+* JRegex (http://jregex.sourceforge.net, BSD license) is a regular expressions library that is used instead of the 
+standard Java library because its performance is much higher than that of the standard library.
+* Commons CLI (http://commons.apache.org/proper/commons-cli, Apache License) – a library for parsing the command line.
+* HTSJDK (http://smtools.github.io/htsjdk/) is an implementation of a unified Java library for accessing common file formats, such as SAM and VCF.
+* PowerMock and TestNG are the testing frameworks (not included in distribution, used only in tests).
+
 ### Single sample mode
 
-To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 (see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl.`
+To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 
+(see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl.`
 The following is an example command to run in single sample mode:
   
 ```
@@ -81,13 +112,16 @@ The following is an example command to run VarDictJava for a region (chromosome 
 <path_to_vardict_folder>/build/install/VarDict/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam  -z -R  chr7:55270300-55270348:EGFR | VarDict/teststrandbias.R | VarDict/var2vcf_valid.pl -N sample_name -E -f 0.001 >vars.vcf
 ```
 
-In single sample mode, output columns contain a description and statistical info for variants in the single sample. See section Output Columns for list of columns in the output. 
+In single sample mode, output columns contain a description and statistical info for variants in the single sample. 
+See section Output Columns for list of columns in the output. 
 
 ### Paired variant calling
 
-To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 (see the Program Workflow section) using `testsomatic.R` and `var2vcf_paired.pl`.
+To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perform Steps 3 and 4 
+(see the Program Workflow section) using `testsomatic.R` and `var2vcf_paired.pl`.
 
-In this mode, the number of statistics columns in the output is doubled: one set of columns is for the first sample, the other - for second sample.
+In this mode, the number of statistics columns in the output is doubled: one set of columns is 
+for the first sample, the other - for second sample.
 
 The following is an example command to run in paired mode:
 
@@ -95,8 +129,25 @@ The following is an example command to run in paired mode:
 AF_THR="0.01" # minimum allele frequency
 <path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/testsomatic.R | VarDict/var2vcf_paired.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
-### Running Tests
 
+### Amplicon based calling 
+This mode is active if the BED file uses 8-column format and the -R option is not specified.
+
+In this mode, only the first list of BAM files is used even if the files are specified as `BAM1|BAM2` - like for paired variant calling.
+
+For each segment, the BED file specifies the list of positions as start and end positions (columns 7 and 8 of 
+the BED file). The Amplicon based calling mode outputs a record for every position between start and end that has 
+any variant other than the reference one (all positions with the `-p` option). For any of these positions, 
+VarDict in amplicon based calling mode outputs the following:
+* Same columns as in the single sample mode for the most frequent variant
+* Good variants for this position with the prefixes `GOOD1`, `GOOD2`, etc.
+* Bad variants for this position with the prefixes `BAD1`, `BAD2`, etc.
+
+For this running mode, the `-a` option (default: `10:0.95`) specifies the criteria of discarding reads that are too 
+far away from segments. A read is skipped if its start and end are more than 10 positions away from the segment 
+ends and the overlap fraction between the read and the segment is less than 0.95.
+
+### Running Tests
 #### Integration testing
 
 The list of integration test cases is stored in files in `testdata/intergationtestcases` directory.
@@ -172,35 +223,92 @@ chr1,200,205,GCCGA
 chr2,10,12,AC
 ```
 
->Note: VarDict expands given regions by 700bp to left and right (plus given value by `-x` option). 
+>Note: VarDict expands given regions by 1200bp to left and right (plus given value by `-x` option). 
 
 ## Program Workflow
 
+#### The main workflow
 The VarDictJava program follows the workflow:
 
 1. Get regions of interest from a BED file or the command line.
 2. For each segment:
    1. Find all variants for this segment in mapped reads:
       1. Optionally skip duplicated reads, low mapping-quality reads, and reads having a large number of mismatches.
-      2. Skip a read if it does not overlap with the segment.
-      3. Preprocess the CIGAR string for each read.
-      4. For each position, create a variant. If a variant is already present, adjust its count using the adjCnt function.
-         1. Realign some of the variants using special ad-hoc approaches.
-         2. Calculate statistics for the variant, filter out some bad ones, if any.
-         3. Assign a type to each variant.
-         4. Output variants in an intermediate internal format (tabular). Columns of the table are described in the Output Columns section.
+      2. Skip unmapped reads.
+      3. Skip a read if it does not overlap with the segment.
+      4. Preprocess the CIGAR string for each read (section CIGAR Preprocessing).
+      5. For each position, create a variant. If a variant is already present, adjust its count using the adjCnt function.
+   2. Find structural variants (optionally can be disabled by option `-U`).
+   3. Realign some of the variants using realignment of insertions, deletions, large insertions, and large deletions using unaligned parts of reads 
+   (soft-clipped ends). This step is optional and can be disabled using the `-k 0` switch.
+   4. Calculate statistics for the variant, filter out some bad ones, if any.
+   5. Assign a type to each variant.
+   6. Output variants in an intermediate internal format (tabular). Columns of the table are described in the Output Columns section.
 	 
 	 **Note**: To perform Steps 1 and 2, use Java VarDict.
 
 3.	Perform a statistical test for strand bias using an R script.  
-    **Note**: Use R script for this step.
+    **Note**: Use R scripts `teststrandbias.R` or `testsomatic.R` for this step.
 4.	Transform the intermediate tabular format to VCF. Output the variants with filtering and statistical data.  
      **Note**: Use the Perl scripts `var2vcf_valid.pl` or `var2vcf_paired.pl` for this step.
+     
+#### CIGAR Preprocessing (Initial Realignment)
+Read alignment is specified in a BAM file as a CIGAR string. VarDict modifies this string (and alignment) in the following special cases:
+* Soft clipping next to insertion/deletion is replaced with longer soft-clipping. 
+The same takes place if insertion/deletion is separated from soft clipping by no more than 10 matched bases.
+* Short matched sequence and insertion/deletion at the beginning/end are replaced by soft-clipping.
+* Two close deletions and insertions are combined into one deletion and one insertion
+* Three close deletions are combined in one
+* Three close insertions/deletions are combined in one deletion or in insertion+deletion
+* Two close deletions are combined into one
+* Two close insertions/deletions are combined into one
+* Mis-clipping at the start/end are changed to matched sequences
 
+#### Variants
+Simple variants (SNV, simple insertions, and deletions) are constructed in the following way:
+* Single-nucleotide variation (SNV). VarDict inserts an SNV into the variants structure for every matched or 
+mismatched base in the reads. If an SNV is already present in variants, VarDict adjusts its counts and statistics.
+* Simple insertion variant. If read alignment shows an insertion at the position, VarDict inserts +BASES 
+string into the variants structure. If the variant is already present, VarDict adjusts its count and statistics.
+* Simple Deletion variant. If read alignment shows a deletion at the position, VarDict inserts -NUMBER 
+into the variants structure. If the variant is already present, VarDict adjusts its count and statistics.
+VarDict also handles complex variants (for example, an insertion that is close to SNV or to deletion) 
+using specialized ad-hoc methods.
 
+Structural Variants are looked after simple variants. VarDict supported DUP, INV and DEL structural variants.
+
+#### Variant Description String
+The description string encodes a variant for VarDict internal use. 
+
+The following table describes Variant description string encoding:
+
+String | Description 
+ ----- | ---------- 
+[ATGC] | for SNPs 
++[ATGC]+ | for insertions 
+-[0-9]+ | for deletions
+...#[ATGC]+ | for insertion/deletion variants followed by a short matched sequence
+...^[ATGC]+ | something followed by an insertion
+...^[0-9]+ | something followed by a deletion
+...&amp;[ATGC]+ | for insertion/deletion variants followed by a matched sequence
+
+#### Variant Filtering
+A variant appears in the output if it satisfies the following criteria (in this order):
+1. Frequency of the variant exceeds the threshold set by the `-f` option (default = 1%).
+2. The minimum number of high-quality reads supporting variant is larger than the threshold set by the `-r` option (default = 2).
+3. The mean position of the variant in reads is less than the value set by the `-P` option (default = 5).
+4. The mean base quality (phred score) for the variant is less than the threshold set by the `-q` option (default = 22.5).
+5. Variant frequency is more than 25% or reference allele does not have much better mapping quality than the variant.
+6. Deletion variants are not located in the regions where the reference genome is missing.
+7. The ratio of high-quality reads to low-quality reads is larger than the threshold specified by `-o` option (default=1.5).
+8. Variant frequency exceeds 30%.
+9. Mean mapping quality exceeds the threshold set by the `-O` option (default: no filtering)
+10. In the case of an MSI region, the variant size is less than 12 nucleotides for the non-monomer MSI or 15 for the monomer MSI. 
+Variant frequency is more than 10% for the non-monomer MSI and 25% for the monomer MSI.
+11. Variant has not "2;1" bias.
+11. Variant is not SNV and variants refallele or varallele lengths are more then 3 nucleotides when variant frequency less then 20%.
 
 ## Program Options
-
 - `-H|-?`  
     Print help page
 - `-h|--header`   
@@ -240,7 +348,7 @@ The VarDictJava program follows the workflow:
 - `-N string`   
     The sample name to be used directly.  Will overwrite `-n` option
 - `-b string`   
-    The indexed BAM file
+    The indexed BAM file. Multiple BAM files can be specified with the “:” delimiter.
 - `-c INT`   
     The column for chromosome
 - `-S INT`   
@@ -282,13 +390,17 @@ The VarDictJava program follows the workflow:
 - `-V freq`  
     The lowest frequency in a normal sample allowed for a putative somatic mutations.  Defaults to `0.05`
 - `-I INT`  
-    The indel size.  Default: 50bp
+    The indel size.  Default: 50bp. 
+    Be cautious with -I option, especially in the amplicon mode, as amplicon sequencing is not a way 
+    to find large indels. Increasing the search size might slow and the false positives may appear in low 
+    complexity regions. Increase it to 200-300 bp would recommend only for hybrid capture sequencing. 
 - `-M INT`  
     The minimum matches for a read to be considered.  If, after soft-clipping, the matched bp is less than INT, then the 
     read is discarded.  It's meant for PCR based targeted sequencing where there's no insert and the matching is only the primers.
     Default: 0, or no filtering
 - `-th [threads]`  
-    If this parameter is missing, then the mode is one-thread. If you add the     -th parameter, the number of threads equals to the number of processor cores. The parameter -th threads sets the number of threads explicitly.
+    If this parameter is missing, then the mode is one-thread. If you add the -th parameter, the number of threads 
+    equals to the number of processor cores. The parameter -th threads sets the number of threads explicitly.
 - `-VS STRICT | LENIENT | SILENT`   
     How strict to be when reading a SAM or BAM.
      `STRICT`   - throw an exception if something looks wrong.
@@ -302,7 +414,7 @@ The VarDictJava program follows the workflow:
     Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using **first** read only.
     Default: unique mode disabled, all reads are counted.
 - `--chimeric`  
-    Indicate to turn off chimeric reads filtering. Chimeric reads are artifacts from library construction, 
+    Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction, 
     where a read can be split into two segments, each will be aligned within 1-2 read length distance,
     but in opposite direction. Default: filtering enabled
 - `-U|--nosv`  
@@ -342,19 +454,56 @@ The VarDictJava program follows the workflow:
 18. PStd - flag for read position standard deviation
 19. QMean - mean base quality
 20. QStd - flag for base quality standard deviation
-23. QRATIO - ratio of high quality reads to low-quality reads
-24. HIFREQ - variant frequency for high-quality reads
-25. EXTRAFR - Adjusted AF for indels due to local realignment
-26. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
-27. MSI - MicroSattelite. > 1 indicates MSI
-28. MSINT - MicroSattelite unit length in bp
-29. NM - average number of mismatches for reads containing the variant
-30. HICNT - number of high-quality reads with the variant
-31. HICOV - position coverage by high quality reads
-21. 5pFlankSeq - neighboring reference sequence to 5' end 
-22. 3pFlankSeq - neighboring reference sequence to 3' end
-23. SEGMENT:CHR_START_END - position description
-24. VARTYPE - variant type
+21. MAPQ - mapping quality
+22. QRATIO - ratio of high quality reads to low-quality reads
+23. HIFREQ - variant frequency for high-quality reads
+24. EXTRAFR - Adjusted AF for indels due to local realignment
+25. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
+26. MSI - MicroSattelite. > 1 indicates MSI
+27. MSINT - MicroSattelite unit length in bp
+28. NM - average number of mismatches for reads containing the variant
+29. HICNT - number of high-quality reads with the variant
+30. HICOV - position coverage by high quality reads
+31. 5pFlankSeq - neighboring reference sequence to 5' end 
+32. 3pFlankSeq - neighboring reference sequence to 3' end
+33. SEGMENT:CHR_START_END - position description
+34. VARTYPE - variant type
+35. DUPRATE - duplication rate in fraction
+36. SV splits-pairs-clusters: Splits - No. of split reads supporting SV, Pairs - No. of pairs supporting SV, 
+Clusters - No. of clusters supporting SV 
+
+### Input Files
+
+#### BED File – Regions
+VarDict uses 2 types of BED files for specifying regions of interest: 4-column and 8-column. 
+The 8-column file format is used for targeted DNA deep sequencing analysis (amplicon based calling), 
+the 4-column file format - for single sample analysis.
+
+All lines starting with #, browser, and track in a BED file are skipped. 
+The column delimiter can be specified as the -d option (the default value is a tab “\t“).
+
+The 8-column file format involves the following data:
+* Chromosome name
+* Region start position
+* Region end position
+* Gene name
+* Score - not used by VarDict
+* Strand - not used by VarDict
+* Start position – VarDict starts outputting variants from this position
+* End position –VarDict ends outputting variants from this position
+
+The 4-column file format involves the following data:
+* Chromosome name
+* Region start position
+* Region end position
+* Gene name
+
+#### FASTA File - Reference Genome
+The reference genome in FASTA format is read using HTSJDK library. 
+For every invocation of the toVars function (usually 1 for a region in a BED file) 
+and for every BAM file, a part of the reference genome is extracted from the FASTA file. 
+
+Region of FASTA extends and this extension can be regulate by REFEXT variable (option `-Y INT`, default 1200 bp).
 
 # License
 
