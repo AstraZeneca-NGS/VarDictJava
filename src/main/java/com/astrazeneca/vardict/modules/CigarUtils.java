@@ -194,7 +194,7 @@ public class CigarUtils {
 
                 //number of bases after refoff/rdoff that match in reference and read
                 int rn = 0;
-                while (isHasAndEquals(querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
+                while (rdoff + rn < querySeq.length() && isHasAndEquals(querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
                     rn++;
                 }
                 RDOFF += rn;
@@ -247,7 +247,7 @@ public class CigarUtils {
 
                 //number of bases after refoff/rdoff that match in reference and read
                 int rn = 0;
-                while (isHasAndEquals(querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
+                while (rdoff + rn < querySeq.length() && isHasAndEquals(querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
                     rn++;
                 }
                 RDOFF += rn;
@@ -301,7 +301,7 @@ public class CigarUtils {
                 }
 
                 int rn = 0;
-                while (isHasAndEquals(querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
+                while (rdoff + rn < querySeq.length() && isHasAndEquals(querySeq.charAt(rdoff + rn), ref, refoff + rn)) {
                     rn++;
                 }
                 RDOFF += rn;
