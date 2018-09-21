@@ -524,6 +524,9 @@ public class VarDict {
         Collections.sort(pp);
 
         for (Integer p : pp) {
+            if (p < segs.start || p > segs.end) {
+                continue;
+            }
             Vars v1 = vars1.get(p);
             Vars v2 = vars2.get(p);
             if (v1 == null && v2 == null) { // both samples have no coverage

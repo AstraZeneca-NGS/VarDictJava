@@ -1102,7 +1102,7 @@ public class StructuralVariantsProcessor {
                         ins = SequenceUtil.reverseComplement(joinRef(ref, bp, pe));
                     }
                     if (conf.y) {
-                        System.err.printf("  Found INV with discordant pairs only: cnt: %d Len: %d %d-%d<->%d-%d %s\n",
+                        System.err.printf("  Found INV with discordant pairs only 5': cnt: %d Len: %d %d-%d<->%d-%d %s\n",
                                 cnt, len, end, rstart, me, rms, ins);
                     }
                     final Variation vref = getVariation(hash, bp,"-" + len + "^" + ins);
@@ -1185,7 +1185,7 @@ public class StructuralVariantsProcessor {
                         ins = SequenceUtil.reverseComplement(joinRef(ref, bp, pe));
                     }
                     if (conf.y) {
-                        System.err.printf("  Found INV with discordant pairs only: cnt: %d Len: %d %d-%d<->%d-%d %s\n",
+                        System.err.printf("  Found INV with discordant pairs only 3': cnt: %d Len: %d %d-%d<->%d-%d %s\n",
                                 cnt, len, me, rms, end, rstart, ins);
                     }
                     final Variation vref = getVariation(hash, bp,"-" + len + "^" + ins);
