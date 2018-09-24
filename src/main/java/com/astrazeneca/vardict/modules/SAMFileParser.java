@@ -285,7 +285,7 @@ public class SAMFileParser {
                     processCigar:
                     //Loop over CIGAR records
                     for (int ci = 0; ci < cigar.numCigarElements(); ci++) {
-                        if (skipOverlappingReads(conf, record, dir, start, mateAlignmentStart)) {
+                        if (skipOverlappingReads(conf, record, position, dir, start, mateAlignmentStart)) {
                             break;
                         }
                         // Length of segment in CIGAR
@@ -318,7 +318,7 @@ public class SAMFileParser {
                                         String saTagString = record.getStringAttribute(SAMTag.SA.name());
 
                                         if (m >= 20 && saTagString != null) {
-                                            if (isReadChimericWithSA(record, saTagString, rlen, dir, conf, true)) {
+                                            if (isReadChimericWithSA(record, position, saTagString, rlen, dir, conf, true)) {
                                                 n += m;
                                                 offset = 0;
                                                 // Had to reset the start due to softclipping adjustment
@@ -402,7 +402,7 @@ public class SAMFileParser {
                                     if (!conf.chimeric) {
                                         String saTagString = record.getStringAttribute(SAMTag.SA.name());
                                         if (m >= 20 && saTagString != null) {
-                                            if (isReadChimericWithSA(record, saTagString, rlen,
+                                            if (isReadChimericWithSA(record, position, saTagString, rlen,
                                                     dir, conf, false)) {
                                                 n += m;
                                                 offset = 0;
@@ -647,7 +647,7 @@ public class SAMFileParser {
 
                                     // subCnt(getVariation(hash, inspos, ref.get(inspos).toString()), dir, tp, tmpq,
                                     // Qmean, nm, conf);
-                                    if (inspos > record.getAlignmentStart()) {
+                                    if (inspos > position) {
                                         Variation tv = getVariation(hash, inspos, String.valueOf(querySequence.charAt(n - 1 - (start - 1 - inspos))));
                                         //Substract count.
                                         subCnt(tv, dir, tp, queryQuality.charAt(n - 1 - (start -1 - inspos)) - 33,
@@ -1087,7 +1087,7 @@ public class SAMFileParser {
                                 p++;
                             }
                             // Skip read if it is overlap
-                            if (skipOverlappingReads(conf, record, dir, start, mateAlignmentStart)) {
+                            if (skipOverlappingReads(conf, record, position, dir, start, mateAlignmentStart)) {
                                 break processCigar;
                             }
                         }
@@ -1269,7 +1269,7 @@ public class SAMFileParser {
         }
     }
 
-    private static boolean isReadChimericWithSA(SAMRecord record, String saTagString, int rlen,
+    private static boolean isReadChimericWithSA(SAMRecord record, int position, String saTagString, int rlen,
                                                 boolean dir, Configuration conf, boolean is5Side){
         String[] saTagArray = saTagString.split(",");
         String saChromosome = saTagArray[0];
@@ -1285,12 +1285,12 @@ public class SAMFileParser {
 
         boolean isChimericWithSA = ((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward))
                 && saChromosome.equals(record.getReferenceName())
-                && (abs(saPosition - record.getAlignmentStart()) < 2 * rlen)
+                && (abs(saPosition - position) < 2 * rlen)
                 && mm.find();
 
         if (conf.y && isChimericWithSA) {
             System.err.println(record.getReadName() + " " + record.getReferenceName()
-                    + " " + record.getAlignmentStart() + " " + record.getMappingQuality()
+                    + " " + position + " " + record.getMappingQuality()
                     + " " + record.getCigarString()
                     + " is ignored as chimeric with SA: " +
                     saPosition + "," + saDirectionString + "," + saCigar);
@@ -1328,20 +1328,20 @@ public class SAMFileParser {
         }
     }
 
-    private static boolean skipOverlappingReads(Configuration conf, SAMRecord record, boolean dir, int start, int mateAlignmentStart) {
+    private static boolean skipOverlappingReads(Configuration conf, SAMRecord record, int position, boolean dir, int start, int mateAlignmentStart) {
         if (conf.uniqueModeAlignmentEnabled && isPairedAndSameChromosome(record)
                 && !dir && start >= mateAlignmentStart) {
             return true;
         }
         if (conf.uniqueModeSecondInPairEnabled && record.getSecondOfPairFlag() && isPairedAndSameChromosome(record)
-                && isReadsOverlap(record, start, mateAlignmentStart)) {
+                && isReadsOverlap(record, start, position, mateAlignmentStart)) {
             return true;
         }
         return false;
     }
 
-    private static boolean isReadsOverlap(SAMRecord record, int start, int mateAlignmentStart){
-        if (record.getAlignmentStart() >= mateAlignmentStart) {
+    private static boolean isReadsOverlap(SAMRecord record, int start, int position, int mateAlignmentStart){
+        if (position >= mateAlignmentStart) {
             return start >= mateAlignmentStart
                     && start <= (mateAlignmentStart + record.getCigar().getReferenceLength() - 1);
         }
