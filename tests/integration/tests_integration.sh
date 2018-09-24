@@ -35,7 +35,8 @@ DIR_INPUT="$TESTS_DIR/input"
 DIR_OUTPUT="$TESTS_DIR/output"
 
 FASTA_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/hs37d5.fa"
-FASTA=$(echo $FASTA_URL | sed 's#.*/##')
+FASTA=$(basename $FASTA_URL)
+FASTA_BASE=$(basename $FASTA_URL .fa)
 FASTA_PATH="$DIR_INPUT/$FASTA"
 
 NORMAL_BAM_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/data/NA12878/exome_alignment/NA12878.chrom20.ILLUMINA.bwa.CEU.exome.20121211.bam"
@@ -60,17 +61,14 @@ echo Creating input directory
 mkdir $DIR_INPUT || true
 cd $DIR_INPUT
 
-# Fasta downloading. Will rewrite existing files. Can be commented if fasta is downloaded already. Then change $FASTA_PATH to actual location of fasta.
-echo Downloading fasta files
-if [ ! -f "$FASTA_PATH.gz" ]; then
+# Fasta downloading
+echo Downloading fasta file
+if [ ! -f "$FASTA_PATH" ]; then
 	wget -nc $FASTA_URL.gz -O $FASTA_PATH.gz || true
-	wget -nc $FASTA_URL.gz.fai -O $FASTA_PATH.gz.fai || true
-
-	# Fasta unzipping. Can be commented if fasta is downloaded already. Then change $FASTA_PATH to actual location of fasta. Will overwrite existing Fasta file.
-	echo Unzipping fasta files
-	gzip -df $FASTA.gz
-	gzip -df $FASTA.gz.fai
-	mv $FASTA.gz.fai $FASTA.fai
+	echo Unzipping fasta file
+	gunzip -f $FASTA_PATH.gz
+	echo Indexing FAST file
+	samtools faidx $FASTA_PATH
 fi
 
 # BAM and BAI download
