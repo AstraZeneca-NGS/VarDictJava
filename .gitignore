@@ -7,8 +7,8 @@
 out/
 target/
 */build/*
-*/input/*
-*/output/*
+**/input
+**/output
 bin/
 .gradle/
 .settings/
