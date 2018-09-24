@@ -1,12 +1,21 @@
-#!/bin/bash
-#Paths to VarDict java and perl. Change VARDICTJAVA_HOME and VARDICTPERL_HOME to your paths
-VARDICTJAVA_HOME="$HOME/IdeaProjects/VarDictJava/build/install/VarDict"
+#!/bin/bash -eu
+set -o pipefail
+
+#---
+# Paths to VarDict java and perl. Change VARDICTJAVA_HOME and VARDICTPERL_HOME to your paths
+#---
+WORKSPACE="$HOME/IdeaProjects"
+WORKSPACE="$HOME/workspace"
+VARDICTJAVA_PROJECT="$WORKSPACE/VarDictJava"
+VARDICTJAVA_HOME="$VARDICTJAVA_PROJECT/build/install/VarDict"
 VARDICTJAVA="$VARDICTJAVA_HOME/bin/VarDict"
 
-VARDICTPERL_HOME="$HOME/IdeaProjects/VarDictJava/VarDict"
+VARDICTPERL_HOME="$VARDICTJAVA_PROJECT/VarDict"
 VARDICTPERL="$VARDICTPERL_HOME/vardict"
 VARDICTPERL_R_PAIRED="$VARDICTPERL_HOME/testsomatic.R"
 VARDICTPERL_VAR_PAIRED="$VARDICTPERL_HOME/var2vcf_paired.R"
+
+TESTS_DIR="$VARDICTJAVA_PROJECT/tests/integration"
 
 # Parameters for Vardict
 JAVA_THREADS=8
@@ -21,9 +30,9 @@ CONFIRMED_DIFFERENCES=\
 "20\t36869637\t36869637\tC\tA|"\
 "20\t50244187\t50244188\tGA\tAC"
 
-#File names and paths
-DIR_INPUT="input"
-DIR_OUTPUT="output"
+# File names and paths
+DIR_INPUT="$TESTS_DIR/input"
+DIR_OUTPUT="$TESTS_DIR/output"
 
 FASTA_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/hs37d5.fa"
 FASTA=$(echo $FASTA_URL | sed 's#.*/##')
@@ -38,48 +47,58 @@ TUMOR_BAM=$(echo $TUMOR_BAM_URL | sed 's#.*/##')
 TUMOR_BAM_PATH="../$DIR_INPUT/$TUMOR_BAM"
 
 BED_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/exome_pull_down_targets_phases1_and_2/20120518.consensus.annotation.bed"
-BED=$(echo $BED_URL | sed 's#.*/##')
+BED=$(basename $BED_URL)
 CHR="chr20"
 BED_SPLIT=$BED.$CHR
 BED_PATH="../$DIR_INPUT/$BED"
 BED_SPLIT_PATH="../$DIR_INPUT/$BED_SPLIT"
 
+#---
+# Download data files
+#---
 echo Creating input directory
-mkdir $DIR_INPUT
+mkdir $DIR_INPUT || true
 cd $DIR_INPUT
 
 # Fasta downloading. Will rewrite existing files. Can be commented if fasta is downloaded already. Then change $FASTA_PATH to actual location of fasta.
 echo Downloading fasta files
-wget $FASTA_URL.gz -O $FASTA_PATH.gz
-wget $FASTA_URL.gz.fai -O $FASTA_PATH.gz.fai
+if [ ! -f "$FASTA_PATH.gz" ]; then
+	wget -nc $FASTA_URL.gz -O $FASTA_PATH.gz || true
+	wget -nc $FASTA_URL.gz.fai -O $FASTA_PATH.gz.fai || true
 
-# Fasta unzipping. Can be commented if fasta is downloaded already. Then change $FASTA_PATH to actual location of fasta. Will overwrite existing Fasta file.
-echo Unzipping fasta files
-gzip -df $FASTA.gz
-gzip -df $FASTA.gz.fai
-mv $FASTA.gz.fai $FASTA.fai
+	# Fasta unzipping. Can be commented if fasta is downloaded already. Then change $FASTA_PATH to actual location of fasta. Will overwrite existing Fasta file.
+	echo Unzipping fasta files
+	gzip -df $FASTA.gz
+	gzip -df $FASTA.gz.fai
+	mv $FASTA.gz.fai $FASTA.fai
+fi
 
 # BAM and BAI download
 # Normal
 echo Downloading normal BAM
-wget $NORMAL_BAM_URL -O $NORMAL_BAM_PATH
-wget $NORMAL_BAM_URL.bai -O $NORMAL_BAM_PATH.bai
+wget -nc $NORMAL_BAM_URL -O $NORMAL_BAM_PATH || true
+wget -nc $NORMAL_BAM_URL.bai -O $NORMAL_BAM_PATH.bai || true
 # Tumor
 echo Downloading tumor BAM
-wget $TUMOR_BAM_URL -O $TUMOR_BAM_PATH
-wget $TUMOR_BAM_URL.bai -O $TUMOR_BAM_PATH.bai
+wget -nc $TUMOR_BAM_URL -O $TUMOR_BAM_PATH || true
+wget -nc $TUMOR_BAM_URL.bai -O $TUMOR_BAM_PATH.bai || true
 
 # BED download
 echo Downloading BED
-wget $BED_URL -O $BED_PATH
+if [ ! -f "$BED_PATH" ]; then
+	wget -nc $BED_URL -O $BED_PATH || true
 
-# Splitting BED file on chr20 for better performance in VarDict Perl
-cat $BED | grep $CHR > $BED_SPLIT
-rm $BED
+	# Splitting BED file on chr20 for better performance in VarDict Perl
+	cat $BED | grep $CHR > $BED_SPLIT
+fi
+
+#---
+# Run both vardict versions and compare outputs
+#---
 
 echo Creating output directory
 cd ..
-mkdir $DIR_OUTPUT
+mkdir $DIR_OUTPUT || true
 cd $DIR_OUTPUT
 
 # Run VarDict
@@ -95,7 +114,7 @@ time $VARDICTJAVA \
 echo Running VarDict perl
 time $VARDICTPERL \
 	-G $FASTA_PATH \
-	-$PARAMETERS \
+	$PARAMETERS \
 	-b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
 	-F 0x504 \
 	$BED_SPLIT_PATH > perl.var
@@ -109,8 +128,8 @@ fi
 cat java.var | sort > java_sorted.var
 cat perl.var | sort > perl_sorted.var
 
-# Run differences comparing
-echo Running differences raw VARs perl and java
+# Compare differences
+echo Compare differences raw VARs perl and java versions
 cat java_sorted.var | grep -Pv $CONFIRMED_DIFFERENCES > java_confirmed.var
 
 diff_var=$(diff perl_sorted.var  java_confirmed.var > diff_var.txt)
