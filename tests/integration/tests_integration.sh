@@ -1,6 +1,6 @@
 #!/bin/bash
 #Paths to VarDict java and perl. Change VARDICTJAVA_HOME and VARDICTPERL_HOME to your paths
-VARDICTJAVA_HOME="$HOME/IdeaProjects/VarDictJava/build/install"
+VARDICTJAVA_HOME="$HOME/IdeaProjects/VarDictJava/build/install/VarDict"
 VARDICTJAVA="$VARDICTJAVA_HOME/bin/VarDict"
 
 VARDICTPERL_HOME="$HOME/IdeaProjects/VarDictJava/VarDict"
@@ -89,7 +89,7 @@ time $VARDICTJAVA \
 	$PARAMETERS \
 	-th $JAVA_THREADS \
 	-b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
-	$BED_SPLIT_PATH | sort > java.var
+	$BED_SPLIT_PATH  > java.var
 
 #-F 0x504 flag can be deleted after Perl fix for filter unmapped reads by default
 echo Running VarDict perl
@@ -98,31 +98,34 @@ time $VARDICTPERL \
 	-$PARAMETERS \
 	-b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
 	-F 0x504 \
-	$BED_SPLIT_PATH | sort > perl.var
+	$BED_SPLIT_PATH > perl.var
 
 # Check if var files aren't empty
-if [ ! -s "perl.var" ] || [ ! -s "java.var" ]; then 
-	echo "	Var files are empty!" 
+if [ ! -s "perl.var" ] || [ ! -s "java.var" ]; then
+	echo "	Var files are empty!"
 	exit 1;
 fi
 
+cat java.var | sort > java_sorted.var
+cat perl.var | sort > perl_sorted.var
+
 # Run differences comparing
 echo Running differences raw VARs perl and java
-cat java.var | grep -Pv $CONFIRMED_DIFFERENCES > java_confirmed.var
+cat java_sorted.var | grep -Pv $CONFIRMED_DIFFERENCES > java_confirmed.var
 
-diff_var=$(diff perl.var  java_confirmed.var > diff_var.txt)
+diff_var=$(diff perl_sorted.var  java_confirmed.var > diff_var.txt)
 ret1=$?
-if [ "$ret1" = "0" ]; then 
+if [ "$ret1" = "0" ]; then
 	echo "	Raw VAR diff OK (no differences)";
-else 
+else
 	echo "	Raw VAR files have differences!"
 	exit 1;
 fi
 
 #This part can be uncommented when .R and .pl scripts in vardict repositories will be updated.
 #echo Running R script
-#cat java.var | $VARDICTPERL_R_PAIRED > java_r.var
-#cat perl.var | $VARDICTPERL_R_PAIRED > perl_r.var
+#cat java_sorted.var | $VARDICTPERL_R_PAIRED > java_r.var
+#cat perl_sorted.var | $VARDICTPERL_R_PAIRED > perl_r.var
 
 #if [ ! -s "perl_r.var" ] || [ ! -s "java_r.var" ]; then 
 #	echo "	Var files after R script are empty!" 

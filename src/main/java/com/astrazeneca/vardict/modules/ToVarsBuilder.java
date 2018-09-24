@@ -1,6 +1,7 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
+import com.astrazeneca.vardict.Utils;
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
 import com.astrazeneca.vardict.data.Reference;
@@ -183,7 +184,7 @@ public class ToVarsBuilder {
                 tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double) ttcov : 0;
                 tvref.shift3 = 0;
                 tvref.msi = 0;
-                tvref.nm = cnt.nm / (double) cnt.cnt;
+                tvref.nm = Utils.roundHalfEven("0.0", cnt.nm / (double) cnt.cnt);
                 tvref.hicnt = hicnt;
                 tvref.hicov = hicov;
                 tvref.duprate = duprate;
@@ -255,7 +256,7 @@ public class ToVarsBuilder {
                     tvref.extrafreq = cnt.extracnt != 0 ? cnt.extracnt / (double)ttcov : 0;
                     tvref.shift3 = 0;
                     tvref.msi = 0;
-                    tvref.nm = cnt.nm / (double)cnt.cnt;
+                    tvref.nm = Utils.roundHalfEven("0.0", cnt.nm / (double)cnt.cnt);
                     tvref.hicnt = hicnt;
                     tvref.hicov = hicov;
                     tvref.duprate = duprate;

@@ -345,7 +345,7 @@ public class VariationRealigner {
                             int flag = 0;
                             int offset = (sc3pp - p - 1) % insert.length();
                             String tvn = vn;
-                            for(int seqi = 0; seqi < seq.length() && seqi < insert.length(); seqi++) {
+                            for(int seqi = 0; seqi < seq.length() && seqi + offset < insert.length(); seqi++) {
                                 if (!substr(seq, seqi, 1).equals(substr(insert, seqi + offset, 1))) {
                                     flag++;
                                     tvn = tvn.replace(substr(tvn, seqi + offset + 1, 1), substr(seq, seqi, 1));
