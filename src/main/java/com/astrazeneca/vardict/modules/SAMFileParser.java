@@ -647,7 +647,7 @@ public class SAMFileParser {
 
                                     // subCnt(getVariation(hash, inspos, ref.get(inspos).toString()), dir, tp, tmpq,
                                     // Qmean, nm, conf);
-                                    if (inspos > record.getAlignmentStart()) {
+                                    if (inspos > position) {
                                         Variation tv = getVariation(hash, inspos, String.valueOf(querySequence.charAt(n - 1 - (start - 1 - inspos))));
                                         //Substract count.
                                         subCnt(tv, dir, tp, queryQuality.charAt(n - 1 - (start -1 - inspos)) - 33,
