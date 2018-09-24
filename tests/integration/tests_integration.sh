@@ -36,22 +36,22 @@ DIR_OUTPUT="$TESTS_DIR/output"
 
 FASTA_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/hs37d5.fa"
 FASTA=$(echo $FASTA_URL | sed 's#.*/##')
-FASTA_PATH="../$DIR_INPUT/$FASTA"
+FASTA_PATH="$DIR_INPUT/$FASTA"
 
 NORMAL_BAM_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/data/NA12878/exome_alignment/NA12878.chrom20.ILLUMINA.bwa.CEU.exome.20121211.bam"
 NORMAL_BAM=$(echo $NORMAL_BAM_URL | sed 's#.*/##')
-NORMAL_BAM_PATH="../$DIR_INPUT/$NORMAL_BAM"
+NORMAL_BAM_PATH="$DIR_INPUT/$NORMAL_BAM"
 
 TUMOR_BAM_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/data/NA12889/exome_alignment/NA12889.chrom20.ILLUMINA.bwa.CEU.exome.20121211.bam"
 TUMOR_BAM=$(echo $TUMOR_BAM_URL | sed 's#.*/##')
-TUMOR_BAM_PATH="../$DIR_INPUT/$TUMOR_BAM"
+TUMOR_BAM_PATH="$DIR_INPUT/$TUMOR_BAM"
 
 BED_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/exome_pull_down_targets_phases1_and_2/20120518.consensus.annotation.bed"
 BED=$(basename $BED_URL)
 CHR="chr20"
 BED_SPLIT=$BED.$CHR
-BED_PATH="../$DIR_INPUT/$BED"
-BED_SPLIT_PATH="../$DIR_INPUT/$BED_SPLIT"
+BED_PATH="$DIR_INPUT/$BED"
+BED_SPLIT_PATH="$DIR_INPUT/$BED_SPLIT"
 
 #---
 # Download data files
