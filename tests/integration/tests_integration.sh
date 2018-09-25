@@ -22,17 +22,15 @@ JAVA_THREADS=8
 PARAMETERS="-c 1 -S 2 -E 3 -g 4 -f 0.001 -N abc"
 
 # Multiallelic confirmed variants that aren't supported by Perl
-CONFIRMED_DIFFERENCES=\
-"20\t24993259\t24993259\tG\tA|"\
-"20\t31682933\t31682933\tG\tT|"\
-"20\t31829197\t31829197\tC\tT|"\
-"20\t44669022\t44669024\tTCC\tCTT|"\
-"20\t36869637\t36869637\tC\tA|"\
-"20\t50244187\t50244188\tGA\tAC"
+CONFIRMED_DIFFERENCES_FILE="$TESTS_DIR/confirmed_differences.txt"
 
 # File names and paths
 DIR_INPUT="$TESTS_DIR/input"
 DIR_OUTPUT="$TESTS_DIR/output"
+VARDICT_OUT_JAVA="$DIR_OUTPUT/vardict.java.txt"
+VARDICT_OUT_PERL="$DIR_OUTPUT/vardict.perl.txt"
+VARDICT_OUT_SORT_JAVA="$DIR_OUTPUT/vardict.java.sort.txt"
+VARDICT_OUT_SORT_PERL="$DIR_OUTPUT/vardict.perl.sort.txt"
 
 FASTA_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/hs37d5.fa"
 FASTA=$(basename $FASTA_URL)
@@ -102,40 +100,44 @@ cd $DIR_OUTPUT
 # Run VarDict
 echo Running VarDict java
 time $VARDICTJAVA \
-	-G $FASTA_PATH \
-	$PARAMETERS \
-	-th $JAVA_THREADS \
-	-b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
-	$BED_SPLIT_PATH  > java.var
+		-G $FASTA_PATH \
+		$PARAMETERS \
+		-b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
+		-th $JAVA_THREADS \
+		$BED_SPLIT_PATH \
+	| tee $VARDICT_OUT_JAVA \
+	| sort \
+	| grep -v -f $CONFIRMED_DIFFERENCES_FILE \
+	> $VARDICT_OUT_SORT_JAVA
 
-#-F 0x504 flag can be deleted after Perl fix for filter unmapped reads by default
+# Note: The '-F 0x504' flag can be deleted after Perl fix for filter unmapped reads by default
 echo Running VarDict perl
 time $VARDICTPERL \
-	-G $FASTA_PATH \
-	$PARAMETERS \
-	-b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
-	-F 0x504 \
-	$BED_SPLIT_PATH > perl.var
+		-G $FASTA_PATH \
+		$PARAMETERS \
+		-b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
+		-F 0x504 \
+		$BED_SPLIT_PATH \
+	| tee $VARDICT_OUT_PERL \
+	| sort \
+	| grep -v -f $CONFIRMED_DIFFERENCES_FILE \
+	> $VARDICT_OUT_SORT_PERL
 
 # Check if var files aren't empty
-if [ ! -s "perl.var" ] || [ ! -s "java.var" ]; then
-	echo "	Var files are empty!"
+if [ ! -s "$VARDICT_OUT_PERL" ] || [ ! -s "$VARDICT_OUT_JAVA" ]; then
+	echo "ERROR: Empty variant file/s"
 	exit 1;
 fi
 
-cat java.var | sort > java_sorted.var
-cat perl.var | sort > perl_sorted.var
-
 # Compare differences
-echo Compare differences raw VARs perl and java versions
-cat java_sorted.var | grep -Pv $CONFIRMED_DIFFERENCES > java_confirmed.var
+echo Compare differences 
 
-diff_var=$(diff perl_sorted.var  java_confirmed.var > diff_var.txt)
-ret1=$?
-if [ "$ret1" = "0" ]; then
-	echo "	Raw VAR diff OK (no differences)";
+DIFF_FILE="$DIR_OUTPUT/vardict.diff"
+if diff $VARDICT_OUT_SORT_PERL $VARDICT_OUT_SORT_JAVA > $DIFF_FILE
+then
+	echo "OK: Raw VAR diff OK (no differences)";
 else
-	echo "	Raw VAR files have differences!"
+	echo "ERROR: Raw VAR files have differences!"
 	exit 1;
 fi
 
