@@ -271,7 +271,7 @@ public class Variant {
                 shift3,
                 msi == 0 ? 0 : new DecimalFormat("0.000").format(msi),
                 msint,
-                new DecimalFormat("0.0").format(nm),
+                nm > 0 ? new DecimalFormat("0.0").format(nm) : 0,
                 hicnt,
                 hicov,
                 leftseq.isEmpty() ? "0" : leftseq,
@@ -416,7 +416,7 @@ public class Variant {
     public static String joinVariantWithNM(Variant variant) {
         return join("\t",
                 variant.joinVar2("\t"),
-                new DecimalFormat("0.0").format(variant.nm)
+                variant.nm > 0 ? new DecimalFormat("0.0").format(variant.nm) : 0
         );
     }
 

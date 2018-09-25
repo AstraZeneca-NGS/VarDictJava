@@ -687,11 +687,11 @@ public class VarDict {
                                 int cov = v1ref != null ? v1ref.cov : 0;
                                 int fwd = v1ref != null ? v1ref.fwd : 0;
                                 int rev = v1ref != null ? v1ref.rev : 0;
-                                th1 = join("\t", tcov, 0, cov, fwd, rev, 0, 0);
+                                th1 = join("\t", tcov, 0, fwd, rev, 0, 0);
 
                                 String genotype = v1var != null ? v1var.genotype :
                                       (v1ref != null ? v1ref.n + "/" + v1ref.n : "N/N");
-                                th1 = join("\t", th1, genotype);
+                                th1 = join("\t", th1, genotype, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
                                 if ("Complex".equals(v2var.vartype)) {
                                     v2var.adjComplex();

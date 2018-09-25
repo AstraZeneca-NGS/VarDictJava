@@ -114,14 +114,14 @@ public class ToVarsBuilder {
                 }
             }
 
-            //total position coverage
-            int tcov = cov.get(p);
-
-            if (tcov == 0) { // ignore when there's no coverage
+            if (!cov.containsKey(p) || cov.get(p) == 0) { // ignore when there's no coverage
                 System.err.printf("Error tcov: %s %d %d %d %s\n",
                         region.chr, p, region.start, region.end, v.sv.type);
                 continue;
             }
+
+            //total position coverage
+            int tcov = cov.get(p);
 
             //array of all variants for the position
             List<Variant> var = new ArrayList<>();
