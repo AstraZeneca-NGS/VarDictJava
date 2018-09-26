@@ -18,7 +18,11 @@ CONFIRMED_DIFFERENCES_FILE="$TESTS_DIR/confirmed_differences.txt"
 VARDICT_OUT_JAVA="$DIR_OUTPUT/vardict.java.txt"
 VARDICT_OUT_PERL="$DIR_OUTPUT/vardict.perl.txt"
 VARDICT_OUT_SORT_JAVA="$DIR_OUTPUT/vardict.java.sort.txt"
+VARDICT_OUT_R_JAVA="$DIR_OUTPUT/vardict.java.r.txt"
+VARDICT_OUT_VCF_JAVA="$DIR_OUTPUT/vardict.java.vcf"
 VARDICT_OUT_SORT_PERL="$DIR_OUTPUT/vardict.perl.sort.txt"
+VARDICT_OUT_R_PERL="$DIR_OUTPUT/vardict.perl.r.txt"
+VARDICT_OUT_VCF_PERL="$DIR_OUTPUT/vardict.perl.vcf"
 
 # Download URLs and local file paths
 FASTA_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/hs37d5.fa"
@@ -131,24 +135,27 @@ else
 fi
 
 #This part can be uncommented when .R and .pl scripts in vardict repositories will be updated.
-#echo Running R script
-#cat java_sorted.var | $VARDICTPERL_R_PAIRED > java_r.var
-#cat perl_sorted.var | $VARDICTPERL_R_PAIRED > perl_r.var
 
-#if [ ! -s "perl_r.var" ] || [ ! -s "java_r.var" ]; then 
-#	echo "	Var files after R script are empty!" 
+#echo Running R script
+#cat $VARDICT_OUT_SORT_JAVA | $VARDICTPERL_R_PAIRED > VARDICT_OUT_R_JAVA
+#cat $VARDICT_OUT_SORT_PERL | $VARDICTPERL_R_PAIRED > VARDICT_OUT_R_PERL
+
+#if [ ! -s "VARDICT_OUT_R_PERL" ] || [ ! -s "$VARDICT_OUT_R_JAVA" ]; then
+#	echo "	ERROR: Empty R variant file/s"
 #	exit 1;
 #fi
-#echo Running Var2VCF script
-#cat java_r.var | $VARDICTPERL_VAR_PAIRED > java.vcf
-#cat perl_r.var | $VARDICTPERL_VAR_PAIRED > perl.vcf
 
-#echo Running differences VCFs perl and java
-#diff_vcf=$(diff perl.vcf java.vcf > diff_vcf.txt)
-#ret2=$?
-#if ["$ret2" = "0"]; then
-#	echo "	VCF diff OK (no differences)";
-#else 
-#	echo "	VCF files have differences!"
+#echo Running Var2VCF script
+#cat VARDICT_OUT_R_JAVA | $VARDICTPERL_VAR_PAIRED > VARDICT_OUT_VCF_JAVA
+#cat VARDICT_OUT_R_PERL | $VARDICTPERL_VAR_PAIRED > VARDICT_OUT_VCF_PERL
+
+# Compare differences in VCFs
+#echo Compare differences in VCFs
+#DIFF_VCF_FILE="$DIR_OUTPUT/vardict.diff.vcf"
+#if diff $VARDICT_OUT_VCF_PERL $VARDICT_OUT_VCF_JAVA > $DIFF_VCF_FILE
+#then
+#	echo "OK: VCF diff OK (no differences)";
+#else
+#	echo "ERROR: VCF files have differences!"
 #	exit 1;
 #fi
