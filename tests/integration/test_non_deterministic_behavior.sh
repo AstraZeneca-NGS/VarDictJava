@@ -1,40 +1,52 @@
-#!/bin/bash
+#!/bin/bash -eu
+set -o pipefail
 
-REF_GENOME="/ngs/fa/hg19.fa"
-COLO20="Colo829.chr20.PerlNonDeterm.bam"
+# Load config vars
+SCRIPT_DIR="$( cd "$( dirname "$0" )" && pwd )"
+source $SCRIPT_DIR/config.sh
+
+REF_GENOME="$DIR_REFERENCE/hg19.fa"
+COLO20="$TESTS_DIR/non_deterministic_behavior/Colo829.chr20.PerlNonDeterm.bam"
 REGION="-R chr20:61659400-61659600"
-#Flag to remove differences because Perl doesn't sort unmapped reads
+
+# Flag to remove differences because Perl doesn't sort unmapped reads
 UNMAPPED_FLAG="-F 0x504"
-# Paths to Vardict
 
-VARDICTJAVA_HOME="$HOME/IdeaProjects/VarDictJava"
-VARDICTJAVA="$VARDICTJAVA_HOME/build/install/VarDict/bin/VarDict"
-VARDICTPERL_HOME="$HOME/IdeaProjects/VarDict/vardict.pl"
+N=5
+for i in $(seq 1 $N); do 
+	echo "Running VarDict Perl: $i / $N"
+	time $VARDICTPERL \
+			-G $REF_GENOME \
+			-f 0.001 -N abc \
+			-b $COLO20 $UNMAPPED_FLAG \
+			-c 1 -S 2 -E 3 -g 4 \
+			$REGION \
+		| sort \
+		> $DIR_OUTPUT/vardictColo20.perl.$i.txt
 
-echo Running VarDict perl for 5 times
-for i in {1..5}; 
-do 
-echo Running VarDict perl $i time;
-time $VARDICTPERL_HOME \
-		-G $REF_GENOME \
-		-f 0.001 -N abc \
-		-b $COLO20 $UNMAPPED_FLAG \
-		-c 1 -S 2 -E 3 -g 4 \
-		$REGION | sort  > vardictColo20_$i.perl.txt;
-done;
+ 	echo "Running VarDict Java: $i / $N"
+ 	time $VARDICTJAVA \
+ 			-G $REF_GENOME \
+ 			-f 0.001 -N abc \
+ 			-b $COLO20 $UNMAPPED_FLAG \
+ 			-c 1 -S 2 -E 3 -g 4 \
+ 			$REGION \
+ 	| sort \
+ 	> $DIR_OUTPUT/vardictColo20.java.$i.txt
 
-echo Running VarDict java
-time $VARDICTJAVA \
-		-G $REF_GENOME \
-		-f 0.001 -N abc \
-		-b $COLO20 $UNMAPPED_FLAG \
-		-c 1 -S 2 -E 3 -g 4 \
-		$REGION | sort  > vardictColo20.java.txt
+done
 
-echo Differences:
-for i in {1..4}; 
-do 
-let j=$i+1;
-echo Difference $i-$j time;
-diff vardictColo20_$i.perl.txt vardictColo20_$j.perl.txt;
-done;
+echo "Differences:"
+for i in $(seq 1 $N); do 
+	for j in $(seq 1 $N); do 
+		echo "--------------------------------------------------------------------------------"
+		echo
+		echo
+		echo "Difference $i-$j Perl:"
+		diff $DIR_OUTPUT/vardictColo20.perl.$i.txt $DIR_OUTPUT/vardictColo20.perl.$j.txt || true
+		echo
+		echo
+		echo "Difference $i-$j Java:"
+		diff $DIR_OUTPUT/vardictColo20.java.$i.txt $DIR_OUTPUT/vardictColo20.java.$j.txt || true
+	done
+done
