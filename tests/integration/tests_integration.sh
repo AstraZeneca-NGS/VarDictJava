@@ -2,41 +2,29 @@
 set -o pipefail
 
 #---
-# Paths to VarDict java and perl. Change VARDICTJAVA_HOME and VARDICTPERL_HOME to your paths
+# Config variables
 #---
-WORKSPACE="$HOME/IdeaProjects"
-WORKSPACE="$HOME/workspace"
-VARDICTJAVA_PROJECT="$WORKSPACE/VarDictJava"
-VARDICTJAVA_HOME="$VARDICTJAVA_PROJECT/build/install/VarDict"
-VARDICTJAVA="$VARDICTJAVA_HOME/bin/VarDict"
 
-TESTS_DIR="$VARDICTJAVA_PROJECT/tests/integration"
+SCRIPT_DIR="$( cd "$( dirname "$0" )" && pwd )"
+source $SCRIPT_DIR/config.sh
 
-VARDICTPERL_HOME="$VARDICTJAVA_PROJECT/VarDict"
-VARDICTPERL="$TESTS_DIR/vardict.pl"
-VARDICTPERL_R_PAIRED="$VARDICTPERL_HOME/testsomatic.R"
-VARDICTPERL_VAR_PAIRED="$VARDICTPERL_HOME/var2vcf_paired.R"
-
-
-# Parameters for Vardict
 JAVA_THREADS=8
 PARAMETERS="-c 1 -S 2 -E 3 -g 4 -f 0.001 -N abc"
 
 # Multiallelic confirmed variants that aren't supported by Perl
 CONFIRMED_DIFFERENCES_FILE="$TESTS_DIR/confirmed_differences.txt"
 
-# File names and paths
-DIR_INPUT="$TESTS_DIR/input"
-DIR_OUTPUT="$TESTS_DIR/output"
+# Output files
 VARDICT_OUT_JAVA="$DIR_OUTPUT/vardict.java.txt"
 VARDICT_OUT_PERL="$DIR_OUTPUT/vardict.perl.txt"
 VARDICT_OUT_SORT_JAVA="$DIR_OUTPUT/vardict.java.sort.txt"
 VARDICT_OUT_SORT_PERL="$DIR_OUTPUT/vardict.perl.sort.txt"
 
+# Download URLs and local file paths
 FASTA_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/hs37d5.fa"
 FASTA=$(basename $FASTA_URL)
 FASTA_BASE=$(basename $FASTA_URL .fa)
-FASTA_PATH="$DIR_INPUT/$FASTA"
+FASTA_PATH="$DIR_REFERENCE/$FASTA"
 
 NORMAL_BAM_URL="http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/data/NA12878/exome_alignment/NA12878.chrom20.ILLUMINA.bwa.CEU.exome.20121211.bam"
 NORMAL_BAM=$(echo $NORMAL_BAM_URL | sed 's#.*/##')

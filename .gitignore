@@ -9,6 +9,7 @@ target/
 */build/*
 **/input
 **/output
+**/reference
 bin/
 .gradle/
 .settings/

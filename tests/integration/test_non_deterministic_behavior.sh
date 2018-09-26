@@ -1,4 +1,5 @@
 #!/bin/bash
+
 REF_GENOME="/ngs/fa/hg19.fa"
 COLO20="Colo829.chr20.PerlNonDeterm.bam"
 REGION="-R chr20:61659400-61659600"
