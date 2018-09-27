@@ -249,7 +249,7 @@ public class SAMFileParser {
                     final int position;
                     final Cigar cigar;
                     if (conf.performLocalRealignment) {
-                        // Modify the CIGAR for potential mis-alignmet for indels at the end of reads to softclipping
+                        // Modifies the CIGAR for potential mis-alignment for indels at the end of reads to softclipping
                         // and let VarDict's algorithm to figure out indels
                         Tuple.Tuple2<Integer, String> mc = CigarUtils.modifyCigar(indel, ref, record.getAlignmentStart(),
                                 record.getCigarString(), querySequence, queryQuality, conf.LOWQUAL);
