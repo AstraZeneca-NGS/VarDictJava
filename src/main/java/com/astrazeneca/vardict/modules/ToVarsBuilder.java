@@ -89,16 +89,18 @@ public class ToVarsBuilder {
             if (v.isEmpty()) {
                 continue;
             }
-            //Skip if position is outside region of interest
-            if (v.sv == null) {
+
+            //Skip if there are no structural variants on position or if the delete duplication option is on
+            if (v.sv == null || conf.deleteDuplicateVariants) {
+                //Skip if start position is outside region of interest
                 if (p < region.start || p > region.end) {
                     continue;
                 }
-                //skip position if it has no coverage
-                if (!cov.containsKey(p)) {
-                    continue;
-                }
+            }
 
+            //Skip position if it has no coverage (except SVs)
+            if (v.sv == null && !cov.containsKey(p)) {
+                continue;
             }
 
             Set<String> vk = new HashSet<String>(v.keySet());

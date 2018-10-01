@@ -218,6 +218,11 @@ public class Configuration {
     public boolean disableSV = false; //-U
 
     /**
+     * Turn on deleting of duplicate variants that can appear due to VarDict linear work on regions.
+     */
+    public boolean deleteDuplicateVariants = false;
+
+    /**
      * The minimum distance between two SV clusters in term of read length
      */
     public static final double MINSVCDIST = 1.5;
