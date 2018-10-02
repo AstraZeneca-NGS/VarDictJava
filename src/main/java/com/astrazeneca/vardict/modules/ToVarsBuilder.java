@@ -175,7 +175,7 @@ public class ToVarsBuilder {
                 tvref.fwd = fwd;
                 tvref.rev = rev;
                 tvref.bias = String.valueOf(bias);
-                tvref.freq = cnt.cnt / (double) ttcov;
+                tvref.freq = Utils.roundHalfEven("0.0000", cnt.cnt / (double) ttcov);
                 tvref.pmean = cnt.pmean / (double) cnt.cnt;
                 tvref.pstd = cnt.pstd;
                 tvref.qual = vqual;
@@ -247,7 +247,7 @@ public class ToVarsBuilder {
                     tvref.fwd = fwd;
                     tvref.rev = rev;
                     tvref.bias = String.valueOf(bias);
-                    tvref.freq = cnt.cnt / (double) ttcov;
+                    tvref.freq = Utils.roundHalfEven("0.0000", cnt.cnt / (double) ttcov);
                     tvref.pmean = cnt.pmean / (double) cnt.cnt;
                     tvref.pstd = cnt.pstd;
                     tvref.qual = vqual;
