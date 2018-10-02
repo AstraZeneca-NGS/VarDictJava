@@ -629,6 +629,9 @@ public class ToVarsBuilder {
                     } else {
                         vref.bias = "0;" + vref.bias;
                     }
+
+                    adjustVariantCounts(p, vref);
+
                     if (conf.debug) {
                         StringBuilder sb = new StringBuilder();
                         for (String str : tmp) {
@@ -686,6 +689,33 @@ public class ToVarsBuilder {
             System.err.println("TIME: Finish preparing vars:" + LocalDateTime.now());
         }
         return tuple(Rlen, vars);
+    }
+
+    /**
+     * Adjust variant negative counts of fields FWD, REV, RFC, RRC to zeros and print the information message to console
+     * @param p start position of variant
+     * @param vref variant to adjust
+     */
+    private static void adjustVariantCounts(int p, Variant vref) {
+        String message = "column in variant on position: " + p + " " + vref.refallele + "->" +
+                vref.varallele + " was negative, adjusted to zero.";
+
+        if (vref.rfc < 0 ) {
+            vref.rfc = 0;
+            System.err.println("Reference forward count " + message);
+        }
+        if (vref.rrc < 0) {
+            vref.rrc = 0;
+            System.err.println("Reference reverse count " + message);
+        }
+        if (vref.fwd < 0) {
+            vref.fwd = 0;
+            System.err.println("Variant forward count " + message);
+        }
+        if (vref.rev < 0 ) {
+            vref.rev = 0;
+            System.err.println("Variant reverse count " + message);
+        }
     }
 
     private static int calcHicov(VariationMap<String, Variation> iv,
