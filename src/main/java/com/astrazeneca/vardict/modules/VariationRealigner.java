@@ -373,7 +373,8 @@ public class VariationRealigner {
             }
         }
 
-        for (Tuple.Tuple3<Integer, String, Integer> tpl : tmp) {
+        for (int i = tmp.size() - 1; i > 0; i--) {
+            Tuple.Tuple3<Integer, String, Integer> tpl = tmp.get(i);
             Integer p = tpl._1;
             String vn = tpl._2;
             if (!iHash.containsKey(p)) {
