@@ -648,10 +648,12 @@ public class SAMFileParser {
                                     // subCnt(getVariation(hash, inspos, ref.get(inspos).toString()), dir, tp, tmpq,
                                     // Qmean, nm, conf);
                                     if (inspos > position) {
-                                        Variation tv = getVariation(hash, inspos, String.valueOf(querySequence.charAt(n - 1 - (start - 1 - inspos))));
+                                        Variation tv = getVariationMaybe(hash, inspos, querySequence.charAt(n - 1 - (start - 1 - inspos)));
                                         //Substract count.
-                                        subCnt(tv, dir, tp, queryQuality.charAt(n - 1 - (start -1 - inspos)) - 33,
-                                                mappingQuality, nm - nmoff, conf.goodq);
+                                        if (tv != null) {
+                                            subCnt(tv, dir, tp, queryQuality.charAt(n - 1 - (start - 1 - inspos)) - 33,
+                                                    mappingQuality, nm - nmoff, conf.goodq);
+                                        }
                                     }
                                     // #}
                                     // Adjust count if the insertion is at the edge so that the AF won't > 1
