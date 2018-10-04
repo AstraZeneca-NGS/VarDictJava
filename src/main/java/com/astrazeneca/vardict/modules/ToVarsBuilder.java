@@ -640,6 +640,10 @@ public class ToVarsBuilder {
                         vref.DEBUG = sb.toString();
                     }
                 }
+                //TODO: It is a "lazy" solution because current logic in realignment methods can't be changed simply for --nosv option
+                if (conf.disableSV) {
+                    varsAtp.var.removeIf(vref -> ANY_SV.matcher(vref.varallele).find());
+                }
             } else if (varsAtp.ref != null) {
                 Variant vref = varsAtp.ref; //no variant reads are detected.
                 vref.tcov = tcov;
