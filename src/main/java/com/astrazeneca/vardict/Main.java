@@ -140,6 +140,7 @@ public class Main {
         conf.disableSV = cmd.hasOption("U");
         conf.uniqueModeSecondInPairEnabled = cmd.hasOption("UN");
         conf.uniqueModeAlignmentEnabled = cmd.hasOption("u");
+        conf.deleteDuplicateVariants = cmd.hasOption("deldupvar");
 
         conf.INSSIZE = getIntValue(cmd, "w", 300);
         conf.INSSTD = getIntValue(cmd, "W", 100);
@@ -197,6 +198,7 @@ public class Main {
         options.addOption("u", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using forward read only.");
         options.addOption("UN", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using first read only.");
         options.addOption("chimeric", false, "Indicate to turn off chimeric reads filtering.");
+        options.addOption("deldupvar", false, "Turn on deleting of duplicate variants. Variants in this mode are considered and outputted only if start position of variant is inside the region interest.");
         options.addOption("U", "nosv", false, "Turn off structural variant calling.");
 
         options.addOption(OptionBuilder.withArgName("bit")

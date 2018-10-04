@@ -431,7 +431,9 @@ Variant frequency is more than 10% for the non-monomer MSI and 25% for the monom
 - `-Y|--ref-extension INT`  
     Extension of bp of reference to build lookup table. Default to 1200 bp. Increase the number will slowdown the program. 
     The main purpose is to call large indels with 1000 bp that can be missed by discordant mate pairs. 
-      
+- `--deldupvar`  
+  Turn on deleting of duplicate variants in output that can appear due to VarDict linear work on regions. Variants in this mode are 
+  considered and outputted only if start position of variant is inside the region interest.
 ## Output columns
 
 1. Sample - sample name
