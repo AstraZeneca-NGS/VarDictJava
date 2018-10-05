@@ -17,9 +17,10 @@ for i in $(seq 1 $N); do
 	echo "Running VarDict Perl: $i / $N"
 	time $VARDICTPERL \
 			-G $REF_GENOME \
-			-f 0.001 -N abc \
-			-b $COLO20 $UNMAPPED_FLAG \
-			-c 1 -S 2 -E 3 -g 4 \
+			-f 0.001 \
+			-N abc \
+			-b $COLO20 \
+			$UNMAPPED_FLAG \
 			$REGION \
 		| sort \
 		> $DIR_OUTPUT/vardictColo20.perl.$i.txt
@@ -27,9 +28,10 @@ for i in $(seq 1 $N); do
  	echo "Running VarDict Java: $i / $N"
  	time $VARDICTJAVA \
  			-G $REF_GENOME \
- 			-f 0.001 -N abc \
- 			-b $COLO20 $UNMAPPED_FLAG \
- 			-c 1 -S 2 -E 3 -g 4 \
+ 			-f 0.001 \
+			-N abc \
+ 			-b $COLO20 \
+			$UNMAPPED_FLAG \
  			$REGION \
  	| sort \
  	> $DIR_OUTPUT/vardictColo20.java.$i.txt
