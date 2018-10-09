@@ -65,4 +65,13 @@ test {
     useTestNG()
 }
 
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.astrazeneca.vardict.Main'
+    }
+    from {
+        configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
 applicationDistribution.from('VarDict/teststrandbias.R','VarDict/testsomatic.R','VarDict/var2vcf_valid.pl','VarDict/var2vcf_paired.pl').into('bin')
