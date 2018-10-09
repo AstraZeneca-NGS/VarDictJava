@@ -25,6 +25,28 @@ import static java.lang.String.format;
 
 public class SAMFileParser {
     private static final Random RND = new Random(System.currentTimeMillis());
+    
+    /**
+     * Get quality string in a safe way, avoid exceptions due to quality scores beyond MAX_PHRED_SCORE 
+     */
+    static String getBaseQualityString(SAMRecord record) {
+        try {
+        	return record.getBaseQualityString();
+        } catch(IllegalArgumentException iae) {
+        	// For consolidated reads the quality score can be outside the allowed ranges for proper character representation
+        	// In this case we saturate at the highest value
+        	System.err.println("WARNING: Cannot get quality string for SAMRecord " + record.getReferenceName() + ":" + record.getAlignmentStart() + ", " + record.getReadName());
+        	byte[] qs=record.getBaseQualities();
+        	char[] qsChar = new char[qs.length];
+        	for(int i=0 ; i < qs.length; i++) {
+        		byte q = qs[i];
+        		if((q < 0) || (q > SAMUtils.MAX_PHRED_SCORE)) qs[i] = SAMUtils.MAX_PHRED_SCORE;
+        		qsChar[i] = (char)(q + 33);
+        	}
+        	return new String(qsChar);
+        }
+    }
+    
     /**
      * Construct a variant structure given a region and BAM files.
      * @param region region
@@ -158,7 +180,7 @@ public class SAMFileParser {
                         }
                     }
 
-                    final String queryQuality = record.getBaseQualityString();
+                    final String queryQuality = getBaseQualityString(record);
                     final boolean isMrnmEqual = record.getReferenceName().equals(record.getMateReferenceName());
 
                     // Number of mismatches
