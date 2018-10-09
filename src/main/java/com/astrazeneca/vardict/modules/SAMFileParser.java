@@ -35,7 +35,7 @@ public class SAMFileParser {
         } catch(IllegalArgumentException iae) {
         	// For consolidated reads the quality score can be outside the allowed ranges for proper character representation
         	// In this case we saturate at the highest value
-        	System.err.println("WARNING: Cannot get quality string for SAMRecord at " + record.getReferenceName() + ":" + record.getAlignmentStart() + ", record name: '" + record.getReadName()+"'. Capping qualities at " + SAMUtils.MAX_PHRED_SCORE);
+        	System.err.println("WARNING: Cannot get encode qualities for SAM entry at " + record.getReferenceName() + ":" + record.getAlignmentStart() + ", record name: '" + record.getReadName()+"'. Capping qualities at " + SAMUtils.MAX_PHRED_SCORE);
         	byte[] qs=record.getBaseQualities();
         	char[] qsChar = new char[qs.length];
         	for(int i=0 ; i < qs.length; i++) {
