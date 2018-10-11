@@ -442,7 +442,8 @@ public class CigarUtils {
                     RN.add(ref.get(refoff + rn + 1)); // to my mind in perl value increasing here ? not adding el
                 }
                 int rn_nt = RN.size(); // don't adjust if homopolymer
-                if ((rn > 4 && rn_nt > 1) || (isHasAndEquals(ref, refoff, querySeq, rdoff))) { //If more than 3 bases
+                if (rn > 4 && rn_nt > 1) {
+                    //If more than 3 bases
                     // match after refoff/rdoff or base at refoff/rdoff match
                     mch += rn + 1;
                     soft -= rn + 1;

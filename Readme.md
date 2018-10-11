@@ -378,7 +378,7 @@ Variant frequency is more than 10% for the non-monomer MSI and 25% for the monom
 - `-T|--trim INT`  
     Trim bases after `[INT]` bases in the reads
 - `-X INT`   
-    Extension of bp to look for mismatches after insersion or deletion.  Default to 3 bp, or only calls when they are within 3 bp.
+    Extension of bp to look for mismatches after insersion or deletion.  Default to 2 bp, or only calls when they are within 2 bp.
 - `-P number`  
     The read position filter.  If the mean variants position is less that specified, it is considered false positive.  Default: 5
 - `-Z|--downsample double`  

@@ -108,7 +108,7 @@ public class Main {
         conf.goodq = getDoubleValue(cmd, "q", 22.5);
         conf.mismatch =  getIntValue(cmd, "m", 8);
         conf.trimBasesAfter = getIntValue(cmd, "T", 0);
-        conf.vext = getIntValue(cmd, "X", 3);
+        conf.vext = getIntValue(cmd, "X", 2);
         conf.readPosFilter = getIntValue(cmd, "P", 5);
         if (cmd.hasOption("Z")) {
             conf.downsampling = getDoubleValue(cmd, "Z", 0);
@@ -379,7 +379,7 @@ public class Main {
 
         options.addOption(OptionBuilder.withArgName("INT")
                 .hasArg(true)
-                .withDescription("Extension of bp to look for mismatches after insersion or deletion.  Default to 3 bp, or only calls when they're within 3 bp.")
+                .withDescription("Extension of bp to look for mismatches after insersion or deletion.  Default to 2 bp, or only calls when they're within 2 bp.")
                 .withType(Number.class)
                 .isRequired(false)
                 .create('X'));

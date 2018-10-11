@@ -570,6 +570,10 @@ public class VariationRealigner {
                 if (sclip5.containsKey(sc5pp) && !sclip5.get(sc5pp).used) {
                     Sclip tv = sclip5.get(sc5pp);
                     String seq = findconseq(tv, conf, 0);
+                    //Make sure a couple of bogus mapping won't scoop up several fold soft-clip reads
+                    if (dcnt <= 2 && tv.cnt/dcnt > 5) {
+                        continue;
+                    }
                     if (conf.y) {
                         System.err.printf("  Realigndel 5: %s %s seq: '%s' Wuseq: %s cnt: %s %s %s %s cov: %s\n",
                                 p, sc5pp, seq, new StringBuilder(wupseq).reverse(), tv.cnt, dcnt, vn, p, cov.get(p));
@@ -592,6 +596,10 @@ public class VariationRealigner {
                 if (sclip3.containsKey(sc3pp) && !sclip3.get(sc3pp).used) {
                     Sclip tv = sclip3.get(sc3pp);
                     String seq = findconseq(tv, conf, 0);
+                    //Make sure a couple of bogus mapping won't scoop up several fold soft-clip reads
+                    if (dcnt <= 2 && tv.cnt/dcnt > 5) {
+                        continue;
+                    }
                     if (conf.y) {
                         System.err.printf("  Realigndel 3: %s %s seq '%s' Sanseq: %s cnt: %s %s %s %s %s %s\n",
                                 p, sc3pp, seq, sanpseq, tv.cnt, dcnt, vn, p, dellen, substr(sanpseq, sc3pp - p));
