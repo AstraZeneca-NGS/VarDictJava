@@ -137,17 +137,17 @@ fi
 #This part can be uncommented when .R and .pl scripts in vardict repositories will be updated.
 
 #echo Running R script
-#cat $VARDICT_OUT_SORT_JAVA | $VARDICTPERL_R_PAIRED > VARDICT_OUT_R_JAVA
-#cat $VARDICT_OUT_SORT_PERL | $VARDICTPERL_R_PAIRED > VARDICT_OUT_R_PERL
+#cat $VARDICT_OUT_SORT_JAVA | $VARDICTPERL_R_PAIRED > $VARDICT_OUT_R_JAVA
+#cat $VARDICT_OUT_SORT_PERL | $VARDICTPERL_R_PAIRED > $VARDICT_OUT_R_PERL
 
-#if [ ! -s "VARDICT_OUT_R_PERL" ] || [ ! -s "$VARDICT_OUT_R_JAVA" ]; then
+#if [ ! -s "$VARDICT_OUT_R_PERL" ] || [ ! -s "$VARDICT_OUT_R_JAVA" ]; then
 #	echo "	ERROR: Empty R variant file/s"
 #	exit 1;
 #fi
 
 #echo Running Var2VCF script
-#cat VARDICT_OUT_R_JAVA | $VARDICTPERL_VAR_PAIRED > VARDICT_OUT_VCF_JAVA
-#cat VARDICT_OUT_R_PERL | $VARDICTPERL_VAR_PAIRED > VARDICT_OUT_VCF_PERL
+#cat $VARDICT_OUT_R_JAVA | $VARDICTPERL_VAR_PAIRED > $VARDICT_OUT_VCF_JAVA
+#cat $VARDICT_OUT_R_PERL | $VARDICTPERL_VAR_PAIRED > $VARDICT_OUT_VCF_PERL
 
 # Compare differences in VCFs
 #echo Compare differences in VCFs
