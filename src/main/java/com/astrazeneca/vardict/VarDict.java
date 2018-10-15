@@ -745,7 +745,11 @@ public class VarDict {
                             th1 = joinVariantWithNM(v1nt);
                         } else {
                             Variant v1ref = v1.ref;
-                            th1 = joinVariantWithNM(v1ref);
+                            if (v1ref != null) {
+                                th1 = joinVariantWithNM(v1ref);
+                            } else {
+                                th1 = joinEmptyVariantWithTcov(0);
+                            }
                         }
 
                         if ("Complex".equals(v2var.vartype)) {
