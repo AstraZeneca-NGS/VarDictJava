@@ -611,6 +611,23 @@ public class VarDict {
                             vref.constructBothSamplesWithSecondVariant(segs, sample, out, info, v2nt, type, v1.sv, v2.sv);
 
                         } else { // sample 1 only, should be strong somatic
+                            String tvf = "";
+                            if (!v2.var.isEmpty()) {
+                                Variant v2r = getVarMaybe(v2, var, 0);
+                                int tcov = v2r != null && v2r.tcov != 0 ? v2r.tcov : 0;
+                                int rfc = v2r != null && v2r.rfc != 0 ? v2r.rfc : 0;
+                                int rrc = v2r != null && v2r.rrc != 0 ? v2r.rrc : 0;
+                                tvf = join("\t", tcov, 0, rfc, rrc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                            } else if (v2.ref != null) {
+                                if (v2.ref == null) {
+                                    Variant v2m = getVarMaybe(v2, var, 0);
+                                    int tcov = v2m != null && v2m.tcov != 0 ? v2m.tcov : 0;
+                                    tvf = joinEmptyVariantWithTcov(tcov);
+                                } else {
+                                    Variant v2ref = v2.ref;
+                                    tvf = joinVariantWithNM(v2ref);
+                                }
+                            }
                             String type = "StrongSomatic";
                             jregex.Matcher mm = MINUS_NUM_NUM.matcher(nt);
                             if (!vref.vartype.equals("SNV") && nt.length() > 10 || mm.find()) {
@@ -631,15 +648,6 @@ public class VarDict {
                                 }
                             }
                             if (type.equals("StrongSomatic")) {
-                                String tvf;
-                                if (v2.ref == null) {
-                                    Variant v2m = getVarMaybe(v2, var, 0);
-                                    int tcov = v2m != null && v2m.tcov != 0 ? v2m.tcov : 0;
-                                    tvf = joinEmptyVariantWithTcov(tcov);
-                                } else {
-                                    Variant v2ref = v2.ref;
-                                    tvf = joinVariantWithNM(v2ref);
-                                }
                                 String info = join("\t",
                                         joinVariantWithNM(vref),
                                         tvf);
@@ -684,14 +692,13 @@ public class VarDict {
                                 int tcov = v1var != null && v1var.tcov != 0 ? v1var.tcov : 0;
 
                                 Variant v1ref = v1.ref;
-                                int cov = v1ref != null ? v1ref.cov : 0;
                                 int fwd = v1ref != null ? v1ref.fwd : 0;
                                 int rev = v1ref != null ? v1ref.rev : 0;
-                                th1 = join("\t", tcov, 0, cov, fwd, rev, 0, 0);
+                                th1 = join("\t", tcov, 0, fwd, rev, 0, 0);
 
                                 String genotype = v1var != null ? v1var.genotype :
                                       (v1ref != null ? v1ref.n + "/" + v1ref.n : "N/N");
-                                th1 = join("\t", th1, genotype);
+                                th1 = join("\t", th1, genotype, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
                                 if ("Complex".equals(v2var.vartype)) {
                                     v2var.adjComplex();
