@@ -983,7 +983,8 @@ public class SAMFileParser {
                                         if (i + 1 + ssi >= m){
                                             break;
                                         }
-                                        if (isHasAndNotEquals(querySequence.charAt(n + 1 + ssi), ref, start + 1 + ssi)) {
+                                        if (n + 1 + ssi < querySequence.length()
+                                                && isHasAndNotEquals(querySequence.charAt(n + 1 + ssi), ref, start + 1 + ssi)) {
                                             ssn = ssi + 1;
                                             break;
                                         }
