@@ -488,6 +488,13 @@ public class SAMFileParser {
                                 continue;
                             case I: { //Insertion
                                 offset = 0;
+
+                                // Ignore insertions right after introns at exon edge in RNA-seq
+                                if (skipIndelNextToIntron(cigar, ci)) {
+                                    n += m;
+                                    continue;
+                                }
+
                                 //Inserted segment of read sequence
                                 StringBuilder s = new StringBuilder(substr(querySequence, n, m));
 
@@ -689,6 +696,13 @@ public class SAMFileParser {
                             }
                             case D: { //deletion
                                 offset = 0;
+
+                                // Ignore deletions right after introns at exon edge in RNA-seq
+                                if (skipIndelNextToIntron(cigar, ci)) {
+                                    p += m;
+                                    continue;
+                                }
+
                                 //description string of deleted segment
                                 StringBuilder s = new StringBuilder("-").append(m);
                                 //sequence to be appended if next segment is matched
@@ -1171,6 +1185,21 @@ public class SAMFileParser {
 
         return tuple(hash, iHash, cov, rlen,
                 (conf.removeDuplicatedReads && totalreads != 0) ? Double.parseDouble(String.format("%.3f", ((double) dupreads)/totalreads)) : 0.0);
+    }
+
+    /**
+     * Skip the insertions and deletions that are right after or before introns
+     (they indicate of aligner problem)
+     * @param cigar cigar of the read
+     * @param ci current index of element in cigar
+     * @return true if cigar operator must be skipped, false if not
+     */
+    private static boolean skipIndelNextToIntron(Cigar cigar, int ci) {
+        if ((cigar.numCigarElements() > ci && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.N)
+                || (ci > 1 && cigar.getCigarElement(ci - 1).getOperator() == CigarOperator.N)) {
+            return true;
+        }
+        return false;
     }
 
     private static void addVariationForMatchingPart(Configuration conf,
