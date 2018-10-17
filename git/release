@@ -13,6 +13,9 @@ then
 	exit 1
 fi
 
+# Update sub-projects
+git submodule update --init --recursive
+
 # Tag and push tags 
 git tag -a "$TAG" -m "Release $TAG"
 git push origin "$TAG"
