@@ -16,7 +16,7 @@ public class Sclip extends Variation {
     public int mlen;
     public int disc;
     public int softp;
-    public Map<Integer, Integer> soft = new HashMap<>();
+    public Map<Integer, Integer> soft = new LinkedHashMap<>();
     public List<Mate> mates = new ArrayList<>();
 }
 

@@ -81,7 +81,7 @@ public class Configuration {
     /**
      * Extension of bp to look for mismatches after insertion or deletion
      */
-    public int vext = 3; // -X, default 3
+    public int vext = 2; // -X, default 2
     /**
      * Trim bases after [INT] bases in the reads
      */

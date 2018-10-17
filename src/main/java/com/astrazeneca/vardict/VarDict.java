@@ -619,6 +619,7 @@ public class VarDict {
                                 int rrc = v2r != null && v2r.rrc != 0 ? v2r.rrc : 0;
                                 tvf = join("\t", tcov, 0, rfc, rrc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
                             } else if (v2.ref != null) {
+                                // TODO: This "if" will never be run
                                 if (v2.ref == null) {
                                     Variant v2m = getVarMaybe(v2, var, 0);
                                     int tcov = v2m != null && v2m.tcov != 0 ? v2m.tcov : 0;
@@ -630,7 +631,7 @@ public class VarDict {
                             }
                             String type = "StrongSomatic";
                             jregex.Matcher mm = MINUS_NUM_NUM.matcher(nt);
-                            if (!vref.vartype.equals("SNV") && nt.length() > 10 || mm.find()) {
+                            if (!vref.vartype.equals("SNV") && (nt.length() > 10 || mm.find())) {
                                 v2nt = new Variant();
                                 v2.varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
                                 if (vref.cov < conf.minr + 3 && !nt.contains("<")) {
@@ -729,7 +730,7 @@ public class VarDict {
 
                         jregex.Matcher mm = MINUS_NUM_NUM.matcher(nt);
                         if (v2.varn.get(nt).cov < conf.minr + 3 && !nt.contains("<")
-                                && nt.length() > 10 && mm.find()) {
+                                && (nt.length() > 10 || mm.find())) {
                             Tuple2<Integer, String> tpl = combineAnalysis(v2.varn.get(nt), v1nt, segs.chr, p, nt,
                                     chrs, sample, splice, ampliconBasedCalling, rlen, conf);
                             rlen = tpl._1;

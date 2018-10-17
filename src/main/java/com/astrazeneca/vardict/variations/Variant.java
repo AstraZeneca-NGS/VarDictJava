@@ -443,13 +443,13 @@ public class Variant {
                 + ":" + (fwd + rev)
                 + ":F-" + fwd
                 + ":R-" + rev
-                + ":" + new DecimalFormat("0.000").format(freq)
+                + ":" + new DecimalFormat("0.0000").format(freq)
                 + ":" + bias
                 + ":" + new DecimalFormat("0.0").format(pmean)
                 + ":" + (pstd ? "1" : "0")
                 + ":" + new DecimalFormat("0.0").format(qual)
                 + ":" + (qstd ? "1" : "0")
-                + ":" + new DecimalFormat("0.000").format(hifreq)
+                + ":" + new DecimalFormat("0.0000").format(hifreq)
                 + ":" + mapq
                 + ":" + new DecimalFormat("0.000").format(qratio));
         return sb;

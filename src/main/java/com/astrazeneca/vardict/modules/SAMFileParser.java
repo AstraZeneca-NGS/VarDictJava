@@ -977,8 +977,29 @@ public class SAMFileParser {
                                     //shift reference position by 1
                                     start++;
                                     nmoff++;
-                                } else { //if bases match, exit loop
-                                    break;
+                                } else { // look ahead to see whether there're more mismatches, if yes, add reverence to grow MNV
+                                    int ssn = 0;
+                                    for (int ssi = 1; ssi <= conf.vext; ssi++) {
+                                        if (i + 1 + ssi >= m){
+                                            break;
+                                        }
+                                        if (isHasAndNotEquals(querySequence.charAt(n + 1 + ssi), ref, start + 1 + ssi)) {
+                                            ssn = ssi + 1;
+                                            break;
+                                        }
+                                    }
+                                    if (ssn == 0) {
+                                        break;
+                                    }
+                                    for (int ssi = 1; ssi <= ssn; ssi++) {
+                                        ss.append(querySequence.charAt(n + ssi));
+                                        q += queryQuality.charAt(n + ssi) - 33;
+                                        qbases++;
+                                    }
+                                    n += ssn;
+                                    p += ssn;
+                                    i += ssn;
+                                    start += ssn;
                                 }
                             }
 
