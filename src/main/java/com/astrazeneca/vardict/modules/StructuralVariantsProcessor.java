@@ -42,6 +42,18 @@ public class StructuralVariantsProcessor {
 
     /**
      * Prepare and fill SV structures for deletions, duplications, inversions.
+     * @param rlen max read length
+     * @param conf Configuration
+     * @param svStructures Contains all structural variants ends for deletions, duplications, inversions, insertions
+     and structures for structural variant analysis
+     * @param record parsed SAMRecord
+     * @param queryQuality string of query qualities from record
+     * @param nm number of mismatches from record
+     * @param dir direction of the strand
+     * @param cigar cigar from record (modified by realignment)
+     * @param mdir direction of mate strand
+     * @param start adjusted start position of read
+     * @param rlen2 the total length, including soft-clipped bases
      */
     public static void prepareSVStructuresForAnalysis(int rlen,
                                                       Configuration conf,
@@ -339,9 +351,26 @@ public class StructuralVariantsProcessor {
     }
 
     /**
-     * Find SVs for each structural varuant structure
+     * Find SVs for each structural variant structure
+     * @param region region of interest
+     * @param bam BAM file name
+     * @param chrs map of chromosome lengths
+     * @param sample sample name
+     * @param splice set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
+     * @param rlen max read length
+     * @param reference reference in a given region
+     * @param conf Configuration
+     * @param hash map of variants on positions
+     * @param iHash map of insertions on positions
+     * @param cov map of coverage on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param svStructures Contains all structural variants ends for deletions, duplications, inversions, insertions
+    and structures for structural variant analysis
+     * @throws IOException if BAM file can't be read
      */
-    public static void findAllSVs(Region region, String bam, Map<String, Integer> chrs, String sample,
+    static void findAllSVs(Region region, String bam, Map<String, Integer> chrs, String sample,
                                   Set<String> splice, String ampliconBasedCalling, int rlen, Reference reference,
                                   Configuration conf, Map<Integer, VariationMap<String, Variation>> hash,
                                   Map<Integer, VariationMap<String, Variation>> iHash, Map<Integer, Integer> cov,
@@ -383,7 +412,7 @@ public class StructuralVariantsProcessor {
      * Add structural variant to current structural variant structure and update
      * @param sdref current structural variant structure
      */
-    public static void addSV (Sclip sdref,
+    private static void addSV (Sclip sdref,
                                int start_s,
                                int end_e,
                                int mateStart_ms,
@@ -440,8 +469,12 @@ public class StructuralVariantsProcessor {
 
     /**
      * Filter all structural variants structures
+     * @param rlen max read length
+     * @param conf Configuration
+     * @param svStructures Contains all structural variants ends for deletions, duplications, inversions, insertions
+    and structures for structural variant analysis
      */
-    public static void filterAllSVStructures(int rlen,
+     static void filterAllSVStructures(int rlen,
                                              Configuration conf,
                                              SVStructures svStructures) {
         filterSV(svStructures.svfinv3, rlen, conf);
@@ -583,6 +616,7 @@ public class StructuralVariantsProcessor {
      * @param structuralVariants_sv contains list of list of Structural variants $sv
      * @param rlen read length
      * @param conf configuration of Vardict
+     * @return tuple of coverage, count of SVs overlaping with mates, number of pairs
      */
     public static Tuple.Tuple3<Integer, Integer, Integer> markSV(int start,
                                                           int end,
@@ -622,6 +656,7 @@ public class StructuralVariantsProcessor {
      * @param structuralVariants_sv contains list of list of Structural variants $sv
      * @param rlen read length
      * @param conf  configuration of Vardict
+     * @return tuple of count of SVs overlaping with mates, number of pairs
      */
     static Tuple.Tuple2<Integer, Integer> markDUPSV(int start,
                                                     int end,
@@ -660,6 +695,7 @@ public class StructuralVariantsProcessor {
      * @param end1 end of the first SV $e1
      * @param tuple2 contains start and end of second SV
      * @param rlen read length
+     * @return true if SV overlaps with mate
      */
     static boolean isOverlap (int start1,
                               int end1,
@@ -685,6 +721,13 @@ public class StructuralVariantsProcessor {
 
     /**
      * Given a candidate SV identified by clipped reads, check whether there're mates to support it
+     * @param chr chromosome name
+     * @param start start of the region
+     * @param end end of the region
+     * @param sv list of SVs in list of clusters
+     * @param RLEN max read length
+     * @param conf Configuration
+     * @return tuple if pairs, mean position, mean base quality, mean mapping quality and number of mismatches
      */
     static Tuple.Tuple5<Integer, Double, Double, Double, Double> checkPairs(String chr,
                                                                                int start,
@@ -732,12 +775,22 @@ public class StructuralVariantsProcessor {
      * Add discordant count
      * @param svref
      */
-    static void adddisccnt(Sclip svref) {
+    private static void adddisccnt(Sclip svref) {
         svref.disc++;
     }
 
     /**
      * Find candidate SVs on 3' and 5' ends
+     * @param hash map of variants on positions
+     * @param cov map of coverage on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param reference reference in a given region
+     * @param region region of interest
+     * @param svfdel list of DEL SVs in forward direction
+     * @param svrdel list of DEL SVs in reverse direction
+     * @param conf Configuration
+     * @param RLEN max read length
      */
     static void findsv(Map<Integer, VariationMap<String, Variation>> hash,
                        Map<Integer, Integer> cov,
@@ -1038,7 +1091,20 @@ public class StructuralVariantsProcessor {
     /**
      * Find INV SV with discordant pairs only
      * Would only consider those with supports from both orientations
-     * #  (svfinv5) --> | <-- (svrinv5) ..... (svfinv3) --> | <-- (svrinv3)
+     * (svfinv5) --&gt; | &lt;-- (svrinv5) ..... (svfinv3) --&gt; | &lt;-- (svrinv3)
+     * @param hash map of variants on positions
+     * @param cov map of coverage on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param reference reference in a given region
+     * @param region region of interest
+     * @param svfinv3 list of INV SVs in forward direction of 3'
+     * @param svfinv5 list of INV SVs in forward direction of 5'
+     * @param svrinv3 list of INV SVs in reverse direction of 3'
+     * @param svrinv5 list of INV SVs in reverse direction of 5'
+     * @param conf Configuration
+     * @param RLEN max read length
+     * @param chrs map of chromosome lengths
      */
     static void findINVdisc (Map<Integer, VariationMap<String, Variation>> hash,
                              Map<Integer, Integer> cov,
@@ -1227,7 +1293,24 @@ public class StructuralVariantsProcessor {
 
     /**
      * Find DUP SVs with discordant pairs only
-     * (svrdup) |<--.........-->| (svfdup)
+     * (svrdup) |&lt;--.........--&gt;| (svfdup)
+     * @param hash map of variants on positions
+     * @param iHash map of insertions on positions
+     * @param cov map of coverage on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param reference reference in a given region
+     * @param region region of interest
+     * @param bam BAM file name
+     * @param sample sample name
+     * @param splice set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
+     * @param svfdup list of DUP SVs in discordant pairs in forward direction
+     * @param svrdup list of DUP SVs in discordant pairs in reverse direction
+     * @param conf Configuration
+     * @param RLEN max read length
+     * @param chrs map of chromosome lengths
+     * @throws IOException if BAM file can't be read
      */
     static void findDUPdisc (Map<Integer, VariationMap<String, Variation>> hash,
                              Map<Integer, VariationMap<String, Variation>> iHash,
@@ -1512,7 +1595,14 @@ public class StructuralVariantsProcessor {
     }
 
     /**
-     * Find matching on reverse strand (without MM defined)
+     * Find matching on reverse strand (without MM defined, by default MM = 3)
+     * @param conf Configuration
+     * @param seq sequence to search match with reference
+     * @param REF reference in a given region
+     * @param position where match is searching
+     * @param dir direction
+     * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
+     * returns zero and empty string
      */
     static Tuple.Tuple2<Integer, String> findMatchRev(Configuration conf,
                                                       String seq,
@@ -1525,7 +1615,15 @@ public class StructuralVariantsProcessor {
 
     /**
      * Find matching on reverse strand (with MM defined)
+     * @param conf Configuration
+     * @param seq sequence to search match with reference
+     * @param REF reference in a given region
+     * @param position where match is searching
+     * @param dir direction
+     * @param SEED seed length from configuration
      * @param MM the minimum matches for a read to be considered
+     * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
+     * returns zero and empty string
      */
     static Tuple.Tuple2<Integer, String> findMatchRev(Configuration conf,
                                                       String seq,
@@ -1604,9 +1702,16 @@ public class StructuralVariantsProcessor {
     }
 
     /**
-     * Find matching on forward strand (with MM defined)
+     * Find matching on forward strand (without MM defined, by default MM = 3)
+     * @param conf Configuration
+     * @param seq sequence to search match with reference
+     * @param REF reference in a given region
+     * @param position where match is searching
+     * @param dir direction
+     * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
+     * returns zero and empty string
      */
-    public static Tuple.Tuple2<Integer, String> findMatch(Configuration conf,
+    static Tuple.Tuple2<Integer, String> findMatch(Configuration conf,
                                                    String seq,
                                                    Reference REF,
                                                    int position,
@@ -1617,7 +1722,15 @@ public class StructuralVariantsProcessor {
 
     /**
      * Find matching on forward strand (with MM defined)
+     * @param conf Configuration
+     * @param seq sequence to search match with reference
+     * @param REF reference in a given region
+     * @param position where match is searching
+     * @param dir direction
+     * @param SEED seed length from configuration
      * @param MM the minimum matches for a read to be considered
+     * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
+     * returns zero and empty string
      */
     static Tuple.Tuple2<Integer, String> findMatch(Configuration conf,
                                                    String seq,
@@ -1701,7 +1814,19 @@ public class StructuralVariantsProcessor {
 
     /**
      * Find DEL SV with discordant pairs only
-     * (svfdel) --> | ............ | <-- (svrdel)
+     * (svfdel) --&gt; | ............ | &lt;-- (svrdel)
+     * @param hash map of variants on positions
+     * @param cov map of coverage on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param REF reference in a given region
+     * @param region region of interest
+     * @param splice set of strings representing spliced regions
+     * @param svfdel list of DEL SVs in discordant pairs in forward direction
+     * @param svrdel list of DEL SVs in discordant pairs in reverse direction
+     * @param conf Configuration
+     * @param rlen max read length
+     * @param chrs map of chromosome lengths
      */
     static void findDELdisc(Configuration conf,
                             Map<Integer, VariationMap<String, Variation>> hash,
@@ -1837,6 +1962,23 @@ public class StructuralVariantsProcessor {
 
     /**
      * Find DEL SV
+     * @param conf Configuration
+     * @param hash map of variants on positions
+     * @param iHash map of insertions on positions
+     * @param cov map of coverage on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param reference reference in a given region
+     * @param region region of interest
+     * @param bams list of BAM files from configuration
+     * @param svfdel list of DEL SVs in forward direction
+     * @param svrdel list of DEL SVs in reverse direction
+     * @param rlen max read length
+     * @param chrs map of chromosome lengths
+     * @param sample sample name
+     * @param splice set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
+     * @throws IOException if BAM file can't be read
      */
     static void findDEL(Configuration conf,
                         Map<Integer, VariationMap<String, Variation>> hash,
@@ -2177,6 +2319,25 @@ public class StructuralVariantsProcessor {
 
     /**
      * Find INV SV for all structural variants structures
+     * @param conf Configuration
+     * @param hash map of variants on positions
+     * @param iHash map of insertions on positions
+     * @param cov map of coverage on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param REF reference in a given region
+     * @param region region of interest
+     * @param bams list of BAM files from configuration
+     * @param svfinv3 list of INV SVs in forward direction in 3'
+     * @param svrinv3 list of INV SVs in reverse direction in 3'
+     * @param svfinv5 list of INV SVs in forward direction in 5'
+     * @param svrinv5 list of INV SVs in reverse direction in 5'
+     * @param rlen max read length
+     * @param chrs map of chromosome lengths
+     * @param sample sample name
+     * @param splice set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
+     * @throws IOException if BAM file can't be read
      */
     static void findINV(Configuration conf,
                         Map<Integer, VariationMap<String, Variation>> hash,
@@ -2185,7 +2346,7 @@ public class StructuralVariantsProcessor {
                         Map<Integer, Sclip> sclip5,
                         Map<Integer, Sclip> sclip3,
                         Reference REF,
-                        Region chr,
+                        Region region,
                         String bams,
                         Iterable<Sclip> svfinv3,
                         Iterable<Sclip> svrinv3,
@@ -2196,16 +2357,35 @@ public class StructuralVariantsProcessor {
                         String sample,
                         Set<String> splice,
                         String ampliconBasedCalling) throws IOException {
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, chr, bams, svfinv5, 1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, chr, bams, svrinv5, -1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, chr, bams, svfinv3, 1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, chr, bams, svrinv3, -1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
+        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, region, bams, svfinv5, 1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
+        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, region, bams, svrinv5, -1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
+        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, region, bams, svfinv3, 1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
+        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, region, bams, svrinv3, -1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
     }
 
     /**
      * Find INV SV
      * Would only consider those with supports from both orientations
-     * (svfinv5) --> | <-- (svrinv5) ..... (svfinv3) --> | <-- (svrinv3)
+     * (svfinv5) --&gt; | &lt;-- (svrinv5) ..... (svfinv3) --&gt; | &lt;-- (svrinv3)
+     * @param conf Configuration
+     * @param hash map of variants on positions
+     * @param iHash map of insertions on positions
+     * @param cov map of coverage on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param reference reference in a given region
+     * @param region chromosome in region of interest
+     * @param bams list of BAM files from configuration
+     * @param svref list of INV SVs
+     * @param dir direction specified in findINV()
+     * @param side 3 or 5 end
+     * @param rlen max read length
+     * @param chrs map of chromosome lengths
+     * @param sample sample name
+     * @param splice set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
+     * @throws IOException if BAM file can't be read
+     * @return created variation
      */
     static Variation findINVsub(Configuration conf,
                                 Map<Integer, VariationMap<String, Variation>> hash,
@@ -2400,8 +2580,11 @@ public class StructuralVariantsProcessor {
 
     /**
      * Output remaining soft-clipped reads that haven't been used
+     * @param sclip5 map of soft clips 5' on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param conf Configuration
      */
-    public static void outputClipping(Map<Integer, Sclip> sclip5,
+    static void outputClipping(Map<Integer, Sclip> sclip5,
                                       Map<Integer, Sclip> sclip3,
                                       Configuration conf) {
         System.err.println("5' Remaining clipping reads");

@@ -27,7 +27,9 @@ public class SAMFileParser {
     private static final Random RND = new Random(System.currentTimeMillis());
     
     /**
-     * Get quality string in a safe way, avoid exceptions due to quality scores beyond MAX_PHRED_SCORE 
+     * Get quality string in a safe way, avoid exceptions due to quality scores beyond MAX_PHRED_SCORE
+     * @param record current SAMRecord from the parsed BAM
+     * @return base quality string contains only values less then MAX_PHRED_SCORE
      */
     static String getBaseQualityString(SAMRecord record) {
         try {
@@ -49,7 +51,7 @@ public class SAMFileParser {
     
     /**
      * Construct a variant structure given a region and BAM files.
-     * @param region region
+     * @param region region of interest
      * @param bam BAM file name
      * @param chrs map of chromosome lengths
      * @param sample sample name
@@ -58,8 +60,14 @@ public class SAMFileParser {
      * @param rlen max read length
      * @param reference reference in a given region
      * @param conf Configuration
+     * @param hash map of variants on positions
+     * @param iHash map of insertions on positions
+     * @param cov map of coverage on positions
+     * @param sclip3 map of soft clips 3' on positions
+     * @param sclip5 map of soft clips 5' on positions
+     * @param svflag true if BAM file is re-parsed due to structural variants analysis on extended region of interest
      * @return Tuple of (noninsertion variant  structure, insertion variant structure, coverage, maxmimum read length)
-     * @throws IOException
+     * @throws IOException if BAM file can't be read
      */
     public static Tuple.Tuple5<Map<Integer, VariationMap<String, Variation>>,
             Map<Integer, VariationMap<String, Variation>>,
@@ -1605,15 +1613,31 @@ public class SAMFileParser {
         }
     }
 
-    public static boolean ismatchref(String seq, Map<Integer, Character> ref, int p, int dir, boolean debugLog) {
+    /**
+     * Utility method for determine if sequence is matching to reference with 3 mismatches
+     * @param sequence subsequence consensus sequence in soft-clipped reads  $seq
+     * @param ref map of reference chars and position
+     * @param position key for MNP map     $p
+     * @param dir direction of strand
+     * @param debugLog true if option -y used
+     * @return true if sequence if matching to reference with not more then 3 mismatches and if number of mismatches less
+     *           then 15% of sequence length
+     */
+    public static boolean ismatchref(String sequence, Map<Integer, Character> ref, int position, int dir, boolean debugLog) {
         int MM = 3;
-        return ismatchref(seq, ref, p, dir, debugLog, MM);
+        return ismatchref(sequence, ref, position, dir, debugLog, MM);
     }
 
     /**
-     * Utility method for adjustMNP method
+     * Utility method for determine if sequence is matching to reference with specified number of mismatches
      * @param sequence subsequence consensus sequence in soft-clipped reads  $seq
+     * @param ref map of reference chars and position
      * @param position key for MNP map     $p
+     * @param dir direction of strand
+     * @param debugLog true if option -y used
+     * @param MM number of mismatches to check
+     * @return true if sequence if matching to reference with not more then MM mismatches and if number of mismatches less
+     *           then 15% of sequence length
      */
     public static boolean ismatchref(String sequence,
                               Map<Integer, Character> ref,

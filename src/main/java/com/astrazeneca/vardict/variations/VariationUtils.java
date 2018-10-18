@@ -67,6 +67,7 @@ public class VariationUtils {
      * the matched nucleotides are &gt;90% of all softly clipped nucleotides.
      * @param softClip soft-clipped sequences    $scv
      * @param conf Configuration for debug and adseed options
+     * @param dir not used no, will be used when adaptor option will be added
      * @return consensus sequence
      */
     public static String findconseq(Sclip softClip,
@@ -208,6 +209,8 @@ public class VariationUtils {
      * @param baseToPosition map of reference bases    $ref
      * @param from start position
      * @param to end position
+     * @param seq sequence to go through found in findconseq()
+     * @param EXTRA extra subsequence from findMatch()
      * @return reference sequence starting at from and ending at to
      */
     public static String joinRefFor5Lgins(Map<Integer, Character> baseToPosition,
@@ -235,6 +238,8 @@ public class VariationUtils {
      * @param from start position
      * @param to end position
      * @param shift5 shift positions
+     * @param seq sequence to go through found in findconseq()
+     * @param EXTRA extra subsequence from findMatch()
      * @return reference sequence starting at from and ending at to
      */
     public static String joinRefFor3Lgins(Map<Integer, Character> baseToPosition,
@@ -405,6 +410,10 @@ public class VariationUtils {
     /**
      * Returns var from map of vars or null if map doesn't contain such key.
      * @param alignedVariants alignedVariants $vars
+     * @param key position on which vars are searching
+     * @param type type of VarsType
+     * @param keys often the string that variant must contain
+     * @return variant from map of vars of specified VarsType or null
      */
     public static Variant getVarMaybe(Map<Integer, Vars> alignedVariants,
                                int key,
@@ -417,6 +426,13 @@ public class VariationUtils {
         return getVarMaybe(vars, type, keys);
     }
 
+    /**
+     * Returns variant from Vars object or null if map doesn't contain such key.
+     * @param vars alignedVariants $vars
+     * @param type type of VarsType
+     * @param keys often the string that variant must contain
+     * @return variant from vars of specified VarsType or null
+     */
     public static Variant getVarMaybe(Vars vars,
                                VarsType type,
                                Object... keys) {
@@ -433,6 +449,12 @@ public class VariationUtils {
         return null;
     }
 
+    /**
+     * If map contains Vars on position, then returns it, else create Vars, put it on position and returns.
+     * @param map map of positions and vars
+     * @param position start position of vars
+     * @return Vars object on position
+     */
     public static Vars getOrPutVars(Map<Integer, Vars> map,
                                      int position) {
         Vars vars = map.get(position);

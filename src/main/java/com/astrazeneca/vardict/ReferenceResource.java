@@ -125,6 +125,10 @@ public class ReferenceResource {
 
     /**
      * Check whether a region is already loaded in reference
+     * @param chr string name of the chromosome
+     * @param sequenceStart start of the region of interest
+     * @param sequenceEnd end of the region of interest
+     * @param reference Reference object
      * @return true if region is already loaded and false if not
      */
     public static boolean isLoaded(String chr, int sequenceStart, int sequenceEnd, Reference reference) {

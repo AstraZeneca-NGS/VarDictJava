@@ -98,7 +98,9 @@ public class VariationRealigner {
      * @param reference object contains map of reference bases
      * @param region region contains chromosome name, start and end
      * @param chrs map of chromosome lengths
+     * @param rlen max read length
      * @param conf configuration
+     * @return insertion sequence
      */
     public static String realignins(Map<Integer, VariationMap<String, Variation>> hash,
                                   Map<Integer, VariationMap<String, Variation>> iHash,
@@ -412,7 +414,6 @@ public class VariationRealigner {
      * @param rlen read length
      * @param bam BAM file list
      * @param conf configuration
-     * @throws IOException
      */
     public static void realigndel(Map<Integer, VariationMap<String, Variation>> hash,
                            Map<Integer, Map<String, Integer>> dels5,
@@ -424,7 +425,7 @@ public class VariationRealigner {
                            Map<String, Integer> chrs,
                            final int rlen,
                            String bam,
-                           Configuration conf) throws IOException {
+                           Configuration conf) {
         String chr = region.chr;
         Map<Integer, Character> ref = reference.referenceSequences;
         String[] bams = bam != null ? bam.split(":") : null;
@@ -664,13 +665,19 @@ public class VariationRealigner {
      * @param cov coverage
      * @param sclip5 5' softclips
      * @param sclip3 3' softclips
+     * @param sample sample name
+     * @param splice set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @param reference object contains map of reference bases
      * @param region region contains chromosome name, start and end
      * @param chrs map of chromosome lengths
+     * @param iHash map of insertions on positions
      * @param rlen read length
      * @param bam BAM file list
+     * @param svfdel list of DEL SVs in forward strand
+     * @param svrdel list of DEL SVs in reverse strand
      * @param conf configuration
-     * @throws IOException
+     * @throws IOException if BAM file can't be read
      */
     public static void realignlgdel(Map<Integer, VariationMap<String, Variation>> hash,
                              Map<Integer, Integer> cov,
@@ -1077,13 +1084,18 @@ public class VariationRealigner {
      * @param cov coverage
      * @param sclip5 5' softclips
      * @param sclip3 3' softclips
+     * @param sample sample name
+     * @param splice set of strings representing spliced regions
+     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @param reference object contains map of reference bases
      * @param region region contains chromosome name, start and end
      * @param chrs map of chromosome lengths
      * @param rlen read length
      * @param bam BAM file list
+     * @param svfdup list of DUP SVs in forward strand
+     * @param svrdup list of DUP SVs in reverse strand
      * @param conf configuration
-     * @throws IOException
+     * @throws IOException if BAM file can't be read
      */
     public static void realignlgins(Map<Integer, VariationMap<String, Variation>> hash,
                              Map<Integer, VariationMap<String, Variation>> iHash,
@@ -1433,16 +1445,15 @@ public class VariationRealigner {
      * this will try to realign large insertions (typically larger than 30bp)
      * @param hash map of non-insertion variants produced by parseSAM method
      * @param iHash map of insertion variants produced by parseSAM method
-     * @param cov coverage
-     * @param sclip5 5' softclips
-     * @param sclip3 3' softclips
+     * @param cov map of coverage on positions
+     * @param sclip5 5' softclips on positions
+     * @param sclip3 3' softclips on positions
      * @param reference object contains map of reference bases
      * @param region region contains chromosome name, start and end
      * @param chrs map of chromosome lengths
      * @param rlen max read length
      * @param bam BAM file list
      * @param conf configuration
-     * @throws IOException
      */
     static void realignlgins30(Map<Integer, VariationMap<String, Variation>> hash,
                                Map<Integer, VariationMap<String, Variation>> iHash,
@@ -1454,7 +1465,7 @@ public class VariationRealigner {
                                Map<String, Integer> chrs,
                                int rlen,
                                String bam,
-                               Configuration conf) throws IOException {
+                               Configuration conf) {
         String chr = region.chr;
         Map<Integer, Character> ref = reference.referenceSequences;
         String[] bams = bam.split(":");
@@ -1708,9 +1719,10 @@ public class VariationRealigner {
      * Returns the breakpoints in 5 and 3 prime soft-clipped reads
      * @param seq5 consensus sequence 5' strand
      * @param seq3 consensus sequence 3' strand
-     * @param p5 position 5'
-     * @param p3 position 3'
+     * @param p5 position 5' (not used)
+     * @param p3 position 3' (not used)
      * @param ref map of reference bases (not used)
+     * @param conf configuration
      * @return Tuple of (start position of 5' strand, start position of 3' strand, max match length)
      */
     static Tuple.Tuple3<Integer, Integer, Integer> find35match(String seq5,
@@ -1765,7 +1777,6 @@ public class VariationRealigner {
      * @param bams BAM file list
      * @param conf configuration
      * @return true if any read was found in chr:s-e
-     * @throws IOException
      */
     static boolean noPassingReads(String chr,
                                   int s,
@@ -2132,6 +2143,7 @@ public class VariationRealigner {
      * @param tv non-reference variant
      * @param ref reference variant
      * @param len length for adhustment factor
+     * @param conf configuration
      */
     static void adjRefCnt(Variation tv,
                           Variation ref,
@@ -2172,9 +2184,9 @@ public class VariationRealigner {
 
     /**
      * Adjust the reference by factor
-     * @param ref
-     * @param factor_f
-     * @param debugLog boolean parameter of 'y' option of Configuartion (print debug message if true)
+     * @param ref reference variation
+     * @param factor_f factor for adjustment counts of reference
+     * @param debugLog boolean parameter of 'y' option of Configuration (print debug message if true)
      */
     static void adjRefFactor(Variation ref, double factor_f, boolean debugLog) {
         if (ref == null) {
@@ -2206,9 +2218,9 @@ public class VariationRealigner {
     }
 
     /**
-     * Add variant by factor
-     * @param vref $ref
-     * @param factor_f
+     * Adjust counts of variation by factor
+     * @param vref variation  $ref
+     * @param factor_f factor for adjustment counts of variation
      */
     static void addVarFactor(Variation vref, double factor_f) {
         if (vref == null) {

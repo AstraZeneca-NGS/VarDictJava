@@ -34,7 +34,7 @@ public class VarDict {
     /**
      * The main method to start Vardict in any mode.
      * @param conf prepared configuration object from arguments
-     * @throws IOException
+     * @throws IOException if BAM file can't be read
      */
     public static void start(Configuration conf) throws IOException {
         if (conf.printHeader) {
@@ -78,7 +78,7 @@ public class VarDict {
      * Read map of chromosome lengths
      * @param bam BAM file name
      * @return Map of chromosome lengths. Key - chromosome name, value - length
-     * @throws IOException
+     * @throws IOException  if BAM file can't be read
      */
     static Map<String, Integer> readChr(String bam) throws IOException {
         try (SamReader reader = SamReaderFactory.makeDefault().open(new File(bam))) {
@@ -510,7 +510,7 @@ public class VarDict {
      * @param conf Configuration
      * @param out output stream
      * @return maximum read length
-     * @throws IOException
+     * @throws IOException if BAM file can't be read in combineAnalysis()
      */
     static int somdict(Region segs, Map<Integer, Vars> vars1, Map<Integer, Vars> vars2,
                        String sample,
@@ -785,7 +785,7 @@ public class VarDict {
      * @param rlen max read length
      * @param conf Configuration
      * @return (new <code>rlen</code>, "FALSE" | "")
-     * @throws IOException
+     * @throws IOException if BAM file can't be read
      */
     static Tuple2<Integer, String> combineAnalysis(Variant var1, Variant var2,
                                                    String chr, int p, String nt,

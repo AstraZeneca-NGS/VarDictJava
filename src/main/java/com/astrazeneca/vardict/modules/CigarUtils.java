@@ -782,6 +782,7 @@ public class CigarUtils {
      * Attempts to clean up a CIGAR string so that edge cases are avoided in the rest of the code.
      * Specifically this method will remove leading or trailing hard-clips, and then convert
      * leading or trailing insertions into soft-clips.
+     * @param rec current SAMRecord from the parsed BAM
      */
     static void cleanupCigar(final SAMRecord rec) {
         if (rec.getCigar() != null) {
