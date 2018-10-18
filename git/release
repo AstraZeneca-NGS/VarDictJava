@@ -14,7 +14,7 @@ then
 fi
 
 # Update sub-projects
-git submodule update --init --recursive
+git submodule foreach git pull origin master
 
 # Tag and push tags 
 git tag -a "$TAG" -m "Release $TAG"
