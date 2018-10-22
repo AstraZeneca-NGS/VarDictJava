@@ -1,32 +1,30 @@
 package com.astrazeneca.vardict.modules;
 
-import com.astrazeneca.vardict.Configuration;
-import com.astrazeneca.vardict.ReferenceResource;
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
-import com.astrazeneca.vardict.data.*;
+import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.scopedata.InitialData;
+import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.variations.Sclip;
 import com.astrazeneca.vardict.variations.Variation;
-import htsjdk.samtools.*;
 
-import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.*;
-import java.util.regex.Matcher;
 
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.*;
-import static com.astrazeneca.vardict.collection.Tuple.tuple;
-import static com.astrazeneca.vardict.data.Patterns.*;
-import static com.astrazeneca.vardict.modules.CigarUtils.*;
-import static com.astrazeneca.vardict.modules.StructuralVariantsProcessor.*;
-import static com.astrazeneca.vardict.modules.VariationRealigner.adjInsPos;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
-import static java.lang.Math.abs;
 import static java.lang.String.format;
 
+public class SAMFileParser implements Module<InitialData, RecordPreprocessor> {
+    @Override
+    public Scope<RecordPreprocessor> process(Scope<InitialData> scope) {
+        return new Scope<>(
+                scope,
+                new RecordPreprocessor(scope.bam.split(":"), scope.region, scope.data)
+        );
+    }
 public class SAMFileParser {
     private static final Random RND = new Random(System.currentTimeMillis());
-    
+
     /**
      * Get quality string in a safe way, avoid exceptions due to quality scores beyond MAX_PHRED_SCORE
      * @param record current SAMRecord from the parsed BAM
@@ -49,7 +47,7 @@ public class SAMFileParser {
         	return new String(qsChar);
         }
     }
-    
+
     /**
      * Construct a variant structure given a region and BAM files.
      * @param region region of interest
@@ -1504,148 +1502,150 @@ public class SAMFileParser {
      * @param ref map of reference bases
      * @param sclip5 map of 5' softclips
      * @param sclip3 map of 3' softclips
-     * @param conf configuration
      */
-    public static void adjMNP(Map<Integer, VariationMap<String, Variation>> hash,
-                       Map<Integer, Map<String, Integer>> mnp,
-                       Map<Integer, Integer> cov, Map<Integer, Character> ref,
-                       Map<Integer, Sclip> sclip3, Map<Integer, Sclip> sclip5, Configuration conf) {
+    public static void adjustMNP(Map<Integer, VariationMap<String, Variation>> hash,
+                                 Map<Integer, Map<String, Integer>> mnp,
+                                 Map<Integer, Integer> cov, Map<Integer, Character> ref,
+                                 Map<Integer, Sclip> sclip3, Map<Integer, Sclip> sclip5,
+                                 Region region) {
 
         for (Map.Entry<Integer, Map<String, Integer>> entry : mnp.entrySet()) {
-            final Integer p = entry.getKey();
-            Map<String, Integer> v = entry.getValue();
+            int lastPosition = 0;
 
-            for (Map.Entry<String, Integer> en : v.entrySet()) {
-                final String vn = en.getKey();
-                final Map<String, Variation> hashP = hash.get(p);
-                if (hashP == null) {
-                    continue;
-                }
-                final Variation vref = hashP.get(vn);
-                if (vref == null ) { // The variant is likely already been used by indel realignment
-                    continue;
-                }
-                if (conf.y) {
-                    System.err.printf("  AdjMnt: %d %s %d\n", p, vn, vref.cnt);
-                }
+            try {
+                final Integer p = entry.getKey();
+                lastPosition = p;
+                Map<String, Integer> v = entry.getValue();
 
-                final String mnt = vn.replaceFirst("&", "");
-                for (int i = 0; i < mnt.length() - 1; i++) {
-                    String left = substr(mnt, 0, i + 1);
-                    if (left.length() > 1) {
-                        StringBuilder sb = new StringBuilder(left);
-                        sb.insert(1, "&");
-                        left = sb.toString();
+                for (Map.Entry<String, Integer> en : v.entrySet()) {
+                    final String vn = en.getKey();
+                    final Map<String, Variation> hashP = hash.get(p);
+                    if (hashP == null) {
+                        continue;
+                    }
+                    final Variation vref = hashP.get(vn);
+                    if (vref == null) { // The variant is likely already been used by indel realignment
+                        continue;
+                    }
+                    if (instance().conf.y) {
+                        System.err.printf("  AdjMnt: %d %s %d\n", p, vn, vref.varsCount);
                     }
 
-                    String right = substr(mnt, -(mnt.length() - i - 1));
-                    if (right.length() > 1) {
-                        StringBuilder sb = new StringBuilder(right);
-                        sb.insert(1, "&");
-                        right = sb.toString();
-                    }
-                    {
-                        Variation tref = hashP.get(left);
-                        if (tref != null) {
-                            if (tref.cnt <= 0) {
-                                continue;
-                            }
-                            if (tref.cnt < vref.cnt && tref.pmean / tref.cnt <= i + 1) {
-                                if (conf.y) {
-                                    System.err.printf("    AdjMnt Left: %s %s Left: %s Cnt: %s\n",p, vn, left, tref.cnt);
+                    final String mnt = vn.replaceFirst("&", "");
+                    for (int i = 0; i < mnt.length() - 1; i++) {
+                        String left = substr(mnt, 0, i + 1);
+                        if (left.length() > 1) {
+                            StringBuilder sb = new StringBuilder(left);
+                            sb.insert(1, "&");
+                            left = sb.toString();
+                        }
+
+                        String right = substr(mnt, -(mnt.length() - i - 1));
+                        if (right.length() > 1) {
+                            StringBuilder sb = new StringBuilder(right);
+                            sb.insert(1, "&");
+                            right = sb.toString();
+                        }
+                        {
+                            Variation tref = hashP.get(left);
+                            if (tref != null) {
+                                if (tref.varsCount <= 0) {
+                                    continue;
                                 }
-                                adjCnt(vref, tref, conf);
-                                hashP.remove(left);
-                            }
-                        }
-                    }
-                    if (hash.containsKey(p + i + 1)) {
-                        Variation tref = hash.get(p + i + 1).get(right);
-                        if (tref != null) {
-                            if (tref.cnt < 0) {
-                                continue;
-                            }
-                            // #&& tref.pmean / tref.cnt <= mnt.length() - i - 1)
-                            if (tref.cnt < vref.cnt) {
-                                if (conf.y) {
-                                    System.err.printf("    AdjMnt Right: %s %s Right: %s Cnt: %s\n", p, vn, right, tref.cnt);
+                                if (tref.varsCount < vref.varsCount && tref.meanPosition / tref.varsCount <= i + 1) {
+                                    if (instance().conf.y) {
+                                        System.err.printf("    AdjMnt Left: %s %s Left: %s Cnt: %s\n", p, vn, left, tref.varsCount);
+                                    }
+                                    adjCnt(vref, tref);
+                                    hashP.remove(left);
                                 }
-                                adjCnt(vref, tref, conf);
-                                incCnt(cov, p, tref.cnt);
-                                hash.get(p + i + 1).remove(right);
+                            }
+                        }
+                        if (hash.containsKey(p + i + 1)) {
+                            Variation tref = hash.get(p + i + 1).get(right);
+                            if (tref != null) {
+                                if (tref.varsCount < 0) {
+                                    continue;
+                                }
+                                // #&& tref.pmean / tref.cnt <= mnt.length() - i - 1)
+                                if (tref.varsCount < vref.varsCount) {
+                                    if (instance().conf.y) {
+                                        System.err.printf("    AdjMnt Right: %s %s Right: %s Cnt: %s\n", p, vn, right, tref.varsCount);
+                                    }
+                                    adjCnt(vref, tref);
+                                    incCnt(cov, p, tref.varsCount);
+                                    hash.get(p + i + 1).remove(right);
+                                }
                             }
                         }
                     }
-                }
-                if (sclip3.containsKey(p)) {
-                    final Sclip sc3v = sclip3.get(p);
-                    if (!sc3v.used) {
-                        final String seq = findconseq(sc3v, conf, 0);
-                        if (seq.startsWith(mnt)) {
-                            if(seq.length() == mnt.length()
-                                    || ismatchref(seq.substring(mnt.length()), ref, p + mnt.length(), 1, conf.y)) {
-                                adjCnt(hash.get(p).get(vn), sc3v, conf);
-                                incCnt(cov, p, sc3v.cnt);
-                                sc3v.used = true;
-                            }
-                        }
-                    }
-                }
-                if (sclip5.containsKey(p + mnt.length())) {
-                    final Sclip sc5v = sclip5.get(p + mnt.length());
-                    if (!sc5v.used) {
-                        String seq =  findconseq(sc5v, conf, 0);
-                        if (!seq.isEmpty() && seq.length() >= mnt.length()) {
-                            seq =  new StringBuffer(seq).reverse().toString();
-                            if (seq.endsWith(mnt)) {
+                    if (sclip3.containsKey(p)) {
+                        final Sclip sc3v = sclip3.get(p);
+                        if (!sc3v.used) {
+                            final String seq = findconseq(sc3v, 0);
+                            if (seq.startsWith(mnt)) {
                                 if (seq.length() == mnt.length()
-                                        || ismatchref(seq.substring(0, seq.length() - mnt.length()), ref, p - 1, -1, conf.y)) {
-                                    adjCnt(hash.get(p).get(vn), sc5v, conf);
-                                    incCnt(cov, p, sc5v.cnt);
-                                    sc5v.used = true;
+                                        || ismatchref(seq.substring(mnt.length()), ref, p + mnt.length(), 1)) {
+                                    adjCnt(hash.get(p).get(vn), sc3v);
+                                    incCnt(cov, p, sc3v.varsCount);
+                                    sc3v.used = true;
                                 }
                             }
                         }
+                    }
+                    if (sclip5.containsKey(p + mnt.length())) {
+                        final Sclip sc5v = sclip5.get(p + mnt.length());
+                        if (!sc5v.used) {
+                            String seq = findconseq(sc5v, 0);
+                            if (!seq.isEmpty() && seq.length() >= mnt.length()) {
+                                seq = new StringBuffer(seq).reverse().toString();
+                                if (seq.endsWith(mnt)) {
+                                    if (seq.length() == mnt.length()
+                                            || ismatchref(seq.substring(0, seq.length() - mnt.length()), ref, p - 1, -1)) {
+                                        adjCnt(hash.get(p).get(vn), sc5v);
+                                        incCnt(cov, p, sc5v.varsCount);
+                                        sc5v.used = true;
+                                    }
+                                }
+                            }
 
+                        }
                     }
                 }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "MNP", String.valueOf(lastPosition), region);
             }
         }
     }
 
     /**
-     * Utility method for determine if sequence is matching to reference with 3 mismatches
+     * Utility method for adjustMNP method with default number of mismatches = 3
      * @param sequence subsequence consensus sequence in soft-clipped reads  $seq
-     * @param ref map of reference chars and position
+     * @param ref map of integer - characters (nucleotides) in reference sequence
+     * @param dir direction (forward or reverse)
      * @param position key for MNP map     $p
-     * @param dir direction of strand
-     * @param debugLog true if option -y used
-     * @return true if sequence if matching to reference with not more then 3 mismatches and if number of mismatches less
-     *           then 15% of sequence length
+     * @return true if sequence is matched to reference
      */
-    public static boolean ismatchref(String sequence, Map<Integer, Character> ref, int position, int dir, boolean debugLog) {
+    public static boolean ismatchref(String sequence, Map<Integer, Character> ref, int position, int dir) {
         int MM = 3;
-        return ismatchref(sequence, ref, position, dir, debugLog, MM);
+        return ismatchref(sequence, ref, position, dir, MM);
     }
 
     /**
-     * Utility method for determine if sequence is matching to reference with specified number of mismatches
+     * Utility method for adjustMNP method
      * @param sequence subsequence consensus sequence in soft-clipped reads  $seq
-     * @param ref map of reference chars and position
+     * @param ref map of integer - characters (nucleotides) in reference sequence
      * @param position key for MNP map     $p
-     * @param dir direction of strand
-     * @param debugLog true if option -y used
-     * @param MM number of mismatches to check
-     * @return true if sequence if matching to reference with not more then MM mismatches and if number of mismatches less
-     *           then 15% of sequence length
+     * @param dir direction (forward or reverse)
+     * @param MM specific number of mismatches
+     * @return true if sequence is matched to reference
      */
     public static boolean ismatchref(String sequence,
                               Map<Integer, Character> ref,
                               int position,
                               int dir,
-                              boolean debugLog,
                               int MM) {
-        if (debugLog) {
+        if (instance().conf.y) {
             System.err.println(format("      Matching REF %s %s %s %s", sequence, position, dir, MM));
         }
 
@@ -1661,16 +1661,4 @@ public class SAMFileParser {
         }
         return mm <= MM && mm / (double)sequence.length() < 0.15;
     }
-
-    public static String getMrnm(SAMRecord record) {
-        if (record.getMateReferenceName() == null) {
-            return "*";
-        }
-
-        if (record.getReferenceName().equals(record.getMateReferenceName())) {
-            return "=";
-        }
-        return record.getMateReferenceName();
-    }
-
 }

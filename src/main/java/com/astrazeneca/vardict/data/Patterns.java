@@ -2,6 +2,9 @@ package com.astrazeneca.vardict.data;
 
 import java.util.regex.Pattern;
 
+/**
+ * Regex Patterns from all classes of VarDict.
+ */
 public class Patterns {
     // SAMRecord patterns
     public static final jregex.Pattern MC_Z_NUM_S_ANY_NUM_S = new jregex.Pattern("\\d+S\\S*\\d+S");
@@ -18,8 +21,6 @@ public class Patterns {
     //Sclip patterns
     public static final Pattern B_A7 = Pattern.compile("^.AAAAAAA");
     public static final Pattern B_T7 = Pattern.compile("^.TTTTTTT");
-    public static final Pattern B_A8 = Pattern.compile("^.AAAAAAAA");
-    public static final Pattern B_T8 = Pattern.compile("^.TTTTTTTT");
 
     //ATGC patterns
     public static final Pattern CARET_ATGNC = Pattern.compile("\\^([ATGNC]+)");
@@ -141,7 +142,7 @@ public class Patterns {
     public static final jregex.Pattern END_NUMBER_I = new jregex.Pattern("(\\d+)I$");
 
     /**
-     * regexp finds numbers followed by M (matched) or D (deleted) in CIGAR string
+     * Regexp finds numbers followed by M (matched) or D (deleted) in CIGAR string
      */
     public static final jregex.Pattern ALIGNED_LENGTH_MND = new jregex.Pattern("(\\d+)[MND]");
 

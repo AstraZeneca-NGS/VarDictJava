@@ -7,6 +7,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Structure for storage together all the collections needed for structural variants analysis.
+ */
 public class SVStructures {
     // for structural variant: Deletion
     public int svdelfend;
@@ -36,7 +39,7 @@ public class SVStructures {
     public Map<String, Integer> svfusfend = new HashMap<>();
     public Map<String, Integer> svfusrend = new HashMap<>();
 
-    // for structural variant: Insertion
+    // for structural variant: Insertion. Not used.
     // public int svinsfend = 0;
     // public int svinsrend = 0;
     // List<Sclip> svfins = new ArrayList<>();

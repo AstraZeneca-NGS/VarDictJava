@@ -1,8 +1,10 @@
 package com.astrazeneca.vardict;
 
+import com.astrazeneca.vardict.printers.PrinterType;
 import htsjdk.samtools.ValidationStringency;
 
-import com.astrazeneca.vardict.VarDict.BedRowFormat;
+import java.util.concurrent.atomic.AtomicInteger;
+
 
 public class Configuration {
     /**
@@ -35,7 +37,7 @@ public class Configuration {
 
     public int columnForChromosome = -1; //-c
 
-    public BedRowFormat bedRowFormat;
+    public RegionBuilder.BedRowFormat bedRowFormat;
     /**
      * The regular expression to extract sample name from bam filenames.
      */
@@ -99,9 +101,9 @@ public class Configuration {
      */
     public double bias = 0.05d;
     /**
-     * The minimum reads for bias calculation. Default: 2
+     * The minimum reads for bias calculation. Default: 2 $minb
      */
-    public int minb = 2; // -B
+    public int minBiasReads = 2; // -B
     /**
      * The minimum # of variance reads. Default: 2. If -p, it is set to 0.
      */
@@ -123,7 +125,7 @@ public class Configuration {
     /**
      * The hexical to filter reads.
      */
-    public String samfilter = "0x500"; //-F
+    public String samfilter = "0x504"; //-F
     /**
      * chr:start[-end]. If end is omitted, then a single position.
      */
@@ -264,6 +266,20 @@ public class Configuration {
      */
     public int referenceExtension = 1200;
 
+    /**
+     * Default printer for variants - system.out
+     */
+    public PrinterType printerType = PrinterType.OUT;
+
+    /**
+     * Exception counter
+     * */
+    public AtomicInteger exceptionCounter = new AtomicInteger(0);
+
+    /**
+     * Maximum of exception to continue work
+     */
+    public static int MAX_EXCEPTION_COUNT = 10;
 
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;

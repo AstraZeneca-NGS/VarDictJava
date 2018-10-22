@@ -434,8 +434,10 @@ Variant frequency is more than 10% for the non-monomer MSI and 25% for the monom
 - `--deldupvar`  
   Turn on deleting of duplicate variants in output that can appear due to VarDict linear work on regions. Variants in this mode are 
   considered and outputted only if start position of variant is inside the region interest.
+- `-DP|--default-printer`   
+    The printer type used for different outputs. Default: OUT (i.e. System.out).
 ## Output columns
-
+Simple mode:
 1. Sample - sample name
 2. Gene - gene name from a BED file
 3. Chr - chromosome name
@@ -473,6 +475,74 @@ Variant frequency is more than 10% for the non-monomer MSI and 25% for the monom
 35. DUPRATE - duplication rate in fraction
 36. SV splits-pairs-clusters: Splits - No. of split reads supporting SV, Pairs - No. of pairs supporting SV, 
 Clusters - No. of clusters supporting SV 
+
+In amplicon mode columns from #35 are changed to:  
+(35) GoodVarCount - number of good variants on amplicon  
+(36) TotalVarCount - number of good and bad variants on amplicon   
+(37) Nocov - number of variants on amplicon that has depth less than 1/50 of the max depth (they will be considered not working and thus not used).  
+(38) Ampflag - if there are different good variants on different amplicons, it will be 1.
+
+In somatic mode we have information from both samples:
+1. Sample - sample name
+2. Gene - gene name from a BED file
+3. Chr - chromosome name
+4. Start - start position of the variation
+5. End - end position of the variation
+6. Ref - reference sequence  
+7. Alt - variant sequence  
+   Fields from first sample:
+8. Depth - total coverage
+9. AltDepth - variant coverage
+10. RefFwdReads - reference forward strand coverage
+11. RefRevReads - reference reverse strand coverage
+12. AltFwdReads - variant forward strand coverage
+13. AltRevReads - variant reverse strand coverage
+14. Genotype - genotype description string
+15. AF - allele frequency
+16. Bias - strand bias flag
+17. PMean - mean position in read
+18. PStd - flag for read position standard deviation
+19. QMean - mean base quality
+20. QStd - flag for base quality standard deviation
+21. MAPQ - mapping quality
+22. QRATIO - ratio of high quality reads to low-quality reads
+23. HIFREQ - variant frequency for high-quality reads
+24. EXTRAFR - Adjusted AF for indels due to local realignment  
+25. NM - average number of mismatches for reads containing the variant  
+    Fields from second sample:
+26. Depth - total coverage
+27. AltDepth - variant coverage
+28. RefFwdReads - reference forward strand coverage
+29. RefRevReads - reference reverse strand coverage
+30. AltFwdReads - variant forward strand coverage
+31. AltRevReads - variant reverse strand coverage
+32. Genotype - genotype description string
+33. AF - allele frequency
+34. Bias - strand bias flag
+35. PMean - mean position in read
+36. PStd - flag for read position standard deviation
+37. QMean - mean base quality
+38. QStd - flag for base quality standard deviation
+39. MAPQ - mapping quality
+40. QRATIO - ratio of high quality reads to low-quality reads
+41. HIFREQ - variant frequency for high-quality reads
+42. EXTRAFR - Adjusted AF for indels due to local realignment  
+43. NM - average number of mismatches for reads containing the variant  
+    Common fields: 
+44. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
+45. MSI - MicroSattelite. > 1 indicates MSI
+46. MSINT - MicroSattelite unit length in bp
+47. 5pFlankSeq - neighboring reference sequence to 5' end 
+48. 3pFlankSeq - neighboring reference sequence to 3' end
+49. SEGMENT:CHR_START_END - position description
+50. VarLabel - variant label due to type: StrongLOH, StrongSomatic...
+51. VARTYPE - variant type
+52. DUPRATE1 - duplication rate in fraction from first sample
+53. SV_info1 - Splits - No. of split reads supporting SV, Pairs - No. of pairs supporting SV, 
+Clusters - No. of clusters supporting SV from first sample
+54. DUPRATE2 - duplication rate in fraction from second sample
+55. SV_info2: Splits - No. of split reads supporting SV, Pairs - No. of pairs supporting SV, 
+Clusters - No. of clusters supporting SV from second sample
 
 ### Input Files
 

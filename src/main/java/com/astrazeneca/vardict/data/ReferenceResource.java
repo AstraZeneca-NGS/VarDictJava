@@ -1,7 +1,6 @@
-package com.astrazeneca.vardict;
+package com.astrazeneca.vardict.data;
 
-import com.astrazeneca.vardict.data.Reference;
-import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.Configuration;
 import htsjdk.samtools.reference.IndexedFastaSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequence;
 
@@ -10,12 +9,16 @@ import java.io.FileNotFoundException;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.substr;
 
+/**
+ * Utility class for access to reference sequences
+ */
 public class ReferenceResource {
-    private static ThreadLocal<Map<String, IndexedFastaSequenceFile>> threadLocalFastaFiles = ThreadLocal.withInitial(HashMap::new);
+    private ThreadLocal<Map<String, IndexedFastaSequenceFile>> threadLocalFastaFiles = ThreadLocal.withInitial(HashMap::new);
 
-    synchronized private static IndexedFastaSequenceFile fetchFasta(String file) {
+    synchronized private IndexedFastaSequenceFile fetchFasta(String file) {
         return threadLocalFastaFiles.get().computeIfAbsent(
                 file,
                 (f) -> {
@@ -46,35 +49,31 @@ public class ReferenceResource {
     /**
      * Get part of reference sequence with default extension.
      * @param region region of interest
-     * @param chrs map of chromosome lengths
-     * @param conf Vardict Configuration
      * @return reference object contains sequence map: key - position, value - base and seed map
      */
-    public Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf) {
+    public Reference getReference(Region region) {
         Reference ref = new Reference();
-        return getREF(region, chrs, conf, conf.referenceExtension, ref);
+        return getReference(region, instance().conf.referenceExtension, ref);
     }
 
     /**
      * Get part of reference sequence with customizable extension.
      * @param region region of interest
-     * @param chrs map of chromosome lengths
-     * @param conf Vardict Configuration contains number of nucleotides to extend and SEED_1, SEED_2 lengths
      * @param extension extension for reference
      * @param ref reference
      * @return reference object contains sequence map: key - position, value - base and seed map
      */
-    public Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf, int extension, Reference ref) {
-        int sequenceStart = region.start - conf.numberNucleotideToExtend - extension < 1 ? 1
-                : region.start - conf.numberNucleotideToExtend - extension;
-        int len = chrs.containsKey(region.chr) ? chrs.get(region.chr) : 0;
-        int sequenceEnd = region.end + conf.numberNucleotideToExtend + extension > len ?
-                len : region.end + conf.numberNucleotideToExtend + extension;
-        if (conf.y) {
+    public Reference getReference(Region region, int extension, Reference ref) {
+        int sequenceStart = region.start - instance().conf.numberNucleotideToExtend - extension < 1 ? 1
+                : region.start - instance().conf.numberNucleotideToExtend - extension;
+        int len = instance().chrLengths.containsKey(region.chr) ? instance().chrLengths.get(region.chr) : 0;
+        int sequenceEnd = region.end + instance().conf.numberNucleotideToExtend + extension > len ?
+                len : region.end + instance().conf.numberNucleotideToExtend + extension;
+        if (instance().conf.y) {
             System.err.println("TIME: Getting REF: " + LocalDateTime.now());
         }
 
-        String[] subSeq = retrieveSubSeq(conf.fasta, region.chr, sequenceStart, sequenceEnd);
+        String[] subSeq = retrieveSubSeq(instance().conf.fasta, region.chr, sequenceStart, sequenceEnd);
         //Header doesn't used
         //String header = subSeq[0];
         String exon = subSeq[1].toUpperCase();
@@ -98,9 +97,10 @@ public class ReferenceResource {
 
             keySequence = substr(exon, i, Configuration.SEED_2);
             ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
+
         }
 
-        if (conf.y) {
+        if (instance().conf.y) {
             System.err.println("TIME: Got REF: " + LocalDateTime.now());
         }
 
@@ -115,7 +115,7 @@ public class ReferenceResource {
      * @param keySequence sequence length of SEED_1 parameter from chromosome
      * @return updated Reference
      */
-    private static Reference addPositionsToSeedSequence(Reference ref, int sequenceStart, int i, String keySequence) {
+    private Reference addPositionsToSeedSequence(Reference ref, int sequenceStart, int i, String keySequence) {
         List<Integer> seedPositions = ref.seed.getOrDefault(keySequence, new ArrayList<>());
         seedPositions.add(i + sequenceStart);
         ref.seed.put(keySequence, seedPositions);

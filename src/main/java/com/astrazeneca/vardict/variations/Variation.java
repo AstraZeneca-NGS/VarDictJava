@@ -5,72 +5,72 @@ package com.astrazeneca.vardict.variations;
  */
 public class Variation {
     /**
-     * Variant count
+     * Variant count $cnt
      */
-    public int cnt;
+    public int varsCount;
 
     /**
-     * Variant count on forward strand
+     * Variant count on forward strand $dirPlus
      */
-    public int dirPlus;
+    public int varsCountOnForward;
 
     /**
-     * Variant count on reverse strand
+     * Variant count on reverse strand $dirMinus
      */
-    public int dirMinus;
+    public int varsCountOnReverse;
 
     /**
-     * Sum of variant positions in read
+     * Sum of variant positions in read $pmean
      */
-    public double pmean;
+    public double meanPosition;
 
     /**
-     * Sum of base qualities for variant
+     * Sum of base qualities for variant $qmean
      */
-    public double qmean;
+    public double meanQuality;
 
     /**
-     * Sum of mapping qualities for variant
+     * Sum of mapping qualities for variant $Qmean
      */
-    public double Qmean;
+    public double meanMappingQuality;
 
     /**
-     * Sum of number of mismatches for variant
+     * Sum of number of mismatches for variant  $nm
      */
-    public double nm;
+    public double numberOfMismatches;
 
     /**
-     * Number of low-quality reads with the variant
+     * Number of low-quality reads with the variant $locnt
      */
-    public int locnt;
+    public int lowQualityReadsCount;
 
     /**
-     * Number of high-quality reads with the variant
+     * Number of high-quality reads with the variant $hicnt
      */
-    public int hicnt;
+    public int highQualityReadsCount;
 
     /**
-     * Flags that is true when variant is found in at least 2 different positions
+     * Flags that is true when variant is found in at least 2 different positions $pstd
      */
     public boolean pstd;
 
     /**
-     * Flags that is 1 when variant is read with at least 2 different qualities
+     * Flags that is 1 when variant is read with at least 2 different qualities $qstd
      */
     public boolean qstd;
 
     /**
-     * Position in read for previous instance of this variant (used for pstd)
+     * Position in read for previous instance of this variant (used for pstd) $pp
      */
     public int pp;
 
     /**
-     * Base quality for previous instance of this variant (used for qstd)
+     * Base quality for previous instance of this variant (used for qstd)  $pq
      */
     public double pq;
 
     /**
-     * Adjusted count for indels due to local realignment
+     * Adjusted count for indels due to local realignment $extracnt
      */
     public int extracnt;
 
@@ -80,9 +80,9 @@ public class Variation {
      */
     public void incDir(boolean dir) {
         if (dir)
-            this.dirMinus++;
+            this.varsCountOnReverse++;
         else
-            this.dirPlus++;
+            this.varsCountOnForward++;
     }
 
     /**
@@ -91,9 +91,9 @@ public class Variation {
      */
     public void decDir(boolean dir) {
         if (dir)
-            this.dirMinus--;
+            this.varsCountOnReverse--;
         else
-            this.dirPlus--;
+            this.varsCountOnForward--;
     }
 
     /**
@@ -103,8 +103,8 @@ public class Variation {
      */
     public int getDir(boolean dir) {
         if (dir)
-            return this.dirMinus;
-        return this.dirPlus;
+            return this.varsCountOnReverse;
+        return this.varsCountOnForward;
     }
 
     /**
@@ -114,9 +114,9 @@ public class Variation {
      */
     public void addDir(boolean dir, int add) {
         if (dir)
-            this.dirMinus += add;
+            this.varsCountOnReverse += add;
         else
-            this.dirPlus += add;
+            this.varsCountOnForward += add;
     }
 
     /**
@@ -126,9 +126,28 @@ public class Variation {
      */
     public void subDir(boolean dir, int sub) {
         if (dir)
-            this.dirMinus -= sub;
+            this.varsCountOnReverse -= sub;
         else
-            this.dirPlus -= sub;
+            this.varsCountOnForward -= sub;
     }
 
+    @Override
+    public String toString() {
+        return "Variation{" +
+                "varsCount=" + varsCount +
+                ", varsCountOnForward=" + varsCountOnForward +
+                ", varsCountOnReverse=" + varsCountOnReverse +
+                ", meanPosition=" + meanPosition +
+                ", meanQuality=" + meanQuality +
+                ", meanMappingQuality=" + meanMappingQuality +
+                ", numberOfMismatches=" + numberOfMismatches +
+                ", lowQualityReadsCount=" + lowQualityReadsCount +
+                ", highQualityReadsCount=" + highQualityReadsCount +
+                ", pstd=" + pstd +
+                ", qstd=" + qstd +
+                ", pp=" + pp +
+                ", pq=" + pq +
+                ", extracnt=" + extracnt +
+                '}';
+    }
 }

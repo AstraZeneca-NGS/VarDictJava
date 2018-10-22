@@ -1,32 +1,29 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
-import com.astrazeneca.vardict.ReferenceResource;
+import com.astrazeneca.vardict.data.ReferenceResource;
+import com.astrazeneca.vardict.collection.DirectThreadExecutor;
 import com.astrazeneca.vardict.data.Region;
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
 import com.astrazeneca.vardict.data.*;
-import com.astrazeneca.vardict.variations.Cluster;
-import com.astrazeneca.vardict.variations.Mate;
-import com.astrazeneca.vardict.variations.Sclip;
-import com.astrazeneca.vardict.variations.Variation;
-import htsjdk.samtools.Cigar;
-import htsjdk.samtools.SAMRecord;
-import htsjdk.samtools.SAMTag;
+import com.astrazeneca.vardict.data.scopedata.InitialData;
+import com.astrazeneca.vardict.data.scopedata.RealignedVariationData;
+import com.astrazeneca.vardict.data.scopedata.Scope;
+import com.astrazeneca.vardict.data.scopedata.VariationData;
+import com.astrazeneca.vardict.printers.VariantPrinter;
+import com.astrazeneca.vardict.variations.*;
 import htsjdk.samtools.util.SequenceUtil;
 
-import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.collection.VariationMap.getSV;
-import static com.astrazeneca.vardict.data.Patterns.*;
-import static com.astrazeneca.vardict.ReferenceResource.isLoaded;
+import static com.astrazeneca.vardict.data.ReferenceResource.isLoaded;
 import static com.astrazeneca.vardict.collection.VariationMap.SV;
-import static com.astrazeneca.vardict.modules.SAMFileParser.getMrnm;
+import static com.astrazeneca.vardict.modes.AbstractMode.partialPipeline;
 import static com.astrazeneca.vardict.modules.SAMFileParser.ismatchref;
-import static com.astrazeneca.vardict.modules.SAMFileParser.parseSAM;
-import static com.astrazeneca.vardict.modules.ToVarsBuilder.CURSEG;
-import static com.astrazeneca.vardict.modules.VariationRealigner.*;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.Utils.*;
@@ -36,531 +33,103 @@ import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
-public class StructuralVariantsProcessor {
-    private static ThreadLocal<Map<Integer, List<Sclip>>> SOFTP2SV = ThreadLocal.withInitial(HashMap::new);
+public class StructuralVariantsProcessor implements Module<RealignedVariationData, RealignedVariationData>  {
 
-    /**
-     * Prepare and fill SV structures for deletions, duplications, inversions.
-     * @param rlen max read length
-     * @param conf Configuration
-     * @param svStructures Contains all structural variants ends for deletions, duplications, inversions, insertions
-     and structures for structural variant analysis
-     * @param record parsed SAMRecord
-     * @param queryQuality string of query qualities from record
-     * @param nm number of mismatches from record
-     * @param dir direction of the strand
-     * @param cigar cigar from record (modified by realignment)
-     * @param mdir direction of mate strand
-     * @param start adjusted start position of read
-     * @param rlen2 the total length, including soft-clipped bases
-     */
-    public static void prepareSVStructuresForAnalysis(int rlen,
-                                                      Configuration conf,
-                                                      SVStructures svStructures,
-                                                      SAMRecord record,
-                                                      String queryQuality,
-                                                      int nm,
-                                                      boolean dir,
-                                                      Cigar cigar,
-                                                      boolean mdir,
-                                                      int start,
-                                                      int rlen2) {
-        int mstart = record.getMateAlignmentStart();
-        int mend = mstart + rlen2;
-        int end = start;
-        List<String> msegs = globalFind(ALIGNED_LENGTH_MND, cigar.toString());
-        end += sum(msegs);
+    private Map<Integer, VariationMap<String, Variation>> nonInsertionVariants;
+    private Map<Integer, VariationMap<String, Variation>> insertionVariants;
+    private Map<Integer, List<Sclip>> SOFTP2SV;
+    private Map<Integer, Integer> refCoverage;
+    private Map<Integer, Sclip> softClips5End;
+    private Map<Integer, Sclip> softClips3End;
+    private Reference reference;
+    private ReferenceResource referenceResource;
+    private Region region;
+    private Set<String> splice;
+    private int maxReadLength;
+    private String[] bams;
+    private String bam;
+    private SVStructures svStructures;
+    private double duprate;
+    private Tuple.Tuple3<String, Integer, Integer> CURSEG;
+    private Scope<VariationData> previousScope;
+    private VariantPrinter variantPrinter;
 
-        int soft5 = 0;
+    private void initFromScope(Scope<RealignedVariationData> scope) {
+        this.reference = scope.regionRef;
+        this.CURSEG = scope.data.CURSEG;
+        this.SOFTP2SV = scope.data.SOFTP2SV;
+        this.referenceResource = scope.referenceResource;
+        this.region = scope.region;
+        this.nonInsertionVariants = scope.data.nonInsertionVariants;
+        this.insertionVariants = scope.data.insertionVariants;
+        this.refCoverage = scope.data.refCoverage;
+        this.softClips5End = scope.data.softClips5End;
+        this.softClips3End = scope.data.softClips3End;
+        this.maxReadLength = scope.maxReadLength;
+        this.bams = scope.bam != null ? scope.bam.split(":") : null;
+        this.bam = scope.bam;
+        this.splice = scope.splice;
+        this.svStructures = scope.data.svStructures;
+        this.duprate = scope.data.duprate;
+        this.previousScope = scope.data.previousScope;
+        this.variantPrinter = scope.out;
+    }
 
-        jregex.Matcher matcher = BEGIN_NUM_S_OR_BEGIN_NUM_H.matcher(cigar.toString());
-        if (matcher.find() && matcher.group(1) != null) {
-            int tt = toInt(matcher.group(1));
-            if (tt != 0 && queryQuality.charAt(tt - 1) - 33 > conf.goodq) {
-                soft5 = start;
-            }
+    @Override
+    public Scope<RealignedVariationData> process(Scope<RealignedVariationData> scope)  {
+        initFromScope(scope);
+
+        if (!instance().conf.disableSV) {
+            findAllSVs();
         }
-        int soft3 = 0;
-
-        matcher = END_NUM_S_OR_NUM_H.matcher(cigar.toString());
-        if (matcher.find() && matcher.group(1) != null) {
-            int tt = toInt(matcher.group(1));
-            if (tt != 0 && queryQuality.charAt(record.getReadLength() - tt) - 33 > conf.goodq) {
-                soft3 = end;
-            }
+        if (instance().conf.y) {
+            outputClipping();
+            System.err.println("TIME: Finish realign:" + LocalDateTime.now());
         }
-        int dirNum = dir ? -1 : 1;
-        int mdirNum = mdir ? 1 : -1;
-        int MIN_D = 75;
-        if (getMrnm(record).equals("=")) {
-            int mlen = record.getInferredInsertSize();
-            if (record.getStringAttribute(SAMTag.MC.name()) != null
-                    && MC_Z_NUM_S_ANY_NUM_S.matcher(record.getStringAttribute(SAMTag.MC.name())).find()) {
-                // Ignore those with mates mapped with softcliping at both ends
-            } else if (record.getIntegerAttribute(SAMTag.MQ.name()) != null
-                    && record.getIntegerAttribute(SAMTag.MQ.name()) < 15) {
-                // Ignore those with mate mapping quality less than 15
-            } else if (dirNum * mdirNum == -1 && (mlen * dirNum) > 0 ) {
-                // deletion candidate
-                mlen = mstart > start ? mend - start : end - mstart;
-                if(abs(mlen) > conf.INSSIZE + conf.INSSTDAMT * conf.INSSTD ) {
-                    if (dirNum == 1) {
-                        if (svStructures.svfdel.size() == 0
-                                || start - svStructures.svdelfend > Configuration.MINSVCDIST * rlen) {
-                            Sclip sclip = new Sclip();
-                            sclip.cnt = 0;
-                            svStructures.svfdel.add(sclip);
-                        }
-                        addSV(getLastSVStructure(svStructures.svfdel), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft3, rlen/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                        svStructures.svdelfend = end;
-                    } else {
-                        if (svStructures.svrdel.size() == 0
-                                || start - svStructures.svdelrend > Configuration.MINSVCDIST * rlen) {
-                            Sclip sclip = new Sclip();
-                            sclip.cnt = 0;
-                            svStructures.svrdel.add(sclip);
-                        }
-                        addSV(getLastSVStructure(svStructures.svrdel), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft5, rlen/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                        svStructures.svdelrend = end;
-                    }
-
-                    if (!svStructures.svfdel.isEmpty()
-                            && abs(start - svStructures.svdelfend) <= Configuration.MINSVCDIST * rlen ){
-                        adddisccnt(getLastSVStructure(svStructures.svfdel));
-                    }
-                    if (!svStructures.svrdel.isEmpty()
-                            && abs(start - svStructures.svdelrend) <= Configuration.MINSVCDIST * rlen ){
-                        adddisccnt(getLastSVStructure(svStructures.svrdel));
-                    }
-                    if (!svStructures.svfdup.isEmpty() && abs(start - svStructures.svdupfend) <= MIN_D){
-                        adddisccnt(getLastSVStructure(svStructures.svfdup));
-                    }
-                    if (!svStructures.svrdup.isEmpty() && abs(start - svStructures.svduprend) <= MIN_D){
-                        adddisccnt(getLastSVStructure(svStructures.svrdup));
-                    }
-                    if (!svStructures.svfinv5.isEmpty() && abs(start - svStructures.svinvfend5) <= MIN_D){
-                        adddisccnt(getLastSVStructure(svStructures.svfinv5));
-                    }
-                    if (!svStructures.svrinv5.isEmpty() && abs(start - svStructures.svinvrend5) <= MIN_D){
-                        adddisccnt(getLastSVStructure(svStructures.svrinv5));
-                    }
-                    if (!svStructures.svfinv3.isEmpty() && abs(start - svStructures.svinvfend3) <= MIN_D){
-                        adddisccnt(getLastSVStructure(svStructures.svfinv3));
-                    }
-                    if (!svStructures.svrinv3.isEmpty() && abs(start - svStructures.svinvrend3) <= MIN_D){
-                        adddisccnt(getLastSVStructure(svStructures.svrinv3));
-                    }
-                }
-            } else if (dirNum * mdirNum == -1 && dirNum * mlen < 0) {
-                //duplication
-                if (dirNum == 1) {
-                    if (svStructures.svfdup.size() == 0
-                            || start - svStructures.svdupfend > Configuration.MINSVCDIST * rlen) {
-                        Sclip sclip = new Sclip();
-                        sclip.cnt = 0;
-                        svStructures.svfdup.add(sclip);
-                    }
-                    addSV(getLastSVStructure(svStructures.svfdup), start, end, mstart,
-                            mend, dirNum, rlen2, mlen, soft3, rlen/2.0,
-                            queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                    svStructures.svdupfend = end;
-                } else {
-                    if (svStructures.svrdup.size() == 0
-                            || start - svStructures.svduprend > Configuration.MINSVCDIST * rlen) {
-                        Sclip sclip = new Sclip();
-                        sclip.cnt = 0;
-                        svStructures.svrdup.add(sclip);
-                    }
-                    addSV(getLastSVStructure(svStructures.svrdup), start, end, mstart,
-                            mend, dirNum, rlen2, mlen, soft5, rlen/2.0,
-                            queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                    svStructures.svduprend = end;
-                }
-                if (!svStructures.svfdup.isEmpty()
-                        && abs(start - svStructures.svdupfend) <= Configuration.MINSVCDIST * rlen ) {
-                    getLastSVStructure(svStructures.svfdup).disc++;
-                }
-                if (!svStructures.svrdup.isEmpty()
-                        && abs(start - svStructures.svduprend) <= Configuration.MINSVCDIST * rlen ) {
-                    getLastSVStructure(svStructures.svrdup).disc++;
-                }
-                if (!svStructures.svfdel.isEmpty() && abs(start - svStructures.svdelfend) <= MIN_D) {
-                    adddisccnt(getLastSVStructure(svStructures.svfdel));
-                }
-                if (!svStructures.svrdel.isEmpty() && abs(start - svStructures.svdelrend) <= MIN_D) {
-                    adddisccnt(getLastSVStructure(svStructures.svrdel));
-                }
-                if (!svStructures.svfinv5.isEmpty() && abs(start - svStructures.svinvfend5) <= MIN_D) {
-                    adddisccnt(getLastSVStructure(svStructures.svfinv5));
-                }
-                if (!svStructures.svrinv5.isEmpty() && abs(start - svStructures.svinvrend5) <= MIN_D) {
-                    adddisccnt(getLastSVStructure(svStructures.svrinv5));
-                }
-                if (!svStructures.svfinv3.isEmpty() && abs(start - svStructures.svinvfend3) <= MIN_D) {
-                    adddisccnt(getLastSVStructure(svStructures.svfinv3));
-                }
-                if (!svStructures.svrinv3.isEmpty() && abs(start - svStructures.svinvrend3) <= MIN_D) {
-                    adddisccnt(getLastSVStructure(svStructures.svrinv3));
-                }
-            } else if (dirNum * mdirNum == 1) { // Inversion
-                if (dirNum == 1 && mlen != 0 ) {
-                    if (mlen < -3 * rlen) {
-                        if (svStructures.svfinv3.size() == 0
-                                || start - svStructures.svinvfend3 > Configuration.MINSVCDIST * rlen) {
-                            Sclip sclip = new Sclip();
-                            sclip.cnt = 0;
-                            svStructures.svfinv3.add(sclip);
-                        }
-                        addSV(getLastSVStructure(svStructures.svfinv3), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft3, rlen/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                        svStructures.svinvfend3 = end;
-                        getLastSVStructure(svStructures.svfinv3).disc++;
-                    } else if (mlen > 3 * rlen) {
-                        if (svStructures.svfinv5.size() == 0
-                                || start - svStructures.svinvfend5 > Configuration.MINSVCDIST * rlen) {
-                            Sclip sclip = new Sclip();
-                            sclip.cnt = 0;
-                            svStructures.svfinv5.add(sclip);
-                        }
-                        addSV(getLastSVStructure(svStructures.svfinv5), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft3, rlen/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                        svStructures.svinvfend5 = end;
-                        getLastSVStructure(svStructures.svfinv5).disc++;
-                    }
-                } else if (mlen != 0) {
-                    if (mlen < -3 * rlen) {
-                        if (svStructures.svrinv3.size() == 0
-                                || start - svStructures.svinvrend3 > Configuration.MINSVCDIST * rlen) {
-                            Sclip sclip = new Sclip();
-                            sclip.cnt = 0;
-                            svStructures.svrinv3.add(sclip);
-                        }
-                        addSV(getLastSVStructure(svStructures.svrinv3), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft5, rlen/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                        svStructures.svinvrend3 = end;
-                        getLastSVStructure(svStructures.svrinv3).disc++;
-
-                    } else if (mlen > 3 * rlen) {
-                        if (svStructures.svrinv5.size() == 0
-                                || start - svStructures.svinvrend5 > Configuration.MINSVCDIST * rlen) {
-                            Sclip sclip = new Sclip();
-                            sclip.cnt = 0;
-                            svStructures.svrinv5.add(sclip);
-                        }
-                        addSV(getLastSVStructure(svStructures.svrinv5), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft5, rlen/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                        svStructures.svinvrend5 = end;
-                        getLastSVStructure(svStructures.svrinv5).disc++;
-                    }
-                }
-                if (mlen != 0) {
-                    if (!svStructures.svfdel.isEmpty() && (start - svStructures.svdelfend) <= MIN_D) {
-                        adddisccnt(getLastSVStructure(svStructures.svfdel));
-                    }
-                    if (!svStructures.svrdel.isEmpty() && (start - svStructures.svdelrend) <= MIN_D) {
-                        adddisccnt(getLastSVStructure(svStructures.svrdel));
-                    }
-                    if (!svStructures.svfdup.isEmpty() && (start - svStructures.svdupfend) <= MIN_D) {
-                        adddisccnt(getLastSVStructure(svStructures.svfdup));
-                    }
-                    if (!svStructures.svrdup.isEmpty() && (start - svStructures.svduprend) <= MIN_D) {
-                        adddisccnt(getLastSVStructure(svStructures.svrdup));
-                    }
-                }
-            }
-        } else { // Inter-chr translocation
-            // to be implemented
-            String mchr = getMrnm(record);
-            if (record.getStringAttribute(SAMTag.MC.name()) != null
-                    && MC_Z_NUM_S_ANY_NUM_S.matcher(record.getStringAttribute(SAMTag.MC.name())).find()) {
-                // Ignore those with mates mapped with softcliping at both ends
-            } else if (record.getIntegerAttribute(SAMTag.MQ.name()) != null
-                    && record.getIntegerAttribute(SAMTag.MQ.name()) < 15) {
-                // Ignore those with mate mapping quality less than 15
-            } else if (dirNum == 1) {
-                if (svStructures.svffus.get(mchr) == null
-                        || start - svStructures.svfusfend.get(mchr) > Configuration.MINSVCDIST * rlen) {
-                    Sclip sclip = new Sclip();
-                    sclip.cnt = 0;
-                    List<Sclip> sclips = svStructures.svffus.getOrDefault(mchr, new ArrayList<>());
-                    sclips.add(sclip);
-                    svStructures.svffus.put(mchr, sclips);
-                }
-                int svn = svStructures.svffus.get(mchr).size() - 1;
-                addSV(svStructures.svffus.get(mchr).get(svn), start, end, mstart,
-                        mend, dirNum, rlen2, 0, soft3, rlen/2.0,
-                        queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                svStructures.svfusfend.put(mchr, end);
-                svStructures.svffus.get(mchr).get(svn).disc++;
-            } else {
-                if (svStructures.svrfus.get(mchr) == null
-                        || start - svStructures.svfusrend.get(mchr) > Configuration.MINSVCDIST * rlen) {
-                    Sclip sclip = new Sclip();
-                    sclip.cnt = 0;
-                    List<Sclip> sclips = svStructures.svrfus.getOrDefault(mchr, new ArrayList<>());
-                    sclips.add(sclip);
-                    svStructures.svrfus.put(mchr, sclips);
-                }
-                int svn = svStructures.svrfus.get(mchr).size() - 1;
-                addSV(svStructures.svrfus.get(mchr).get(svn), start, end, mstart,
-                        mend, dirNum, rlen2, 0, soft5, rlen/2.0,
-                        queryQuality.charAt(15) - 33, record.getMappingQuality(), nm, conf);
-                svStructures.svfusrend.put(mchr, end);
-                svStructures.svrfus.get(mchr).get(svn).disc++;
-            }
-            //TODO: There are no abs before (start - int) in perl, but otherwise here will be negative numbers
-            //adddisccnt( $svrdel[$#svrdel] ) if ( @svrdel && ($start - $svdelrend) <= 25 );
-            if (!svStructures.svfdel.isEmpty() && start - svStructures.svdelfend <= 25) {
-                adddisccnt(getLastSVStructure(svStructures.svfdel));
-            }
-            if (!svStructures.svrdel.isEmpty() && start - svStructures.svdelrend <= 25) {
-                adddisccnt(getLastSVStructure(svStructures.svrdel));
-            }
-            if (!svStructures.svfdup.isEmpty() && start - svStructures.svdupfend <= 25) {
-                adddisccnt(getLastSVStructure(svStructures.svfdup));
-            }
-            if (!svStructures.svrdup.isEmpty() && start - svStructures.svduprend <= 25) {
-                adddisccnt(getLastSVStructure(svStructures.svrdup));
-            }
-            if (!svStructures.svfinv5.isEmpty() && start - svStructures.svinvfend5 <= 25) {
-                adddisccnt(getLastSVStructure(svStructures.svfinv5));
-            }
-            if (!svStructures.svrinv5.isEmpty() && start - svStructures.svinvrend5 <= 25) {
-                adddisccnt(getLastSVStructure(svStructures.svrinv5));
-            }
-            if (!svStructures.svfinv3.isEmpty() && start - svStructures.svinvfend3 <= 25) {
-                adddisccnt(getLastSVStructure(svStructures.svfinv3));
-            }
-            if (!svStructures.svrinv3.isEmpty() && start - svStructures.svinvrend3 <= 25) {
-                adddisccnt(getLastSVStructure(svStructures.svrinv3));
-            }
-        }
-     }
-
-    private static Sclip getLastSVStructure(List<Sclip> svStructure) {
-        return svStructure.get(svStructure.size() - 1);
+        return new Scope<>(
+                scope,
+                new RealignedVariationData(nonInsertionVariants, insertionVariants, softClips3End, softClips5End,
+                        refCoverage, maxReadLength, duprate, svStructures, CURSEG, SOFTP2SV, previousScope));
     }
 
     /**
      * Find SVs for each structural variant structure
-     * @param region region of interest
-     * @param bam BAM file name
-     * @param chrs map of chromosome lengths
-     * @param sample sample name
-     * @param splice set of strings representing spliced regions
-     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
-     * @param rlen max read length
-     * @param reference reference in a given region
-     * @param conf Configuration
-     * @param hash map of variants on positions
-     * @param iHash map of insertions on positions
-     * @param cov map of coverage on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param sclip5 map of soft clips 5' on positions
-     * @param svStructures Contains all structural variants ends for deletions, duplications, inversions, insertions
-    and structures for structural variant analysis
-     * @param referenceResource object for access to reference map
-     * @throws IOException if BAM file can't be read
      */
-    static void findAllSVs(Region region, String bam, Map<String, Integer> chrs, String sample,
-                                  Set<String> splice, String ampliconBasedCalling, int rlen, Reference reference,
-                                  Configuration conf, Map<Integer, VariationMap<String, Variation>> hash,
-                                  Map<Integer, VariationMap<String, Variation>> iHash, Map<Integer, Integer> cov,
-                                  Map<Integer, Sclip> sclip3, Map<Integer, Sclip> sclip5,
-                                  SVStructures svStructures, ReferenceResource referenceResource) throws IOException {
-        if (conf.y) {
+    public void findAllSVs() {
+        if (instance().conf.y) {
             System.err.println("Start Structural Variants: DEL\n");
         }
-        findDEL(conf, hash, iHash, cov, sclip5, sclip3, reference, referenceResource, region, bam, svStructures.svfdel,
-                svStructures.svrdel, rlen, chrs, sample, splice, ampliconBasedCalling);
-        if (conf.y) {
+        findDEL();
+        if (instance().conf.y) {
             System.err.println("Start Structural Variants: INV\n");
         }
-        findINV(conf, hash, iHash, cov, sclip5, sclip3, reference, referenceResource, region, bam, svStructures.svfinv3,
-                svStructures.svrinv3, svStructures.svfinv5, svStructures.svrinv5,
-                rlen, chrs, sample, splice, ampliconBasedCalling);
-        if (conf.y) {
+        findINV();
+        if (instance().conf.y) {
             System.err.println("Start Structural Variants\n");
         }
-        findsv(hash, cov, sclip5, sclip3, reference, region, svStructures.svfdel, svStructures.svrdel, conf, rlen);
-        if (conf.y) {
+        findsv();
+        if (instance().conf.y) {
             System.err.println("Start Structural Variants: DEL discordant pairs only\n");
         }
-        findDELdisc(conf, hash, cov, sclip5, sclip3, reference, referenceResource, region, svStructures.svfdel,
-                svStructures.svrdel, splice, rlen, chrs) ;
-        if (conf.y) {
+        findDELdisc() ;
+        if (instance().conf.y) {
             System.err.println("Start Structural Variants: INV discordant pairs only\n");
         }
-        findINVdisc(hash, cov, sclip5, sclip3, reference, referenceResource, region, svStructures.svfinv3, svStructures.svrinv3,
-                svStructures.svfinv5, svStructures.svrinv5, conf, rlen, chrs);
-        if (conf.y) {
+        findINVdisc();
+        if (instance().conf.y) {
             System.err.println("Start Structural Variants: DUP discordant pairs only\n");
         }
-        findDUPdisc(hash, iHash, cov, sclip5, sclip3, reference, referenceResource, region, bam, sample, splice,
-                ampliconBasedCalling, svStructures.svfdup, svStructures.svrdup, conf, rlen, chrs);
-    }
-
-    /**
-     * Add structural variant to current structural variant structure and update
-     * @param sdref current structural variant structure
-     */
-    private static void addSV (Sclip sdref,
-                               int start_s,
-                               int end_e,
-                               int mateStart_ms,
-                               int mateEnd_me,
-                               int dir,
-                               int rlen,
-                               int mlen,
-                               int softp,
-                               double pmean_rp,
-                               double qmean,
-                               double Qmean,
-                               double nm,
-                               Configuration conf) {
-        sdref.cnt++;
-        sdref.incDir(dir == 1 ? false : true);
-
-        if (qmean >= conf.goodq) {
-            sdref.hicnt++;
-        } else {
-            sdref.locnt++;
-        }
-
-        if (sdref.start == 0 || sdref.start >= start_s) {
-            sdref.start = start_s;
-        }
-        if (sdref.end == 0 || sdref.end <= end_e) {
-            sdref.end = end_e;
-        }
-        sdref.mates.add(new Mate(mateStart_ms, mateEnd_me, mlen,
-                start_s, end_e, pmean_rp, qmean, Qmean, nm));
-
-        if (sdref.mstart == 0 || sdref.mstart >= mateStart_ms) {
-            sdref.mstart = mateStart_ms;
-        }
-        if (sdref.mend == 0 || sdref.mend <= mateEnd_me ) {
-            sdref.mend = mateStart_ms + rlen;
-        }
-        if (softp != 0) {
-            if (dir == 1) {
-                if (abs(softp - sdref.end) < 10 ) {
-                    int softCount = sdref.soft.getOrDefault(softp, 0);
-                    softCount++;
-                    sdref.soft.put(softp, softCount);
-                }
-            } else {
-                if (abs(softp - sdref.start) < 10 ) {
-                    int softCount = sdref.soft.getOrDefault(softp, 0);
-                    softCount++;
-                    sdref.soft.put(softp, softCount);
-                }
-            }
-        }
-    }
-
-    /**
-     * Filter all structural variants structures
-     * @param rlen max read length
-     * @param conf Configuration
-     * @param svStructures Contains all structural variants ends for deletions, duplications, inversions, insertions
-    and structures for structural variant analysis
-     */
-     static void filterAllSVStructures(int rlen,
-                                             Configuration conf,
-                                             SVStructures svStructures) {
-        filterSV(svStructures.svfinv3, rlen, conf);
-        filterSV(svStructures.svrinv3, rlen, conf);
-        filterSV(svStructures.svfinv5, rlen, conf);
-        filterSV(svStructures.svrinv5, rlen, conf);
-        filterSV(svStructures.svfdel, rlen, conf);
-        filterSV(svStructures.svrdel, rlen, conf);
-        filterSV(svStructures.svfdup, rlen, conf);
-        filterSV(svStructures.svrdup, rlen, conf);
-
-        for (Map.Entry<String, List<Sclip>> svv : svStructures.svffus.entrySet()) {
-            filterSV(svv.getValue(), rlen, conf);
-        }
-        for (Map.Entry<String, List<Sclip>> svv : svStructures.svrfus.entrySet()) {
-            filterSV(svv.getValue(), rlen, conf);
-        }
-        for (Map.Entry<Integer, List<Sclip>> entry : SOFTP2SV.get().entrySet()) {
-            Integer key = entry.getKey();
-            List<Sclip> sclips = entry.getValue();
-            sclips.sort(comparing((Sclip sclip) -> sclip.cnt).reversed());
-            SOFTP2SV.get().put(key, sclips);
-        }
-    }
-
-    /**
-     * Filter SV  by checking created clusters
-     * @param svList_sva contains list of SVs to filter
-     * @param rlen read length
-     * @param conf configuration of Vardict
-     */
-    static void filterSV(List<Sclip> svList_sva,
-                         int rlen,
-                         Configuration conf) {
-        for (Sclip sv: svList_sva) {
-            Cluster cluster = checkCluster(sv.mates, rlen, conf);
-
-            if (cluster.mateStart_ms != 0) {
-                sv.mstart = cluster.mateStart_ms;
-                sv.mend = cluster.mateEnd_me;
-                sv.cnt = cluster.cnt;
-                sv.mlen = cluster.mateLength_mlen;
-                sv.start = cluster.start_s;
-                sv.end = cluster.end_e;
-                sv.pmean = cluster.pmean_rp;
-                sv.qmean = cluster.qmean_q;
-                sv.Qmean = cluster.Qmean_Q;
-                sv.nm = cluster.nm;
-            } else {
-                sv.used = true;
-            }
-            // Too many unhappy mates are false positive
-            if (sv.disc != 0 && sv.cnt/(double) sv.disc < 0.5) {
-                if (!(sv.cnt/(double) sv.disc >= 0.35 && sv.cnt >= 5)) {
-                    sv.used = true;
-                }
-            }
-
-            List<Map.Entry<Integer, Integer>> soft = new ArrayList<>(sv.soft.entrySet());
-            soft.sort(comparing((Map.Entry<Integer, Integer> entry) -> entry.getValue(), Integer::compareTo).reversed());
-
-            sv.softp = soft.size() > 0 ? soft.get(0).getKey() : 0;
-            if (sv.softp != 0) {
-                List<Sclip> sclips = SOFTP2SV.get().getOrDefault(sv.softp, new ArrayList<>());
-                sclips.add(sv);
-                SOFTP2SV.get().put(sv.softp, sclips);
-            }
-
-            if (conf.y) {
-                System.err.printf("SV cluster: %s %s %s %s Cnt: %s Discordant Cnt: %s Softp: %s Used: %s\n",
-                        cluster.start_s, cluster.end_e,
-                        cluster.mateStart_ms, cluster.mateEnd_me, sv.cnt, sv.disc, sv.softp, sv.used);
-            }
-        }
+        findDUPdisc();
     }
 
     /**
      * Check cluster for start and end of SV mates
      * @param mates list of mates for current SV
      * @param rlen read length
-     * @param conf configuration of Vardict
      * @return Cluster with updated starts and ends
      */
     static Cluster checkCluster(List<Mate> mates,
-                                int rlen,
-                                Configuration conf) {
+                                int rlen) {
         mates.sort(comparing(mate -> mate.mateStart_ms, Integer::compareTo));
 
         List<Cluster> clusters = new ArrayList<>();
@@ -595,7 +164,7 @@ public class StructuralVariantsProcessor {
         }
         clusters.sort(comparing((Cluster cluster) -> cluster.cnt).reversed());
 
-        if (conf.y) {
+        if (instance().conf.y) {
             System.err.print("Clusters; ");
             clusters.forEach(cluster -> System.err.print(join("; ", cluster.cnt, cluster.start_s, cluster.end_e,
                     cluster.mateStart_ms, cluster.mateEnd_me)));
@@ -615,14 +184,12 @@ public class StructuralVariantsProcessor {
      * @param end end of the region $e
      * @param structuralVariants_sv contains list of list of Structural variants $sv
      * @param rlen read length
-     * @param conf configuration of Vardict
      * @return tuple of coverage, count of SVs overlaping with mates, number of pairs
      */
     public static Tuple.Tuple3<Integer, Integer, Integer> markSV(int start,
                                                           int end,
                                                           List<List<Sclip>> structuralVariants_sv,
-                                                          int rlen,
-                                                          Configuration conf) {
+                                                          int rlen) {
         int cov = 0;
         int pairs = 0;
         int cnt = 0;
@@ -632,17 +199,17 @@ public class StructuralVariantsProcessor {
                 Tuple.Tuple2<Integer, Integer> tuple = sv_r.start < sv_r.mstart
                         ? new Tuple.Tuple2<>(sv_r.end, sv_r.mstart)
                         : new Tuple.Tuple2<>(sv_r.mend, sv_r.start);
-                if (conf.y) {
-                    System.err.printf("   Marking SV %s %s %s %s cnt: %s\n", start, end, tuple._1, tuple._2, sv_r.cnt);
+                if (instance().conf.y) {
+                    System.err.printf("   Marking SV %s %s %s %s cnt: %s\n", start, end, tuple._1, tuple._2, sv_r.varsCount);
                 }
                 if (isOverlap(start, end, tuple, rlen) ) {
-                    if (conf.y) {
-                        System.err.printf("       SV %s %s %s %s cnt: %s marked\n", start, end, tuple._1, tuple._2, sv_r.cnt);
+                    if (instance().conf.y) {
+                        System.err.printf("       SV %s %s %s %s cnt: %s marked\n", start, end, tuple._1, tuple._2, sv_r.varsCount);
                     }
                     sv_r.used = true;
                     cnt++;
-                    pairs += sv_r.cnt;
-                    cov += (int) ((sv_r.cnt * rlen)/(sv_r.end - sv_r.start)) + 1;
+                    pairs += sv_r.varsCount;
+                    cov += (int) ((sv_r.varsCount * rlen)/(sv_r.end - sv_r.start)) + 1;
                 }
             }
         }
@@ -655,14 +222,12 @@ public class StructuralVariantsProcessor {
      * @param end end of the region $e
      * @param structuralVariants_sv contains list of list of Structural variants $sv
      * @param rlen read length
-     * @param conf  configuration of Vardict
      * @return tuple of count of SVs overlaping with mates, number of pairs
      */
     static Tuple.Tuple2<Integer, Integer> markDUPSV(int start,
                                                     int end,
                                                     List<List<Sclip>> structuralVariants_sv,
-                                                    int rlen,
-                                                    Configuration conf) {
+                                                    int rlen) {
         int cov = 0;
         int pairs = 0;
         int cnt = 0;
@@ -672,17 +237,17 @@ public class StructuralVariantsProcessor {
                 Tuple.Tuple2<Integer, Integer> tuple = sv_r.start < sv_r.mstart
                         ? new Tuple.Tuple2<>(sv_r.start, sv_r.mend)
                         : new Tuple.Tuple2<>(sv_r.mstart, sv_r.end);
-                if (conf.y) {
-                    System.err.printf("   Marking DUP SV %s %s %s %s cnt: %s\n", start, end, tuple._1, tuple._2, sv_r.cnt);
+                if (instance().conf.y) {
+                    System.err.printf("   Marking DUP SV %s %s %s %s cnt: %s\n", start, end, tuple._1, tuple._2, sv_r.varsCount);
                 }
                 if (isOverlap(start, end, tuple, rlen)) {
-                    if (conf.y) {
-                        System.err.printf("       DUP SV %s %s %s %s cnt: %s marked\n", start, end, tuple._1, tuple._2, sv_r.cnt);
+                    if (instance().conf.y) {
+                        System.err.printf("       DUP SV %s %s %s %s cnt: %s marked\n", start, end, tuple._1, tuple._2, sv_r.varsCount);
                     }
                     sv_r.used = true;
                     cnt++;
-                    pairs += sv_r.cnt;
-                    cov += (int) ((sv_r.cnt * rlen)/(sv_r.end - sv_r.start)) + 1;
+                    pairs += sv_r.varsCount;
+                    cov += (int) ((sv_r.varsCount * rlen)/(sv_r.end - sv_r.start)) + 1;
                 }
             }
         }
@@ -726,15 +291,13 @@ public class StructuralVariantsProcessor {
      * @param end end of the region
      * @param sv list of SVs in list of clusters
      * @param RLEN max read length
-     * @param conf Configuration
      * @return tuple if pairs, mean position, mean base quality, mean mapping quality and number of mismatches
      */
     static Tuple.Tuple5<Integer, Double, Double, Double, Double> checkPairs(String chr,
                                                                                int start,
                                                                                int end,
                                                                                List<List<Sclip>> sv,
-                                                                               int RLEN,
-                                                                               Configuration conf) {
+                                                                               int RLEN) {
         int pairs = 0;
         double pmean = 0;
         double qmean = 0;
@@ -758,12 +321,12 @@ public class StructuralVariantsProcessor {
                 if (!isOverlap(start, end, new Tuple.Tuple2<>(s, e), RLEN)) {
                     continue;
                 }
-                if (svr.cnt > pairs) {
-                    tuple5 = tuple(svr.cnt, svr.pmean, svr.qmean, svr.Qmean, svr.nm);
-                    pairs = svr.cnt;
+                if (svr.varsCount > pairs) {
+                    tuple5 = tuple(svr.varsCount, svr.meanPosition, svr.meanQuality, svr.meanMappingQuality, svr.numberOfMismatches);
+                    pairs = svr.varsCount;
                 }
                 svr.used = true;
-                if (conf.y) {
+                if (instance().conf.y) {
                     System.err.printf("      Pair [%s:%s-%s] overlapping [%s:%s-%s] found and marked.\n", chr, s, e, chr, start, end);
                 }
             }
@@ -771,326 +334,309 @@ public class StructuralVariantsProcessor {
         return tuple5;
     }
 
-    /**
-     * Add discordant count
-     * @param svref
-     */
-    private static void adddisccnt(Sclip svref) {
-        svref.disc++;
-    }
 
     /**
      * Find candidate SVs on 3' and 5' ends
-     * @param hash map of variants on positions
-     * @param cov map of coverage on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param sclip5 map of soft clips 5' on positions
-     * @param reference reference in a given region
-     * @param region region of interest
-     * @param svfdel list of DEL SVs in forward direction
-     * @param svrdel list of DEL SVs in reverse direction
-     * @param conf Configuration
-     * @param RLEN max read length
      */
-    static void findsv(Map<Integer, VariationMap<String, Variation>> hash,
-                       Map<Integer, Integer> cov,
-                       Map<Integer, Sclip> sclip5,
-                       Map<Integer, Sclip> sclip3,
-                       Reference reference,
-                       Region region,
-                       List<Sclip> svfdel,
-                       List<Sclip> svrdel,
-                       Configuration conf,
-                       int RLEN) {
+     void findsv() {
         Map<Integer, Character> ref = reference.referenceSequences;
         List<Tuple.Tuple3<Integer, Sclip, Integer>> tmp5 = new ArrayList<>();
-        for(Map.Entry<Integer, Sclip> entry : sclip5.entrySet()) {
+        for(Map.Entry<Integer, Sclip> entry : softClips5End.entrySet()) {
             int p = entry.getKey();
             Sclip sc5v = entry.getValue();
             if (sc5v.used) {
                 continue;
             }
-            if (p < CURSEG.get()._2 || p > CURSEG.get()._3) {
+            if (p < CURSEG._2 || p > CURSEG._3) {
                 continue;
             }
-            tmp5.add(new Tuple.Tuple3<>(p, sc5v, sc5v.cnt));
+            tmp5.add(new Tuple.Tuple3<>(p, sc5v, sc5v.varsCount));
         }
         tmp5.sort(comparing((Tuple.Tuple3<Integer, Sclip, Integer> tuple) -> tuple._3).reversed());
 
         List<Tuple.Tuple3<Integer, Sclip, Integer>> tmp3 = new ArrayList<>();
-        for(Map.Entry<Integer, Sclip> entry : sclip3.entrySet()) {
+        for(Map.Entry<Integer, Sclip> entry : softClips3End.entrySet()) {
             int p = entry.getKey();
             Sclip sc3v = entry.getValue();
             if (sc3v.used) {
                 continue;
             }
-            if (p < CURSEG.get()._2 || p > CURSEG.get()._3) {
+            if (p < CURSEG._2 || p > CURSEG._3) {
                 continue;
             }
-            tmp3.add(new Tuple.Tuple3<>(p, sc3v, sc3v.cnt));
+            tmp3.add(new Tuple.Tuple3<>(p, sc3v, sc3v.varsCount));
         }
         tmp3.sort(comparing((Tuple.Tuple3<Integer, Sclip, Integer> tuple) -> tuple._3).reversed());
 
+        int lastPosition = 0;
         for (Tuple.Tuple3<Integer, Sclip, Integer> tuple5 : tmp5) {
-            int p5 = tuple5._1;
-            Sclip sc5v = tuple5._2;
-            int cnt5 = tuple5._3;
-            if (cnt5 < conf.minr) {
-                break;
-            }
-            if (sc5v.used) {
-                continue;
-            }
-            if (SOFTP2SV.get().containsKey(p5) && SOFTP2SV.get().get(p5).get(0).used) {
-                continue;
-            }
-            String seq = findconseq(sc5v, conf, 0);
-            if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
-                continue;
-            }
-            if (conf.y) {
-                System.err.printf("  Finding SV 5': %s %s cnt: %s\n", seq, p5, cnt5);
-            }
-            Tuple.Tuple2<Integer, String> tuple2 = findMatch(conf, seq, reference, p5, -1);
-            int bp = tuple2._1;
-            String EXTRA = tuple2._2;
-
-            if (bp != 0) {
-                // candidate deletion
-                if (bp < p5) {
-                    Tuple.Tuple5<Integer, Double, Double, Double, Double> tuplePairs = checkPairs(region.chr, bp, p5, Arrays.asList(svfdel, svrdel), RLEN, conf);
-                    int pairs = tuplePairs._1;
-                    double pmean = tuplePairs._2;
-                    double qmean = tuplePairs._3;
-                    double Qmean = tuplePairs._4;
-                    double nm = tuplePairs._5;
-                    if (pairs == 0) {
-                        continue;
-                    }
-                    p5--;
-                    bp++;
-                    int dellen = p5 - bp + 1;
-
-                    final Variation vref = getVariation(hash, bp, "-" + dellen);
-                    vref.cnt = 0;
-
-                    SV sv = getSV(hash, bp);
-                    sv.type = "DEL";
-                    sv.pairs += pairs;
-                    sv.splits += cnt5;
-                    sv.clusters += pairs != 0 ? 1 : 0;
-
-                    if (!cov.containsKey(bp)) {
-                        cov.put(bp, pairs + sc5v.cnt);
-                    }
-                    if (cov.containsKey(p5 + 1) && cov.get(bp) < cov.get(p5 + 1)) {
-                        cov.put(bp, cov.get(p5 + 1));
-                    }
-                    adjCnt(vref, sc5v, conf);
-                    Variation tmp = new Variation();
-                    tmp.cnt = pairs;
-                    tmp.hicnt = pairs;
-                    tmp.dirPlus = (pairs / 2);
-                    tmp.dirMinus = pairs - (pairs / 2);
-                    tmp.pmean = pmean;
-                    tmp.qmean = qmean;
-                    tmp.Qmean = Qmean;
-                    tmp.nm = nm;
-                    adjCnt(vref, tmp, conf);
-                    if (conf.y) {
-                        System.err.println("    Finding candidate deletion 5'");
-                    }
-                } else { // candidate duplication
+            try {
+                int p5 = tuple5._1;
+                lastPosition = p5;
+                Sclip sc5v = tuple5._2;
+                int cnt5 = tuple5._3;
+                if (cnt5 < instance().conf.minr) {
+                    break;
                 }
-            } else { // candidate inversion
-                Tuple.Tuple2<Integer, String> tuple2Rev = findMatchRev(conf, seq, reference, p5, -1);
-                bp = tuple2Rev._1;
-                EXTRA = tuple2Rev._2;
-                if (bp == 0) {
+                if (sc5v.used) {
                     continue;
                 }
-                if (!(abs(bp - p5) > Configuration.SVFLANK)) {
+                if (SOFTP2SV.containsKey(p5) && SOFTP2SV.get(p5).get(0).used) {
                     continue;
                 }
-                if (bp > p5) { // bp at 3' side
-                } else { // bp at 5' side
-                    int temp = bp;
-                    bp = p5;
-                    p5 = temp;
+                String seq = findconseq(sc5v, 0);
+                if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
+                    continue;
                 }
-                bp--;
-                while (ref.containsKey(bp + 1)
-                        && isHasAndEquals(complement(ref.get(bp + 1)), ref, p5 - 1)) {
-                    p5--;
-                    if (p5 != 0) {
+                if (instance().conf.y) {
+                    System.err.printf("  Finding SV 5': %s %s cnt: %s\n", seq, p5, cnt5);
+                }
+                Tuple.Tuple2<Integer, String> tuple2 = findMatch(seq, reference, p5, -1);
+                int bp = tuple2._1;
+                String EXTRA = tuple2._2;
+
+                if (bp != 0) {
+                    // candidate deletion
+                    if (bp < p5) {
+                        Tuple.Tuple5<Integer, Double, Double, Double, Double> tuplePairs =
+                                checkPairs(region.chr, bp, p5, Arrays.asList(svStructures.svfdel, svStructures.svrdel), maxReadLength);
+                        int pairs = tuplePairs._1;
+                        double pmean = tuplePairs._2;
+                        double qmean = tuplePairs._3;
+                        double Qmean = tuplePairs._4;
+                        double nm = tuplePairs._5;
+                        if (pairs == 0) {
+                            continue;
+                        }
+                        p5--;
                         bp++;
+                        int dellen = p5 - bp + 1;
+
+                        final Variation vref = getVariation(nonInsertionVariants, bp, "-" + dellen);
+                        vref.varsCount = 0;
+
+                        SV sv = getSV(nonInsertionVariants, bp);
+                        sv.type = "DEL";
+                        sv.pairs += pairs;
+                        sv.splits += cnt5;
+                        sv.clusters += pairs != 0 ? 1 : 0;
+
+                        if (!refCoverage.containsKey(bp)) {
+                            refCoverage.put(bp, pairs + sc5v.varsCount);
+                        }
+                        if (refCoverage.containsKey(p5 + 1) && refCoverage.get(bp) < refCoverage.get(p5 + 1)) {
+                            refCoverage.put(bp, refCoverage.get(p5 + 1));
+                        }
+                        adjCnt(vref, sc5v);
+                        Variation tmp = new Variation();
+                        tmp.varsCount = pairs;
+                        tmp.highQualityReadsCount = pairs;
+                        tmp.varsCountOnForward = (pairs / 2);
+                        tmp.varsCountOnReverse = pairs - (pairs / 2);
+                        tmp.meanPosition = pmean;
+                        tmp.meanQuality = qmean;
+                        tmp.meanMappingQuality = Qmean;
+                        tmp.numberOfMismatches = nm;
+                        adjCnt(vref, tmp);
+                        if (instance().conf.y) {
+                            System.err.println("    Finding candidate deletion 5'");
+                        }
+                    } else { // candidate duplication
                     }
-                }
-
-                String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp - Configuration.SVFLANK + 1, bp));
-                String ins3 = SequenceUtil.reverseComplement(joinRef(ref, p5, p5 + Configuration.SVFLANK - 1));
-                int mid = bp - p5 - ins5.length() - ins3.length() + 1;
-
-                String vn = "-" + (bp - p5 + 1) + "^" + ins5 + "<inv" + mid + ">" + ins3 + EXTRA;
-                if (mid <= 0) {
-                    String tins = SequenceUtil.reverseComplement(joinRef(ref, p5, bp));
-                    vn = "-" + (bp - p5 + 1) + "^" + tins + EXTRA;
-                }
-
-                final Variation vref = getVariation(hash, p5, vn);
-                // TODO: 26/07/18 Seem that next statement is redundant since it assigns cnt to 0 if it is already 0
-                //	    $hash->{ $p5 }->{ $vn }->{ cnt } = 0 unless( $hash->{ $p5 }->{ $vn }->{ cnt } );
-
-                SV sv = getSV(hash, p5);
-                sv.type = "INV";
-                sv.pairs += 0;
-                sv.splits += cnt5;
-                sv.clusters += 0;
-
-                adjCnt(vref, sc5v, conf);
-                incCnt(cov, p5, cnt5);
-                if (cov.containsKey(bp) && cov.get(p5) < cov.get(bp)) {
-                    cov.put(p5, cov.get(bp));
-                }
-                if (conf.y) {
-                    System.err.printf("    Found INV: %d %s Cnt:%d\n", p5, vn, cnt5);
-                }
-            }
-        }
-        for (Tuple.Tuple3<Integer, Sclip, Integer> tuple3 : tmp3) {
-            int p3 = tuple3._1;
-            Sclip sc3v = tuple3._2;
-            int cnt3 = tuple3._3;
-            if (cnt3 < conf.minr) {
-                break;
-            }
-            if (sc3v.used) {
-                continue;
-            }
-            if (SOFTP2SV.get().containsKey(p3) && SOFTP2SV.get().get(p3).get(0).used) {
-                continue;
-            }
-            String seq = findconseq(sc3v, conf, 0);
-            if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
-                continue;
-            }
-            if (conf.y) {
-                System.err.printf("  Finding SV 3': %s %s cnt: %s\n", seq, p3, cnt3);
-            }
-
-            Tuple.Tuple2<Integer, String> tuple2 = findMatch(conf, seq, reference, p3, 1);
-            int bp = tuple2._1;
-            String EXTRA = tuple2._2;
-            if (bp != 0) {
-                if (bp > p3) { // candidate deletion
-                    Tuple.Tuple5<Integer, Double, Double, Double, Double> tuplePairs = checkPairs(region.chr, p3, bp, Arrays.asList(svfdel, svrdel), RLEN, conf);
-                    int pairs = tuplePairs._1;
-                    double pmean = tuplePairs._2;
-                    double qmean = tuplePairs._3;
-                    double Qmean = tuplePairs._4;
-                    double nm = tuplePairs._5;
-                    if (pairs == 0) {
+                } else { // candidate inversion
+                    Tuple.Tuple2<Integer, String> tuple2Rev = findMatchRev(seq, reference, p5, -1);
+                    bp = tuple2Rev._1;
+                    EXTRA = tuple2Rev._2;
+                    if (bp == 0) {
                         continue;
                     }
-                    int dellen = bp - p3;
+                    if (!(abs(bp - p5) > Configuration.SVFLANK)) {
+                        continue;
+                    }
+                    if (bp > p5) { // bp at 3' side
+                    } else { // bp at 5' side
+                        int temp = bp;
+                        bp = p5;
+                        p5 = temp;
+                    }
                     bp--;
-
-                    while (isHasAndEquals(bp, ref, p3 - 1)) {
-                        bp--;
-                        if (bp != 0) {
-                            p3--;
+                    while (ref.containsKey(bp + 1)
+                            && isHasAndEquals(complement(ref.get(bp + 1)), ref, p5 - 1)) {
+                        p5--;
+                        if (p5 != 0) {
+                            bp++;
                         }
                     }
 
-                    final Variation vref = getVariation(hash, p3, "-" + dellen);
-                    vref.cnt = 0;
+                    String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp - Configuration.SVFLANK + 1, bp));
+                    String ins3 = SequenceUtil.reverseComplement(joinRef(ref, p5, p5 + Configuration.SVFLANK - 1));
+                    int mid = bp - p5 - ins5.length() - ins3.length() + 1;
 
-                    SV sv = getSV(hash, p3);
-                    sv.type = "DEL";
-                    sv.pairs += pairs;
+                    String vn = "-" + (bp - p5 + 1) + "^" + ins5 + "<inv" + mid + ">" + ins3 + EXTRA;
+                    if (mid <= 0) {
+                        String tins = SequenceUtil.reverseComplement(joinRef(ref, p5, bp));
+                        vn = "-" + (bp - p5 + 1) + "^" + tins + EXTRA;
+                    }
+
+                    final Variation vref = getVariation(nonInsertionVariants, p5, vn);
+
+                    SV sv = getSV(nonInsertionVariants, p5);
+                    sv.type = "INV";
+                    sv.pairs += 0;
+                    sv.splits += cnt5;
+                    sv.clusters += 0;
+
+                    adjCnt(vref, sc5v);
+                    incCnt(refCoverage, p5, cnt5);
+                    if (refCoverage.containsKey(bp) && refCoverage.get(p5) < refCoverage.get(bp)) {
+                        refCoverage.put(p5, refCoverage.get(bp));
+                    }
+                    if (instance().conf.y) {
+                        System.err.printf("    Found INV: %d %s Cnt:%d\n", p5, vn, cnt5);
+                    }
+                }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
+            }
+        }
+        for (Tuple.Tuple3<Integer, Sclip, Integer> tuple3 : tmp3) {
+            try {
+                int p3 = tuple3._1;
+                lastPosition = p3;
+                Sclip sc3v = tuple3._2;
+                int cnt3 = tuple3._3;
+                if (cnt3 < instance().conf.minr) {
+                    break;
+                }
+                if (sc3v.used) {
+                    continue;
+                }
+                if (SOFTP2SV.containsKey(p3) && SOFTP2SV.get(p3).get(0).used) {
+                    continue;
+                }
+                String seq = findconseq(sc3v, 0);
+                if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
+                    continue;
+                }
+                if (instance().conf.y) {
+                    System.err.printf("  Finding SV 3': %s %s cnt: %s\n", seq, p3, cnt3);
+                }
+
+                Tuple.Tuple2<Integer, String> tuple2 = findMatch(seq, reference, p3, 1);
+                int bp = tuple2._1;
+                String EXTRA = tuple2._2;
+                if (bp != 0) {
+                    if (bp > p3) { // candidate deletion
+                        Tuple.Tuple5<Integer, Double, Double, Double, Double> tuplePairs =
+                                checkPairs(region.chr, p3, bp, Arrays.asList(svStructures.svfdel, svStructures.svrdel), maxReadLength);
+                        int pairs = tuplePairs._1;
+                        double pmean = tuplePairs._2;
+                        double qmean = tuplePairs._3;
+                        double Qmean = tuplePairs._4;
+                        double nm = tuplePairs._5;
+                        if (pairs == 0) {
+                            continue;
+                        }
+                        int dellen = bp - p3;
+                        bp--;
+
+                        while (isHasAndEquals(bp, ref, p3 - 1)) {
+                            bp--;
+                            if (bp != 0) {
+                                p3--;
+                            }
+                        }
+
+                        final Variation vref = getVariation(nonInsertionVariants, p3, "-" + dellen);
+                        vref.varsCount = 0;
+
+                        SV sv = getSV(nonInsertionVariants, p3);
+                        sv.type = "DEL";
+                        sv.pairs += pairs;
+                        sv.splits += cnt3;
+                        sv.clusters += pairs != 0 ? 1 : 0;
+
+                        if (!refCoverage.containsKey(p3)) {
+                            refCoverage.put(p3, pairs + sc3v.varsCount);
+                        }
+                        if (refCoverage.containsKey(bp) && refCoverage.get(bp) < refCoverage.get(p3)) {
+                            refCoverage.put(bp, refCoverage.get(p3));
+                        }
+
+                        adjCnt(vref, sc3v);
+                        Variation tmp = new Variation();
+                        tmp.varsCount = pairs;
+                        tmp.highQualityReadsCount = pairs;
+                        tmp.varsCountOnForward = (int) (pairs / 2);
+                        tmp.varsCountOnReverse = pairs - (int) (pairs / 2);
+                        tmp.meanPosition = pmean;
+                        tmp.meanQuality = qmean;
+                        tmp.meanMappingQuality = Qmean;
+                        tmp.numberOfMismatches = nm;
+                        adjCnt(vref, tmp);
+                        if (instance().conf.y) {
+                            System.err.println("    Finding candidate deletion 3'");
+                        }
+                    } else { // candidate duplication
+                    }
+                } else { // candidate inversion
+                    Tuple.Tuple2<Integer, String> tuple2Rev = findMatchRev(seq, reference, p3, 1);
+                    bp = tuple2Rev._1;
+                    EXTRA = tuple2Rev._2;
+
+                    if (bp == 0) {
+                        continue;
+                    }
+                    if (abs(bp - p3) <= Configuration.SVFLANK) {
+                        continue;
+                    }
+                    if (bp < p3) { // bp at 5' side
+                        int tmp = bp;
+                        bp = p3;
+                        p3 = tmp;
+                        p3++;
+                        bp--;
+                    } else { // bp at 3' side
+                    }
+
+                    while (ref.containsKey(bp + 1)
+                            && isHasAndEquals(complement(ref.get(bp + 1)), ref, p3 - 1)) {
+                        p3--;
+                        if (p3 != 0) {
+                            bp++;
+                        }
+                    }
+                    String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp - Configuration.SVFLANK + 1, bp));
+                    String ins3 = SequenceUtil.reverseComplement(joinRef(ref, p3, p3 + Configuration.SVFLANK - 1));
+                    int mid = bp - p3 - 2 * Configuration.SVFLANK + 1;
+
+                    String vn = "-" + (bp - p3 + 1) + "^" + EXTRA + ins5 + "<inv" + mid + ">" + ins3;
+                    if (mid <= 0) {
+                        String tins = SequenceUtil.reverseComplement(joinRef(ref, p3, bp));
+                        vn = "-" + (bp - p3 + 1) + "^" + EXTRA + tins;
+                    }
+
+                    final Variation vref = getVariation(nonInsertionVariants, p3, vn);
+
+                    SV sv = getSV(nonInsertionVariants, p3);
+                    sv.type = "INV";
+                    sv.pairs += 0;
                     sv.splits += cnt3;
-                    sv.clusters += pairs != 0 ? 1 : 0;
+                    sv.clusters += 0;
 
-                    if (!cov.containsKey(p3)) {
-                        cov.put(p3, pairs + sc3v.cnt);
+                    adjCnt(vref, sc3v);
+                    incCnt(refCoverage, p3, cnt3);
+
+                    if (refCoverage.containsKey(bp) && refCoverage.get(p3) < refCoverage.get(bp)) {
+                        refCoverage.put(p3, refCoverage.get(bp));
                     }
-                    if (cov.containsKey(bp) && cov.get(bp) < cov.get(p3)) {
-                        cov.put(bp, cov.get(p3));
-                    }
-
-                    adjCnt(vref, sc3v, conf);
-                    Variation tmp = new Variation();
-                    tmp.cnt = pairs;
-                    tmp.hicnt = pairs;
-                    tmp.dirPlus = (int) (pairs / 2);
-                    tmp.dirMinus = pairs - (int) (pairs / 2);
-                    tmp.pmean = pmean;
-                    tmp.qmean = qmean;
-                    tmp.Qmean = Qmean;
-                    tmp.nm = nm;
-                    adjCnt(vref, tmp, conf);
-                    if (conf.y) {
-                        System.err.println("    Finding candidate deletion 3'");
-                    }
-                } else { // candidate duplication
-                }
-            } else { // candidate inversion
-                Tuple.Tuple2<Integer, String> tuple2Rev = findMatchRev(conf, seq, reference, p3, 1);
-                bp = tuple2Rev._1;
-                EXTRA = tuple2Rev._2;
-
-                if (bp == 0) {
-                    continue;
-                }
-                if (abs(bp - p3) <= Configuration.SVFLANK) {
-                    continue;
-                }
-                if (bp < p3) { // bp at 5' side
-                    int tmp = bp;
-                    bp = p3;
-                    p3 = tmp;
-                    p3++;
-                    bp--;
-                } else { // bp at 3' side
-                }
-
-                while (ref.containsKey(bp + 1)
-                        && isHasAndEquals(complement(ref.get(bp + 1)), ref, p3 - 1)) {
-                    p3--;
-                    if (p3 != 0) {
-                        bp++;
+                    if (instance().conf.y) {
+                        System.err.printf("    Found INV: %s BP: %s Cov: %s %s %s EXTRA: %s Cnt: %s\n",
+                                p3, bp, refCoverage.get(p3), refCoverage.get(bp), vn, EXTRA, cnt3);
                     }
                 }
-                String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp - Configuration.SVFLANK + 1, bp));
-                String ins3 = SequenceUtil.reverseComplement(joinRef(ref, p3, p3 + Configuration.SVFLANK - 1));
-                int mid = bp - p3 - 2 * Configuration.SVFLANK + 1;
-
-                String vn = "-" + (bp - p3 + 1) + "^" + EXTRA + ins5 + "<inv" + mid + ">" + ins3;
-                if (mid <= 0) {
-                    String tins = SequenceUtil.reverseComplement(joinRef(ref, p3, bp));
-                    vn = "-" + (bp - p3 + 1) + "^" + EXTRA + tins;
-                }
-
-                final Variation vref = getVariation(hash, p3, vn);
-                // TODO: 26/07/18 Seem that next statement is redundant since it assigns cnt to 0 if it is already 0
-                //$hash->{ $p3 }->{ $vn }->{ cnt } = 0 unless( $hash->{ $p3 }->{ $vn }->{ cnt } );
-
-                SV sv = getSV(hash, p3);
-                sv.type = "INV";
-                sv.pairs += 0;
-                sv.splits += cnt3;
-                sv.clusters += 0;
-
-                adjCnt(vref, sc3v, conf);
-                incCnt(cov, p3, cnt3);
-
-                if (cov.containsKey(bp) && cov.get(p3) < cov.get(bp)) {
-                    cov.put(p3, cov.get(bp));
-                }
-                if (conf.y) {
-                    System.err.printf("    Found INV: %s BP: %s Cov: %s %s %s EXTRA: %s Cnt: %s\n",
-                            p3, bp, cov.get(p3), cov.get(bp), vn, EXTRA, cnt3);
-                }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
             }
         }
     }
@@ -1098,203 +644,195 @@ public class StructuralVariantsProcessor {
     /**
      * Find INV SV with discordant pairs only
      * Would only consider those with supports from both orientations
-     * (svfinv5) --&gt; | &lt;-- (svrinv5) ..... (svfinv3) --&gt; | &lt;-- (svrinv3)
-     * @param hash map of variants on positions
-     * @param cov map of coverage on positions
-     * @param sclip5 map of soft clips 5' on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param reference reference in a given region
-     * @param region region of interest
-     * @param svfinv3 list of INV SVs in forward direction of 3'
-     * @param svfinv5 list of INV SVs in forward direction of 5'
-     * @param svrinv3 list of INV SVs in reverse direction of 3'
-     * @param svrinv5 list of INV SVs in reverse direction of 5'
-     * @param conf Configuration
-     * @param referenceResource object for access to reference map
-     * @param RLEN max read length
-     * @param chrs map of chromosome lengths
+     * #  (svfinv5) --&gt; | &lt;-- (svrinv5) ..... (svfinv3) --&gt; | &lt;-- (svrinv3)
      */
-    static void findINVdisc (Map<Integer, VariationMap<String, Variation>> hash,
-                             Map<Integer, Integer> cov,
-                             Map<Integer, Sclip> sclip5,
-                             Map<Integer, Sclip> sclip3,
-                             Reference reference, ReferenceResource referenceResource, Region region,
-                             List<Sclip> svfinv3,
-                             List<Sclip> svrinv3,
-                             List<Sclip> svfinv5,
-                             List<Sclip> svrinv5,
-                             Configuration conf,
-                             int RLEN,
-                             Map<String, Integer> chrs) {
+     void findINVdisc () {
         Map<Integer, Character> ref = reference.referenceSequences;
-        for (Sclip invf5 : svfinv5) {
-            if (invf5.used) {
-                continue;
-            }
-            int cnt = invf5.cnt;
-            int me = invf5.mend;
-            int ms = invf5.mstart;
-            int end = invf5.end;
-            int start = invf5.start;
-            double nm = invf5.nm;
-            double pmean = invf5.pmean;
-            double qmean = invf5.qmean;
-            double Qmean = invf5.Qmean;
-            if (!(Qmean/ (double) cnt > Configuration.DISCPAIRQUAL)) {
-                continue;
-            }
-            for (Sclip invr5 : svrinv5) {
-                if (invr5.used) {
+        int lastStart = 0;
+        for (Sclip invf5 : svStructures.svfinv5) {
+            try {
+                if (invf5.used) {
                     continue;
                 }
-                int rcnt = invr5.cnt;
-                int rstart = invr5.start;
-                int rms = invr5.mstart;
-                double rnm = invr5.nm;
-                double rpmean = invr5.pmean;
-                double rqmean = invr5.qmean;
-                double rQmean = invr5.Qmean;
-                if (!(rQmean/(double)rcnt > Configuration.DISCPAIRQUAL)) {
+                int cnt = invf5.varsCount;
+                int me = invf5.mend;
+                int ms = invf5.mstart;
+                int end = invf5.end;
+                int start = invf5.start;
+                lastStart = start;
+                double nm = invf5.numberOfMismatches;
+                double pmean = invf5.meanPosition;
+                double qmean = invf5.meanQuality;
+                double Qmean = invf5.meanMappingQuality;
+                if (!(Qmean / (double) cnt > Configuration.DISCPAIRQUAL)) {
                     continue;
                 }
-                if (!(cnt + rcnt > conf.minr + 5)) {
-                    continue;
+                for (Sclip invr5 : svStructures.svrinv5) {
+                    try {
+                        if (invr5.used) {
+                            continue;
+                        }
+                        int rcnt = invr5.varsCount;
+                        int rstart = invr5.start;
+                        lastStart = rstart;
+                        int rms = invr5.mstart;
+                        double rnm = invr5.numberOfMismatches;
+                        double rpmean = invr5.meanPosition;
+                        double rqmean = invr5.meanQuality;
+                        double rQmean = invr5.meanMappingQuality;
+                        if (!(rQmean / (double) rcnt > Configuration.DISCPAIRQUAL)) {
+                            continue;
+                        }
+                        if (!(cnt + rcnt > instance().conf.minr + 5)) {
+                            continue;
+                        }
+                        if (isOverlap(end, me, new Tuple.Tuple2<>(rstart, rms), maxReadLength)) {
+                            int bp = abs((end + rstart) / 2);
+                            int pe = abs((me + rms) / 2);
+                            if (!ref.containsKey(pe)) {
+                                Region modifiedRegion = Region.newModifiedRegion(region, pe - 150, pe + 150);
+                                referenceResource.getReference(modifiedRegion, 300, reference);
+                            }
+                            int len = pe - bp + 1;
+
+                            String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp, bp + Configuration.SVFLANK - 1));
+                            String ins3 = SequenceUtil.reverseComplement(joinRef(ref, pe - Configuration.SVFLANK + 1, pe));
+                            String ins = ins3 + "<inv" + (len - 2 * Configuration.SVFLANK) + ">" + ins5;
+                            if (len - 2 * Configuration.SVFLANK <= 0) {
+                                ins = SequenceUtil.reverseComplement(joinRef(ref, bp, pe));
+                            }
+                            if (instance().conf.y) {
+                                System.err.printf("  Found INV with discordant pairs only 5': cnt: %d Len: %d %d-%d<->%d-%d %s\n",
+                                        cnt, len, end, rstart, me, rms, ins);
+                            }
+                            final Variation vref = getVariation(nonInsertionVariants, bp, "-" + len + "^" + ins);
+
+                            invf5.used = true;
+                            invr5.used = true;
+                            vref.pstd = true;
+                            vref.qstd = true;
+
+                            Variation tmp = new Variation();
+                            tmp.varsCount = cnt + rcnt;
+                            tmp.highQualityReadsCount = cnt + rcnt;
+                            tmp.varsCountOnForward = cnt;
+                            tmp.varsCountOnReverse = rcnt;
+                            tmp.meanQuality = qmean + rqmean;
+                            tmp.meanPosition = pmean + rpmean;
+                            tmp.meanMappingQuality = Qmean + rQmean;
+                            tmp.numberOfMismatches = nm + rnm;
+                            adjCnt(vref, tmp);
+
+                            SV sv = getSV(nonInsertionVariants, bp);
+                            sv.type = "INV";
+                            sv.pairs += cnt;
+                            sv.splits += softClips5End.containsKey(start) ? softClips5End.get(start).varsCount : 0;
+                            sv.splits += softClips5End.containsKey(ms) ? softClips5End.get(ms).varsCount : 0;
+                            sv.clusters++;
+
+                            if (!refCoverage.containsKey(bp)) {
+                                refCoverage.put(bp, 2 * cnt);
+                            }
+                            markSV(bp, pe, Arrays.asList(svStructures.svfinv3, svStructures.svrinv3), maxReadLength);
+                        }
+                    } catch (Exception exception) {
+                        printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
+
+                    }
                 }
-                if (isOverlap(end, me, new Tuple.Tuple2<>(rstart, rms), RLEN)) {
-                    int bp = abs((end+rstart)/2);
-                    int pe = abs((me+rms)/2);
-                    if (!ref.containsKey(pe)) {
-                        Region modifiedRegion = Region.newModifiedRegion(region, pe - 150, pe + 150);
-                        referenceResource.getREF(modifiedRegion, chrs, conf, 300, reference);
-                    }
-                    int len = pe - bp + 1;
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
 
-                    String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp, bp + Configuration.SVFLANK - 1));
-                    String ins3 = SequenceUtil.reverseComplement(joinRef(ref, pe - Configuration.SVFLANK + 1 ,pe));
-                    String ins = ins3 + "<inv" + (len - 2 * Configuration.SVFLANK) + ">" + ins5;
-                    if (len - 2 * Configuration.SVFLANK <= 0) {
-                        ins = SequenceUtil.reverseComplement(joinRef(ref, bp, pe));
-                    }
-                    if (conf.y) {
-                        System.err.printf("  Found INV with discordant pairs only 5': cnt: %d Len: %d %d-%d<->%d-%d %s\n",
-                                cnt, len, end, rstart, me, rms, ins);
-                    }
-                    final Variation vref = getVariation(hash, bp,"-" + len + "^" + ins);
-
-                    // TODO: 26/07/18 Seem that next statement is redundant since it assigns cnt to 0 if it is already 0
-                    //$hash->{ $bp }->{ "-${len}^$ins" }->{ cnt } = 0 unless( $hash->{ $bp }->{ "-${len}^$ins" }->{ cnt } );
-
-                    invf5.used = true;
-                    invr5.used = true;
-                    vref.pstd = true;
-                    vref.qstd = true;
-
-                    Variation tmp = new Variation();
-                    tmp.cnt = cnt + rcnt;
-                    tmp.hicnt = cnt + rcnt;
-                    tmp.dirPlus = cnt;
-                    tmp.dirMinus = rcnt;
-                    tmp.qmean = qmean + rqmean;
-                    tmp.pmean = pmean + rpmean;
-                    tmp.Qmean = Qmean + rQmean;
-                    tmp.nm = nm + rnm;
-                    adjCnt(vref, tmp, conf);
-
-                    SV sv = getSV(hash, bp);
-                    sv.type = "INV";
-                    sv.pairs += cnt;
-                    sv.splits += sclip5.containsKey(start) ? sclip5.get(start).cnt : 0;
-                    sv.splits += sclip5.containsKey(ms) ? sclip5.get(ms).cnt : 0;
-                    sv.clusters ++;
-
-                    if (!cov.containsKey(bp)) {
-                        cov.put(bp, 2 * cnt);
-                    }
-                    markSV(bp, pe, Arrays.asList(svfinv3, svrinv3), RLEN, conf);
-                }
             }
         }
-
-        for (Sclip invf3 : svfinv3) {
-            if (invf3.used) {
-                continue;
-            }
-            int cnt = invf3.cnt;
-            int me = invf3.mend;
-            int end = invf3.end;
-            double nm = invf3.nm;
-            double pmean = invf3.pmean;
-            double qmean = invf3.qmean;
-            double Qmean = invf3.Qmean;
-            for (Sclip invr3 : svrinv3) {
-                if (invr3.used) {
+        for (Sclip invf3 : svStructures.svfinv3) {
+            try {
+                if (invf3.used) {
                     continue;
                 }
-                int rcnt = invr3.cnt;
-                int rstart = invr3.start;
-                int rms = invr3.mstart;
-                double rnm = invr3.nm;
-                double rpmean = invr3.pmean;
-                double rqmean = invr3.qmean;
-                double rQmean = invr3.Qmean;
-                if (!(rQmean/ (double)rcnt > Configuration.DISCPAIRQUAL)) {
-                    continue;
+                int cnt = invf3.varsCount;
+                int me = invf3.mend;
+                int end = invf3.end;
+                double nm = invf3.numberOfMismatches;
+                double pmean = invf3.meanPosition;
+                double qmean = invf3.meanQuality;
+                double Qmean = invf3.meanMappingQuality;
+                for (Sclip invr3 : svStructures.svrinv3) {
+                    try {
+                        if (invr3.used) {
+                            continue;
+                        }
+                        int rcnt = invr3.varsCount;
+                        int rstart = invr3.start;
+                        lastStart = rstart;
+                        int rms = invr3.mstart;
+                        double rnm = invr3.numberOfMismatches;
+                        double rpmean = invr3.meanPosition;
+                        double rqmean = invr3.meanQuality;
+                        double rQmean = invr3.meanMappingQuality;
+                        if (!(rQmean / (double) rcnt > Configuration.DISCPAIRQUAL)) {
+                            continue;
+                        }
+                        if (!(cnt + rcnt > instance().conf.minr + 5)) {
+                            continue;
+                        }
+                        if (isOverlap(me, end, new Tuple.Tuple2<>(rms, rstart), maxReadLength)) {
+                            int pe = abs((end + rstart) / 2);
+                            int bp = abs((me + rms) / 2);
+                            if (!ref.containsKey(bp)) {
+                                Region modifiedRegion = Region.newModifiedRegion(region, bp - 150, bp + 150);
+                                referenceResource.getReference(modifiedRegion, 300, reference);
+                            }
+                            int len = pe - bp + 1;
+                            String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp, bp + Configuration.SVFLANK - 1));
+                            String ins3 = SequenceUtil.reverseComplement(joinRef(ref, pe - Configuration.SVFLANK + 1, pe));
+
+                            String ins = ins3 + "<inv" + (len - 2 * Configuration.SVFLANK) + ">" + ins5;
+                            if (len - 2 * Configuration.SVFLANK <= 0) {
+                                ins = SequenceUtil.reverseComplement(joinRef(ref, bp, pe));
+                            }
+                            if (instance().conf.y) {
+                                System.err.printf("  Found INV with discordant pairs only 3': cnt: %d Len: %d %d-%d<->%d-%d %s\n",
+                                        cnt, len, me, rms, end, rstart, ins);
+                            }
+                            final Variation vref = getVariation(nonInsertionVariants, bp, "-" + len + "^" + ins);
+
+                            invf3.used = true;
+                            invr3.used = true;
+                            vref.pstd = true;
+                            vref.qstd = true;
+
+                            Variation tmp = new Variation();
+                            tmp.varsCount = cnt + rcnt;
+                            tmp.highQualityReadsCount = cnt + rcnt;
+                            tmp.varsCountOnForward = cnt;
+                            tmp.varsCountOnReverse = rcnt;
+                            tmp.meanQuality = qmean + rqmean;
+                            tmp.meanPosition = pmean + rpmean;
+                            tmp.meanMappingQuality = Qmean + rQmean;
+                            tmp.numberOfMismatches = nm + rnm;
+
+                            adjCnt(vref, tmp);
+
+                            SV sv = getSV(nonInsertionVariants, bp);
+                            sv.type = "INV";
+                            sv.pairs += cnt;
+                            sv.splits += softClips3End.containsKey(end + 1) ? softClips3End.get(end + 1).varsCount : 0;
+                            sv.splits += softClips3End.containsKey(me + 1) ? softClips3End.get(me + 1).varsCount : 0;
+                            sv.clusters++;
+
+                            if (!refCoverage.containsKey(bp)) {
+                                refCoverage.put(bp, 2 * cnt);
+                            }
+                            markSV(bp, pe, Arrays.asList(svStructures.svfinv5, svStructures.svrinv5), maxReadLength);
+                        }
+                    } catch (Exception exception) {
+                        printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
+                    }
                 }
-                if (!(cnt + rcnt > conf.minr + 5)) {
-                    continue;
-                }
-                if (isOverlap(me, end, new Tuple.Tuple2<>(rms, rstart), RLEN)) {
-                    int pe = abs((end + rstart)/2);
-                    int bp = abs((me + rms)/2);
-                    if (!ref.containsKey(bp)) {
-                        Region modifiedRegion = Region.newModifiedRegion(region, bp - 150, bp + 150);
-                        referenceResource.getREF(modifiedRegion, chrs, conf, 300, reference);
-                    }
-                    int len = pe - bp + 1;
-                    String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp, bp + Configuration.SVFLANK - 1));
-                    String ins3 = SequenceUtil.reverseComplement(joinRef(ref, pe - Configuration.SVFLANK + 1, pe));
 
-                    String ins = ins3+"<inv" + (len - 2* Configuration.SVFLANK) + ">"+ ins5;
-                    if (len - 2 * Configuration.SVFLANK <= 0 ) {
-                        ins = SequenceUtil.reverseComplement(joinRef(ref, bp, pe));
-                    }
-                    if (conf.y) {
-                        System.err.printf("  Found INV with discordant pairs only 3': cnt: %d Len: %d %d-%d<->%d-%d %s\n",
-                                cnt, len, me, rms, end, rstart, ins);
-                    }
-                    final Variation vref = getVariation(hash, bp,"-" + len + "^" + ins);
-                    // TODO: 26/07/18 Seem that next statement is redundant since it assigns cnt to 0 if it is already 0
-                    //$hash->{ $bp }->{ "-${len}^$ins" }->{ cnt } = 0 unless( $hash->{ $bp }->{ "-${len}^$ins" }->{ cnt } );
-
-                    invf3.used = true;
-                    invr3.used = true;
-                    vref.pstd = true;
-                    vref.qstd = true;
-
-                    Variation tmp = new Variation();
-                    tmp.cnt = cnt + rcnt;
-                    tmp.hicnt = cnt + rcnt;
-                    tmp.dirPlus = cnt;
-                    tmp.dirMinus = rcnt;
-                    tmp.qmean = qmean + rqmean;
-                    tmp.pmean = pmean + rpmean;
-                    tmp.Qmean = Qmean + rQmean;
-                    tmp.nm = nm + rnm;
-
-                    adjCnt(vref, tmp, conf);
-
-                    SV sv = getSV(hash, bp);
-                    sv.type = "INV";
-                    sv.pairs += cnt;
-                    sv.splits += sclip3.containsKey(end + 1) ? sclip3.get(end + 1).cnt : 0;
-                    sv.splits += sclip3.containsKey(me + 1) ? sclip3.get(me + 1).cnt : 0;
-                    sv.clusters++;
-
-                    if(!cov.containsKey(bp)) {
-                        cov.put(bp, 2 * cnt);
-                    }
-                    markSV(bp, pe, Arrays.asList(svfinv5, svrinv5), RLEN, conf);
-                }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
             }
         }
     }
@@ -1302,310 +840,287 @@ public class StructuralVariantsProcessor {
     /**
      * Find DUP SVs with discordant pairs only
      * (svrdup) |&lt;--.........--&gt;| (svfdup)
-     * @param hash map of variants on positions
-     * @param iHash map of insertions on positions
-     * @param cov map of coverage on positions
-     * @param sclip5 map of soft clips 5' on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param reference reference in a given region
-     * @param region region of interest
-     * @param bam BAM file name
-     * @param sample sample name
-     * @param splice set of strings representing spliced regions
-     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
-     * @param svfdup list of DUP SVs in discordant pairs in forward direction
-     * @param svrdup list of DUP SVs in discordant pairs in reverse direction
-     * @param conf Configuration
-     * @param RLEN max read length
-     * @param referenceResource object for access to reference map
-     * @param chrs map of chromosome lengths
-     * @throws IOException if BAM file can't be read
      */
-    static void findDUPdisc (Map<Integer, VariationMap<String, Variation>> hash,
-                             Map<Integer, VariationMap<String, Variation>> iHash,
-                             Map<Integer, Integer> cov,
-                             Map<Integer, Sclip> sclip5,
-                             Map<Integer, Sclip> sclip3,
-                             Reference reference, ReferenceResource referenceResource,
-                             Region region,
-                             String bam,
-                             String sample,
-                             Set<String> splice,
-                             String ampliconBasedCalling,
-                             List<Sclip> svfdup,
-                             List<Sclip> svrdup,
-                             Configuration conf,
-                             int RLEN,
-                             Map<String, Integer> chrs) throws IOException {
+     void findDUPdisc (){
         Map<Integer, Character> ref = reference.referenceSequences;
-        for (Sclip dup : svfdup) {
-            if (dup.used) {
-                continue;
-            }
-            int ms = dup.mstart;
-            int me = dup.mend;
-            int cnt = dup.cnt;
-            int end = dup.end;
-            int start = dup.start;
-            double pmean = dup.pmean;
-            double qmean = dup.qmean;
-            double Qmean = dup.Qmean;
-            double nm = dup.nm;
-            if (!(cnt >= conf.minr + 5)) {
-                continue;
-            }
-            if (!(Qmean/cnt > Configuration.DISCPAIRQUAL)) {
-                continue;
-            }
-            int mlen = end - ms + RLEN/cnt;
-            int bp = ms - (RLEN/cnt)/2;
-            int pe = end;
-
-            if(!ReferenceResource.isLoaded(region.chr, ms, me, reference)) {
-                if (!ref.containsKey(bp)) {
-                    referenceResource.getREF(Region.newModifiedRegion(region, bp - 150, bp + 150), chrs, conf, 300, reference);
-                }
-                parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice,
-                        ampliconBasedCalling, RLEN, reference, referenceResource, conf, hash,
-                        iHash, cov, sclip3, sclip5, true);
-            }
-
-            int cntf = cnt;
-            int cntr = cnt;
-            double qmeanf = qmean;
-            double qmeanr = qmean;
-            double Qmeanf = Qmean;
-            double Qmeanr = Qmean;
-            double pmeanf = pmean;
-            double pmeanr = pmean;
-            double nmf = nm;
-            double nmr = nm;
-
-            if (!dup.soft.isEmpty()) {
-                List<Map.Entry<Integer, Integer>> soft = new ArrayList<>(dup.soft.entrySet());
-                soft.sort(comparing((Map.Entry<Integer, Integer> entry) -> entry.getValue(),
-                        Integer::compareTo).reversed());
-
-                if (soft.size() > 0) {
-                    pe = soft.get(0).getKey();
-                }
-                if (!sclip3.containsKey(pe)) {
+        int lastStart = 0;
+        for (Sclip dup : svStructures.svfdup) {
+            try {
+                if (dup.used) {
                     continue;
                 }
-                if (sclip3.get(pe).used) {
+                int ms = dup.mstart;
+                int me = dup.mend;
+                int cnt = dup.varsCount;
+                int end = dup.end;
+                int start = dup.start;
+                lastStart = start;
+                double pmean = dup.meanPosition;
+                double qmean = dup.meanQuality;
+                double Qmean = dup.meanMappingQuality;
+                double nm = dup.numberOfMismatches;
+                if (!(cnt >= instance().conf.minr + 5)) {
                     continue;
                 }
-                Sclip currentSclip3 =  sclip3.get(pe);
-                cntf = currentSclip3.cnt;
-                qmeanf = currentSclip3.qmean;
-                Qmeanf = currentSclip3.Qmean;
-                pmeanf = currentSclip3.pmean;
-                nmf = currentSclip3.nm;
+                if (!(Qmean / cnt > Configuration.DISCPAIRQUAL)) {
+                    continue;
+                }
+                int mlen = end - ms + maxReadLength / cnt;
+                int bp = ms - (maxReadLength / cnt) / 2;
+                int pe = end;
 
-                String seq = findconseq(currentSclip3, conf, 0);
-                Tuple.Tuple2<Integer, String> tuple = findMatch(conf, seq, reference, bp, 1);
-                int tbp = tuple._1;
-                String EXTRA = tuple._2;
+                if (!ReferenceResource.isLoaded(region.chr, ms, me, reference)) {
+                    if (!ref.containsKey(bp)) {
+                        referenceResource.getReference(Region.newModifiedRegion(region, bp - 150, bp + 150), 300, reference);
+                    }
+                    Region region = Region.newModifiedRegion(this.region, ms - 200, me + 200);
+                    partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
+                            bam, region, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
+                }
 
-                if (tbp != 0 && tbp < pe) {
-                    currentSclip3.used = true;
-                    while(isHasAndEquals(pe - 1, ref, tbp - 1)) {
-                        tbp--;
-                        if (tbp != 0) {
-                            pe--;
+                int cntf = cnt;
+                int cntr = cnt;
+                double qmeanf = qmean;
+                double qmeanr = qmean;
+                double Qmeanf = Qmean;
+                double Qmeanr = Qmean;
+                double pmeanf = pmean;
+                double pmeanr = pmean;
+                double nmf = nm;
+                double nmr = nm;
+
+                if (!dup.soft.isEmpty()) {
+                    List<Map.Entry<Integer, Integer>> soft = new ArrayList<>(dup.soft.entrySet());
+                    soft.sort(comparing((Map.Entry<Integer, Integer> entry) -> entry.getValue(),
+                            Integer::compareTo).reversed());
+
+                    if (soft.size() > 0) {
+                        pe = soft.get(0).getKey();
+                    }
+                    if (!softClips3End.containsKey(pe)) {
+                        continue;
+                    }
+                    if (softClips3End.get(pe).used) {
+                        continue;
+                    }
+                    Sclip currentSclip3 = softClips3End.get(pe);
+                    cntf = currentSclip3.varsCount;
+                    qmeanf = currentSclip3.meanQuality;
+                    Qmeanf = currentSclip3.meanMappingQuality;
+                    pmeanf = currentSclip3.meanPosition;
+                    nmf = currentSclip3.numberOfMismatches;
+
+                    String seq = findconseq(currentSclip3, 0);
+                    Tuple.Tuple2<Integer, String> tuple = findMatch(seq, reference, bp, 1);
+                    int tbp = tuple._1;
+                    String EXTRA = tuple._2;
+
+                    if (tbp != 0 && tbp < pe) {
+                        currentSclip3.used = true;
+                        while (isHasAndEquals(pe - 1, ref, tbp - 1)) {
+                            tbp--;
+                            if (tbp != 0) {
+                                pe--;
+                            }
+                        }
+                        mlen = pe - tbp;
+                        bp = tbp;
+                        pe--;
+                        end = pe;
+                        if (softClips5End.containsKey(bp)) {
+                            Sclip currentSclip5 = softClips5End.get(bp);
+                            cntr = currentSclip5.varsCount;
+                            qmeanr = currentSclip5.meanQuality;
+                            Qmeanr = currentSclip5.meanMappingQuality;
+                            pmeanr = currentSclip5.meanPosition;
+                            nmr = currentSclip5.numberOfMismatches;
                         }
                     }
-                    mlen = pe - tbp;
-                    bp = tbp;
-                    pe--;
-                    end = pe;
-                    if (sclip5.containsKey(bp)) {
-                        Sclip currentSclip5 = sclip5.get(bp);
-                        cntr = currentSclip5.cnt;
-                        qmeanr = currentSclip5.qmean;
-                        Qmeanr = currentSclip5.Qmean;
-                        pmeanr = currentSclip5.pmean;
-                        nmr = currentSclip5.nm;
-                    }
                 }
+
+                String ins5 = joinRef(ref, bp, bp + Configuration.SVFLANK - 1);
+                String ins3 = joinRef(ref, pe - Configuration.SVFLANK + 1, pe);
+                String ins = ins5 + "<dup" + (mlen - 2 * Configuration.SVFLANK) + ">" + ins3;
+
+                final Variation vref = getVariation(nonInsertionVariants, bp, "+" + ins);
+                vref.varsCount = 0;
+
+                SV sv = getSV(nonInsertionVariants, bp);
+                sv.type = "DUP";
+                sv.pairs += cnt;
+                sv.splits += dup.softp != 0 && softClips3End.get(dup.softp) != null
+                        ? softClips3End.get(dup.softp).varsCount : 0;
+                sv.clusters++;
+
+                if (instance().conf.y) {
+                    System.err.printf("  Found DUP with discordant pairs only (forward): cnt: %d BP: %d END: %d %s Len: %d %d-%d<->%d-%d\n",
+                            cnt, bp, pe, ins, mlen, start, end, ms, me);
+                }
+                int tcnt = cntr + cntf;
+
+                Variation tmp = new Variation();
+                tmp.varsCount = tcnt;
+                tmp.extracnt = tcnt;
+                tmp.highQualityReadsCount = tcnt;
+                tmp.varsCountOnForward = cntf;
+                tmp.varsCountOnReverse = cntr;
+                tmp.meanQuality = qmeanf + qmeanr;
+                tmp.meanPosition = pmeanf + pmeanr;
+                tmp.meanMappingQuality = Qmeanf + Qmeanr;
+                tmp.numberOfMismatches = nmf + nmr;
+
+                adjCnt(vref, tmp);
+                dup.used = true;
+                if (!refCoverage.containsKey(bp)) {
+                    refCoverage.put(bp, tcnt);
+                }
+                if (refCoverage.containsKey(end) && refCoverage.get(bp) < refCoverage.get(end)) {
+                    refCoverage.put(bp, refCoverage.get(end));
+                }
+
+                Tuple.Tuple2<Integer, Integer> tuple = markDUPSV(bp, pe, Collections.singletonList(svStructures.svrdup), maxReadLength);
+                int clusters = tuple._1;
+                sv.clusters += clusters;
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
             }
-
-            String ins5 = joinRef(ref, bp, bp + Configuration.SVFLANK - 1);
-            String ins3 = joinRef(ref, pe - Configuration.SVFLANK + 1, pe);
-            String ins = ins5 + "<dup" + (mlen - 2 * Configuration.SVFLANK) + ">" + ins3;
-
-            final Variation vref = getVariation(hash, bp, "+" + ins);
-            vref.cnt = 0;
-
-            SV sv = getSV(hash, bp);
-            sv.type = "DUP";
-            sv.pairs += cnt;
-            sv.splits += dup.softp != 0 && sclip3.get(dup.softp) != null
-                    ? sclip3.get(dup.softp).cnt : 0;
-            sv.clusters++;
-
-            if (conf.y) {
-                System.err.printf("  Found DUP with discordant pairs only (forward): cnt: %d BP: %d END: %d %s Len: %d %d-%d<->%d-%d\n",
-                        cnt, bp, pe, ins, mlen, start, end, ms, me);
-            }
-            int tcnt = cntr + cntf;
-
-            Variation tmp = new Variation();
-            tmp.cnt = tcnt;
-            tmp.extracnt = tcnt;
-            tmp.hicnt = tcnt;
-            tmp.dirPlus = cntf;
-            tmp.dirMinus = cntr;
-            tmp.qmean = qmeanf + qmeanr;
-            tmp.pmean = pmeanf + pmeanr;
-            tmp.Qmean = Qmeanf + Qmeanr;
-            tmp.nm = nmf + nmr;
-
-            adjCnt(vref, tmp, conf);
-            dup.used = true;
-            if(!cov.containsKey(bp)) {
-                cov.put(bp, tcnt);
-            }
-            if (cov.containsKey(end) && cov.get(bp) < cov.get(end)) {
-                cov.put(bp, cov.get(end));
-            }
-
-            Tuple.Tuple2<Integer, Integer> tuple = markDUPSV(bp, pe, Collections.singletonList(svrdup), RLEN, conf);
-            int clusters = tuple._1;
-            sv.clusters += clusters;
         }
 
-        for (Sclip dup : svrdup) {
-            if (dup.used) {
-                continue;
-            }
-            int ms = dup.mstart;
-            int me = dup.mend;
-            int cnt = dup.cnt;
-            int end = dup.end;
-            int start = dup.start;
-            double pmean = dup.pmean;
-            double qmean = dup.qmean;
-            double Qmean = dup.Qmean;
-            double nm = dup.nm;
-            if (cnt < conf.minr + 5) {
-                continue;
-            }
-            if (!(Qmean/cnt > Configuration.DISCPAIRQUAL)) {
-                continue;
-            }
-            int mlen = me - start + RLEN/cnt;
-            int bp = start - (RLEN/cnt)/2;
-            int pe = mlen + bp - 1;
-            int tpe = pe;
-            if (!ReferenceResource.isLoaded(region.chr, ms, me, reference) ) {
-                if (!ref.containsKey(pe)) {
-                    referenceResource.getREF(Region.newModifiedRegion(region, pe - 150, pe + 150), chrs, conf, 300, reference);
-                }
-                parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice,
-                        ampliconBasedCalling, RLEN, reference, referenceResource, conf, hash,
-                        iHash, cov, sclip3, sclip5, true);
-            }
-            int cntf = cnt;
-            int cntr = cnt;
-            double qmeanf = qmean;
-            double qmeanr = qmean;
-            double Qmeanf = Qmean;
-            double Qmeanr = Qmean;
-            double pmeanf = pmean;
-            double pmeanr = pmean;
-            double nmf = nm;
-            double nmr = nm;
-            if (!dup.soft.isEmpty()) {
-                List<Map.Entry<Integer, Integer>> soft = new ArrayList<>(dup.soft.entrySet());
-                soft.sort(comparing((Map.Entry<Integer, Integer> entry) -> entry.getValue(),
-                        Integer::compareTo).reversed());
-
-                if (soft.size() > 0) {
-                    bp = soft.get(0).getKey();
-                }
-                if (!sclip5.containsKey(bp)) {
+        for (Sclip dup : svStructures.svrdup) {
+            try {
+                if (dup.used) {
                     continue;
                 }
-                Sclip currentSclip5 = sclip5.get(bp);
-                if (currentSclip5.used) {
+                int ms = dup.mstart;
+                int me = dup.mend;
+                int cnt = dup.varsCount;
+                int end = dup.end;
+                int start = dup.start;
+                lastStart = start;
+                double pmean = dup.meanPosition;
+                double qmean = dup.meanQuality;
+                double Qmean = dup.meanMappingQuality;
+                double nm = dup.numberOfMismatches;
+                if (cnt < instance().conf.minr + 5) {
                     continue;
                 }
-                cntr = currentSclip5.cnt;
-                qmeanr = currentSclip5.qmean;
-                Qmeanr = currentSclip5.Qmean;
-                pmeanr = currentSclip5.pmean;
-                nmr = currentSclip5.nm;
-                String seq = findconseq(currentSclip5, conf, 0);
-                Tuple.Tuple2<Integer, String> tuple = findMatch(conf, seq, reference, pe, -1);
-                int tbp = tuple._1;
-                String EXTRA = tuple._2;
-                if (tbp != 0 && tbp > bp) {
-                    currentSclip5.used = true;
-                    pe = tbp;
-                    mlen = pe - bp + 1;
-                    tpe = pe + 1;
-                    while(isHasAndEquals(tpe, ref, bp + (tpe-pe-1))) {
-                        tpe++;
+                if (!(Qmean / cnt > Configuration.DISCPAIRQUAL)) {
+                    continue;
+                }
+                int mlen = me - start + maxReadLength / cnt;
+                int bp = start - (maxReadLength / cnt) / 2;
+                int pe = mlen + bp - 1;
+                int tpe = pe;
+                if (!ReferenceResource.isLoaded(region.chr, ms, me, reference)) {
+                    if (!ref.containsKey(pe)) {
+                        referenceResource.getReference(Region.newModifiedRegion(region, pe - 150, pe + 150), 300, reference);
                     }
-                    if (sclip3.containsKey(tpe)) {
-                        Sclip currentSclip3 = sclip3.get(tpe);
-                        cntf = currentSclip3.cnt;
-                        qmeanf = currentSclip3.qmean;
-                        Qmeanf = currentSclip3.Qmean;
-                        pmeanf = currentSclip3.pmean;
-                        nmf = currentSclip3.nm;
+                    Region region = Region.newModifiedRegion(this.region, ms - 200, me + 200);
+                    partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
+                            bam, region, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
+                }
+                int cntf = cnt;
+                int cntr = cnt;
+                double qmeanf = qmean;
+                double qmeanr = qmean;
+                double Qmeanf = Qmean;
+                double Qmeanr = Qmean;
+                double pmeanf = pmean;
+                double pmeanr = pmean;
+                double nmf = nm;
+                double nmr = nm;
+                if (!dup.soft.isEmpty()) {
+                    List<Map.Entry<Integer, Integer>> soft = new ArrayList<>(dup.soft.entrySet());
+                    soft.sort(comparing((Map.Entry<Integer, Integer> entry) -> entry.getValue(),
+                            Integer::compareTo).reversed());
+
+                    if (soft.size() > 0) {
+                        bp = soft.get(0).getKey();
+                    }
+                    if (!softClips5End.containsKey(bp)) {
+                        continue;
+                    }
+                    Sclip currentSclip5 = softClips5End.get(bp);
+                    if (currentSclip5.used) {
+                        continue;
+                    }
+                    cntr = currentSclip5.varsCount;
+                    qmeanr = currentSclip5.meanQuality;
+                    Qmeanr = currentSclip5.meanMappingQuality;
+                    pmeanr = currentSclip5.meanPosition;
+                    nmr = currentSclip5.numberOfMismatches;
+                    String seq = findconseq(currentSclip5, 0);
+                    Tuple.Tuple2<Integer, String> tuple = findMatch(seq, reference, pe, -1);
+                    int tbp = tuple._1;
+                    String EXTRA = tuple._2;
+                    if (tbp != 0 && tbp > bp) {
+                        currentSclip5.used = true;
+                        pe = tbp;
+                        mlen = pe - bp + 1;
+                        tpe = pe + 1;
+                        while (isHasAndEquals(tpe, ref, bp + (tpe - pe - 1))) {
+                            tpe++;
+                        }
+                        if (softClips3End.containsKey(tpe)) {
+                            Sclip currentSclip3 = softClips3End.get(tpe);
+                            cntf = currentSclip3.varsCount;
+                            qmeanf = currentSclip3.meanQuality;
+                            Qmeanf = currentSclip3.meanMappingQuality;
+                            pmeanf = currentSclip3.meanPosition;
+                            nmf = currentSclip3.numberOfMismatches;
+                        }
                     }
                 }
+
+                String ins5 = joinRef(ref, bp, bp + Configuration.SVFLANK - 1);
+                String ins3 = joinRef(ref, pe - Configuration.SVFLANK + 1, pe);
+                String ins = ins5 + "<dup" + (mlen - 2 * Configuration.SVFLANK) + ">" + ins3;
+
+                final Variation vref = getVariation(nonInsertionVariants, bp, "+" + ins);
+                vref.varsCount = 0;
+
+                SV sv = getSV(nonInsertionVariants, bp);
+                sv.type = "DUP";
+                sv.pairs += cnt;
+                sv.splits += softClips5End.containsKey(bp) ? softClips5End.get(bp).varsCount : 0;
+                sv.splits += softClips3End.containsKey(tpe) ? softClips3End.get(tpe).varsCount : 0;
+                sv.clusters++;
+
+                if (instance().conf.y) {
+                    System.err.printf("  Found DUP with discordant pairs only (reverse): cnt: %d BP: %d Len: %d %d-%d<->%d-%d\n",
+                            cnt, bp, mlen, start, end, ms, me);
+                }
+                int tcnt = cntr + cntf;
+                Variation tmp = new Variation();
+                tmp.varsCount = tcnt;
+                tmp.extracnt = tcnt;
+                tmp.highQualityReadsCount = tcnt;
+                tmp.varsCountOnForward = cntf;
+                tmp.varsCountOnReverse = cntr;
+                tmp.meanQuality = qmeanf + qmeanr;
+                tmp.meanPosition = pmeanf + pmeanr;
+                tmp.meanMappingQuality = Qmeanf + Qmeanr;
+                tmp.numberOfMismatches = nmf + nmr;
+                adjCnt(vref, tmp);
+
+                dup.used = true;
+                if (!refCoverage.containsKey(bp)) {
+                    refCoverage.put(bp, tcnt);
+                }
+                if (refCoverage.containsKey(me) && refCoverage.get(bp) < refCoverage.get(me)) {
+                    refCoverage.put(bp, refCoverage.get(me));
+                }
+                Tuple.Tuple2<Integer, Integer> tuple = markDUPSV(bp, pe, Collections.singletonList(svStructures.svfdup), maxReadLength);
+                int clusters = tuple._1;
+                sv.clusters += clusters;
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
             }
-
-            String ins5 = joinRef(ref, bp, bp + Configuration.SVFLANK - 1);
-            String ins3 = joinRef(ref, pe - Configuration.SVFLANK + 1, pe);
-            String ins = ins5 + "<dup" + (mlen - 2 * Configuration.SVFLANK) + ">" + ins3;
-
-            final Variation vref = getVariation(hash, bp, "+" + ins);
-            vref.cnt = 0;
-
-            SV sv = getSV(hash, bp);
-            sv.type = "DUP";
-            sv.pairs += cnt;
-            sv.splits += sclip5.containsKey(bp) ? sclip5.get(bp).cnt : 0;
-            sv.splits += sclip3.containsKey(tpe) ? sclip3.get(tpe).cnt : 0;
-            sv.clusters++;
-
-            if (conf.y) {
-                System.err.printf("  Found DUP with discordant pairs only (reverse): cnt: %d BP: %d Len: %d %d-%d<->%d-%d\n",
-                        cnt, bp, mlen, start, end, ms, me);
-            }
-            int tcnt = cntr + cntf;
-            Variation tmp = new Variation();
-            tmp.cnt = tcnt;
-            tmp.extracnt = tcnt;
-            tmp.hicnt = tcnt;
-            tmp.dirPlus = cntf;
-            tmp.dirMinus = cntr;
-            tmp.qmean = qmeanf + qmeanr;
-            tmp.pmean = pmeanf + pmeanr;
-            tmp.Qmean = Qmeanf + Qmeanr;
-            tmp.nm = nmf + nmr;
-            adjCnt(vref, tmp, conf);
-
-            dup.used = true;
-            if (!cov.containsKey(bp)) {
-                cov.put(bp, tcnt);
-            }
-            if (cov.containsKey(me) && cov.get(bp) < cov.get(me)) {
-                cov.put(bp, cov.get(me));
-            }
-            Tuple.Tuple2<Integer, Integer> tuple = markDUPSV(bp, pe, Collections.singletonList(svfdup), RLEN, conf);
-            int clusters = tuple._1;
-            sv.clusters += clusters;
         }
     }
 
     /**
      * Find matching on reverse strand (without MM defined, by default MM = 3)
-     * @param conf Configuration
      * @param seq sequence to search match with reference
      * @param REF reference in a given region
      * @param position where match is searching
@@ -1613,18 +1128,16 @@ public class StructuralVariantsProcessor {
      * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
      * returns zero and empty string
      */
-    static Tuple.Tuple2<Integer, String> findMatchRev(Configuration conf,
-                                                      String seq,
+    static Tuple.Tuple2<Integer, String> findMatchRev(String seq,
                                                       Reference REF,
                                                       int position,
                                                       int dir) {
         int MM = 3;
-        return findMatchRev(conf, seq, REF, position, dir, Configuration.SEED_1, MM);
+        return findMatchRev(seq, REF, position, dir, Configuration.SEED_1, MM);
     }
 
     /**
      * Find matching on reverse strand (with MM defined)
-     * @param conf Configuration
      * @param seq sequence to search match with reference
      * @param REF reference in a given region
      * @param position where match is searching
@@ -1634,8 +1147,7 @@ public class StructuralVariantsProcessor {
      * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
      * returns zero and empty string
      */
-    static Tuple.Tuple2<Integer, String> findMatchRev(Configuration conf,
-                                                      String seq,
+    static Tuple.Tuple2<Integer, String> findMatchRev(String seq,
                                                       Reference REF,
                                                       int position,
                                                       int dir,
@@ -1646,7 +1158,7 @@ public class StructuralVariantsProcessor {
             seq = reverse(seq);
         }
         seq = complement(seq);
-        if (conf.y) {
+        if (instance().conf.y) {
             System.err.printf("    Working MatchRev %d %s %d%n", position, seq, dir);
         }
         String extra = "";
@@ -1657,8 +1169,8 @@ public class StructuralVariantsProcessor {
                 if (seeds.size() == 1) {
                     Integer firstSeed = seeds.get(0);
                     int bp = dir == 1 ? firstSeed + seq.length() - i - 1 : firstSeed - i;
-                    if (ismatchref(seq, REF.referenceSequences, bp, -1 * dir, conf.y, MM)) {
-                        if (conf.y) {
+                    if (ismatchref(seq, REF.referenceSequences, bp, -1 * dir, MM)) {
+                        if (instance().conf.y) {
                             System.err.printf(
                                     "      Found SV BP (reverse): %d BP: %d SEEDpos: %d %d %s %d %s \n",
                                     dir, bp, firstSeed, position, seed, i, seq
@@ -1694,12 +1206,12 @@ public class StructuralVariantsProcessor {
                             if (eqcnt >= 3 && eqcnt / (double)j > 0.5) {
                                 break;
                             }
-                            if (conf.y) {
+                            if (instance().conf.y) {
                                 System.err.printf(
                                         "      FoundSEED SV BP (reverse): %d BP: %d SEEDpos%d %d %s %d %s EXTRA: %s%n",
                                         dir, bp, firstSeed, position, seed, i, seq, extra);
                             }
-                            if (ismatchref(sseq, REF.referenceSequences, bp, -1 * dir, conf.y,1)) {
+                            if (ismatchref(sseq, REF.referenceSequences, bp, -1 * dir, 1)) {
                                 return Tuple.tuple(bp, extra);
                             }
                         }
@@ -1712,7 +1224,6 @@ public class StructuralVariantsProcessor {
 
     /**
      * Find matching on forward strand (without MM defined, by default MM = 3)
-     * @param conf Configuration
      * @param seq sequence to search match with reference
      * @param REF reference in a given region
      * @param position where match is searching
@@ -1720,18 +1231,16 @@ public class StructuralVariantsProcessor {
      * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
      * returns zero and empty string
      */
-    static Tuple.Tuple2<Integer, String> findMatch(Configuration conf,
-                                                   String seq,
+    public static Tuple.Tuple2<Integer, String> findMatch(String seq,
                                                    Reference REF,
                                                    int position,
                                                    int dir) {
         int MM = 3;
-        return findMatch(conf, seq, REF, position, dir, Configuration.SEED_1, MM);
+        return findMatch(seq, REF, position, dir, Configuration.SEED_1, MM);
     }
 
     /**
      * Find matching on forward strand (with MM defined)
-     * @param conf Configuration
      * @param seq sequence to search match with reference
      * @param REF reference in a given region
      * @param position where match is searching
@@ -1741,8 +1250,7 @@ public class StructuralVariantsProcessor {
      * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
      * returns zero and empty string
      */
-    static Tuple.Tuple2<Integer, String> findMatch(Configuration conf,
-                                                   String seq,
+    static Tuple.Tuple2<Integer, String> findMatch(String seq,
                                                    Reference REF,
                                                    int position,
                                                    int dir,
@@ -1751,7 +1259,7 @@ public class StructuralVariantsProcessor {
         if (dir == -1) {
             seq = reverse(seq); // dir==-1 means 5' clip
         }
-        if (conf.y) {
+        if (instance().conf.y) {
             System.err.printf("    Working Match %d %s %d SEED: %d\n", position, seq, dir, SEED);
         }
         String extra = "";
@@ -1763,7 +1271,7 @@ public class StructuralVariantsProcessor {
                     Integer firstSeed = seeds.get(0);
                     int bp = dir == 1 ? firstSeed - i : firstSeed + seq.length() - i - 1;
 
-                    if (ismatchref(seq, REF.referenceSequences, bp, dir, conf.y, MM)) {
+                    if (ismatchref(seq, REF.referenceSequences, bp, dir, MM)) {
                         int mm = dir == -1 ? -1 : 0;
                         while(isHasAndNotEquals(charAt(seq, mm), REF.referenceSequences, bp)) {
                             extra += substr(seq, mm, 1);
@@ -1773,7 +1281,7 @@ public class StructuralVariantsProcessor {
                         if (!extra.isEmpty() && dir == -1 ) {
                             extra = reverse(extra);
                         }
-                        if (conf.y) {
+                        if (instance().conf.y) {
                             System.err.printf("      Found SV BP: %d BP: %d SEEDpos %s %d %s %d %s extra: %s\n",
                                     dir, bp, firstSeed, position, seed, i, seq, extra);
                         }
@@ -1806,11 +1314,11 @@ public class StructuralVariantsProcessor {
                             if  (eqcnt >= 3 && eqcnt/(double)ii > 0.5) {
                                 break;
                             }
-                            if (conf.y) {
+                            if (instance().conf.y) {
                                 System.err.printf("      FoundSEED SV BP: %d BP: %d SEEDpos%s %d %s %d %s EXTRA: %s\n",
                                         dir, bp, firstSeed, position, seed, i, seq, extra);
                             }
-                            if (ismatchref(sseq, REF.referenceSequences, bp, dir, conf.y, 1) ) {
+                            if (ismatchref(sseq, REF.referenceSequences, bp, dir, 1) ) {
                                 return Tuple.tuple(bp, extra);
                             }
                         }
@@ -1824,768 +1332,679 @@ public class StructuralVariantsProcessor {
     /**
      * Find DEL SV with discordant pairs only
      * (svfdel) --&gt; | ............ | &lt;-- (svrdel)
-     * @param hash map of variants on positions
-     * @param cov map of coverage on positions
-     * @param sclip5 map of soft clips 5' on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param REF reference in a given region
-     * @param region region of interest
-     * @param splice set of strings representing spliced regions
-     * @param svfdel list of DEL SVs in discordant pairs in forward direction
-     * @param svrdel list of DEL SVs in discordant pairs in reverse direction
-     * @param conf Configuration
-     * @param referenceResource object for access to reference map
-     * @param rlen max read length
-     * @param chrs map of chromosome lengths
      */
-    static void findDELdisc(Configuration conf,
-                            Map<Integer, VariationMap<String, Variation>> hash,
-                            Map<Integer, Integer> cov,
-                            Map<Integer, Sclip> sclip5,
-                            Map<Integer, Sclip> sclip3,
-                            Reference REF, ReferenceResource referenceResource,
-                            Region region,
-                            List<Sclip> svfdel,
-                            List<Sclip> svrdel,
-                            Set<String> splice,
-                            int rlen,
-                            Map<String, Integer> chrs) {
-        int MINDIST = 8 * rlen; // the minimum distance between two clusters
-        for (Sclip del : svfdel) {
-            if (del.used) {
-                continue;
-            }
-            if (!splice.isEmpty() && abs(del.mlen) < 250000) {
-                continue; // more stringent for RNA-Seq
-            }
+     void findDELdisc() {
+        int MINDIST = 8 * maxReadLength; // the minimum distance between two clusters
+        int lastStart = 0;
+        for (Sclip del : svStructures.svfdel) {
+            try {
+                lastStart = del.start;
+                if (del.used) {
+                    continue;
+                }
+                if (!splice.isEmpty() && abs(del.mlen) < 250000) {
+                    continue; // more stringent for RNA-Seq
+                }
 
-            if (del.cnt < conf.minr + 5) {
-                continue;
-            }
-            if (del.mstart <= del.end + MINDIST) {
-                continue;
-            }
-            if (del.Qmean / del.cnt <= Configuration.DISCPAIRQUAL) {
-                continue;
-            }
-            int mlen = del.mstart - del.end - rlen / (del.cnt + 1);
-            if (!(mlen > 0 && mlen > MINDIST)) {
-                continue;
-            }
-            int bp = del.end + (rlen / (del.cnt + 1)) / 2;
-            if (del.softp != 0) {
-                bp = del.softp;
-            }
-            final Variation vref = getVariation(hash, bp, "-" + mlen);
-            vref.cnt = 0;
-            SV sv = getSV(hash, bp);
-            sv.type = "DEL";
-            sv.splits += sclip3.containsKey(del.end + 1) ? sclip3.get(del.end + 1).cnt : 0;
-            sv.splits += sclip5.containsKey(del.mstart) ? sclip5.get(del.mstart).cnt : 0;
-            sv.pairs += del.cnt;
-            sv.clusters++;
+                if (del.varsCount < instance().conf.minr + 5) {
+                    continue;
+                }
+                if (del.mstart <= del.end + MINDIST) {
+                    continue;
+                }
+                if (del.meanMappingQuality / del.varsCount <= Configuration.DISCPAIRQUAL) {
+                    continue;
+                }
+                int mlen = del.mstart - del.end - maxReadLength / (del.varsCount + 1);
+                if (!(mlen > 0 && mlen > MINDIST)) {
+                    continue;
+                }
+                int bp = del.end + (maxReadLength / (del.varsCount + 1)) / 2;
+                if (del.softp != 0) {
+                    bp = del.softp;
+                }
+                final Variation vref = getVariation(nonInsertionVariants, bp, "-" + mlen);
+                vref.varsCount = 0;
+                SV sv = getSV(nonInsertionVariants, bp);
+                sv.type = "DEL";
+                sv.splits += softClips3End.containsKey(del.end + 1) ? softClips3End.get(del.end + 1).varsCount : 0;
+                sv.splits += softClips5End.containsKey(del.mstart) ? softClips5End.get(del.mstart).varsCount : 0;
+                sv.pairs += del.varsCount;
+                sv.clusters++;
 
-            if (conf.y) {
-                System.err.printf(
-                        "  Found DEL with discordant pairs only: cnt: %d BP: %d Len: %d %d-%d<->%d-%d%n",
-                        del.cnt, bp, mlen, del.start, del.end, del.mstart, del.mend
-                );
+                if (instance().conf.y) {
+                    System.err.printf(
+                            "  Found DEL with discordant pairs only: cnt: %d BP: %d Len: %d %d-%d<->%d-%d%n",
+                            del.varsCount, bp, mlen, del.start, del.end, del.mstart, del.mend
+                    );
+                }
+                Variation tv = new Variation();
+                tv.varsCount = 2 * del.varsCount;
+                tv.highQualityReadsCount = 2 * del.varsCount;
+                tv.varsCountOnForward = del.varsCount;
+                tv.varsCountOnReverse = del.varsCount;
+                tv.meanQuality = 2 * del.meanQuality;
+                tv.meanPosition = 2 * del.meanPosition;
+                tv.meanMappingQuality = 2 * del.meanMappingQuality;
+                tv.numberOfMismatches = 2 * del.numberOfMismatches;
+                adjCnt(vref, tv);
+                if (!refCoverage.containsKey(bp)) {
+                    refCoverage.put(bp, 2 * del.varsCount);
+                }
+                del.used = true;
+                markSV(del.end, del.mstart, Arrays.asList(svStructures.svrdel), maxReadLength);
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
             }
-            Variation tv = new Variation();
-            tv.cnt = 2 * del.cnt;
-            tv.hicnt = 2 * del.cnt;
-            tv.dirPlus = del.cnt;
-            tv.dirMinus = del.cnt;
-            tv.qmean = 2 * del.qmean;
-            tv.pmean = 2 * del.pmean;
-            tv.Qmean = 2 * del.Qmean;
-            tv.nm = 2 * del.nm;
-            adjCnt(vref, tv, conf);
-            if (!cov.containsKey(bp)) {
-                cov.put(bp, 2 * del.cnt);
-            }
-            del.used = true;
-            markSV(del.end, del.mstart, Arrays.asList(svrdel), rlen, conf);
         }
-        for (Sclip del : svrdel) {
-            if (del.used) {
-                continue;
-            }
-            if (!splice.isEmpty() && abs(del.mlen) < 250000) {
-                continue; // more stringent for RNA-Seq
-            }
-            if (del.cnt < conf.minr + 5) {
-                continue;
-            }
-            if (del.start <= del.mend + MINDIST) {
-                continue;
-            }
-            if (del.Qmean / del.cnt <= Configuration.DISCPAIRQUAL) {
-                continue;
-            }
-            int mlen = del.start - del.mend - rlen / (del.cnt + 1);
-            if (!(mlen > 0 && mlen > MINDIST)) {
-                continue;
-            }
-            int bp = del.mend + ((rlen / (del.cnt + 1)) / 2);
+        for (Sclip del : svStructures.svrdel) {
+            try {
+                lastStart = del.start;
+                if (del.used) {
+                    continue;
+                }
+                if (!splice.isEmpty() && abs(del.mlen) < 250000) {
+                    continue; // more stringent for RNA-Seq
+                }
+                if (del.varsCount < instance().conf.minr + 5) {
+                    continue;
+                }
+                if (del.start <= del.mend + MINDIST) {
+                    continue;
+                }
+                if (del.meanMappingQuality / del.varsCount <= Configuration.DISCPAIRQUAL) {
+                    continue;
+                }
+                int mlen = del.start - del.mend - maxReadLength / (del.varsCount + 1);
+                if (!(mlen > 0 && mlen > MINDIST)) {
+                    continue;
+                }
+                int bp = del.mend + ((maxReadLength / (del.varsCount + 1)) / 2);
 
-            final Variation ref = getVariation(hash, bp, "-" + mlen);
-            ref.cnt = 0;
+                final Variation ref = getVariation(nonInsertionVariants, bp, "-" + mlen);
+                ref.varsCount = 0;
 
-            SV sv = getSV(hash, bp);
-            sv.type = "DEL";
-            sv.splits += sclip3.containsKey(del.mend + 1) ? sclip3.get(del.mend + 1).cnt : 0;
-            sv.splits += sclip5.containsKey(del.start) ? sclip5.get(del.start).cnt : 0;
-            sv.pairs += del.cnt;
-            sv.clusters += 1;
+                SV sv = getSV(nonInsertionVariants, bp);
+                sv.type = "DEL";
+                sv.splits += softClips3End.containsKey(del.mend + 1) ? softClips3End.get(del.mend + 1).varsCount : 0;
+                sv.splits += softClips5End.containsKey(del.start) ? softClips5End.get(del.start).varsCount : 0;
+                sv.pairs += del.varsCount;
+                sv.clusters += 1;
 
-            if (conf.y) {
-                System.err.printf(
-                        "  Found DEL with discordant pairs only (reverse): cnt: %d BP: %d Len: %d %d-%d<->%d-%d%n",
-                        del.cnt, bp, mlen, del.start, del.end, del.mstart, del.mend
-                );
+                if (instance().conf.y) {
+                    System.err.printf(
+                            "  Found DEL with discordant pairs only (reverse): cnt: %d BP: %d Len: %d %d-%d<->%d-%d%n",
+                            del.varsCount, bp, mlen, del.start, del.end, del.mstart, del.mend
+                    );
+                }
+                if (del.softp != 0 && softClips5End.containsKey(del.softp)) {
+                    softClips5End.get(del.softp).used = true;
+                }
+                Variation tv = new Variation();
+                tv.varsCount = 2 * del.varsCount;
+                tv.highQualityReadsCount = 2 * del.varsCount;
+                tv.varsCountOnForward = del.varsCount;
+                tv.varsCountOnReverse = del.varsCount;
+                tv.meanQuality = 2 * del.meanQuality;
+                tv.meanPosition = 2 * del.meanPosition;
+                tv.meanMappingQuality = 2 * del.meanMappingQuality;
+                tv.numberOfMismatches = 2 * del.numberOfMismatches;
+                adjCnt(ref, tv);
+                if (!refCoverage.containsKey(bp)) {
+                    refCoverage.put(bp, 2 * del.varsCount);
+                }
+                if (refCoverage.containsKey(del.start) && refCoverage.get(bp) < refCoverage.get(del.start)) {
+                    refCoverage.put(bp, refCoverage.get(del.start));
+                }
+                del.used = true;
+                referenceResource.getReference(Region.newModifiedRegion(region, del.mstart - 100, del.mend + 100), 200, reference);
+                markSV(del.mend, del.start, Arrays.asList(svStructures.svfdel), maxReadLength);
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
             }
-            if (del.softp != 0 && sclip5.containsKey(del.softp)) {
-                sclip5.get(del.softp).used = true;
-            }
-            Variation tv = new Variation();
-            tv.cnt = 2 * del.cnt;
-            tv.hicnt = 2 * del.cnt;
-            tv.dirPlus = del.cnt;
-            tv.dirMinus = del.cnt;
-            tv.qmean = 2 * del.qmean;
-            tv.pmean = 2 * del.pmean;
-            tv.Qmean = 2 * del.Qmean;
-            tv.nm = 2 * del.nm;
-            adjCnt(ref, tv, conf);
-            if (!cov.containsKey(bp)) {
-                cov.put(bp, 2 * del.cnt);
-            }
-            if (cov.containsKey(del.start) && cov.get(bp) < cov.get(del.start)) {
-                cov.put(bp, cov.get(del.start));
-            }
-            del.used = true;
-            referenceResource.getREF(Region.newModifiedRegion(region, del.mstart - 100, del.mend + 100), chrs, conf, 200, REF);
-            markSV(del.mend, del.start, Arrays.asList(svfdel), rlen, conf);
         }
     }
 
     /**
      * Find DEL SV
-     * @param conf Configuration
-     * @param hash map of variants on positions
-     * @param iHash map of insertions on positions
-     * @param cov map of coverage on positions
-     * @param sclip5 map of soft clips 5' on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param reference reference in a given region
-     * @param region region of interest
-     * @param bams list of BAM files from configuration
-     * @param svfdel list of DEL SVs in forward direction
-     * @param svrdel list of DEL SVs in reverse direction
-     * @param rlen max read length
-     * @param chrs map of chromosome lengths
-     * @param sample sample name
-     * @param referenceResource object for access to reference map
-     * @param splice set of strings representing spliced regions
-     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
-     * @throws IOException if BAM file can't be read
      */
-    static void findDEL(Configuration conf,
-                        Map<Integer, VariationMap<String, Variation>> hash,
-                        Map<Integer, VariationMap<String, Variation>> iHash,
-                        Map<Integer, Integer> cov,
-                        Map<Integer, Sclip> sclip5,
-                        Map<Integer, Sclip> sclip3,
-                        Reference reference, ReferenceResource referenceResource,
-                        Region region,
-                        String bams,
-                        List<Sclip> svfdel,
-                        List<Sclip> svrdel,
-                        int rlen,
-                        Map<String, Integer> chrs,
-                        String sample,
-                        Set<String> splice,
-                        String ampliconBasedCalling) throws IOException {
-        for (Sclip del : svfdel) {
-            if (del.used) {
-                continue;
-            }
-            if (del.cnt < conf.minr) {
-                continue;
-            }
-            List<Tuple.Tuple2<Integer, Integer>> soft = del.soft.entrySet().stream()
-                    .map(entry -> Tuple.tuple(entry.getKey(), entry.getValue()))
-                    .sorted(comparing(tuple -> tuple._2, reverseOrder()))
-                    .collect(toList());
+     void findDEL() {
+        int lastStart = 0;
+        for (Sclip del : svStructures.svfdel) {
+            try {
+                lastStart = del.start;
+                if (del.used) {
+                    continue;
+                }
+                if (del.varsCount < instance().conf.minr) {
+                    continue;
+                }
+                List<Tuple.Tuple2<Integer, Integer>> soft = del.soft.entrySet().stream()
+                        .map(entry -> Tuple.tuple(entry.getKey(), entry.getValue()))
+                        .sorted(comparing(tuple -> tuple._2, reverseOrder()))
+                        .collect(toList());
 
-            int softp = soft.isEmpty() ? 0 : soft.get(0)._1;
-            if (conf.y) System.err.printf("%n%nWorking DEL 5' %d mate cluster cnt: %d%n", softp, del.cnt);
-            if (softp != 0) {
-                if (!sclip3.containsKey(softp)) {
-                    continue;
-                }
-                Sclip scv = sclip3.get(softp);
-                if (scv.used) {
-                    continue;
-                }
-                String seq = findconseq(scv, conf, 0);
-                if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
-                    continue; // next unless( $seq && length($seq) >= $SEED2 );
-                }
-                if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    referenceResource.getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
-                    parseSAM(Region.newModifiedRegion(region, del.mstart - 200, del.mend + 200),
-                            bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, referenceResource, conf, hash,
-                            iHash, cov, sclip3, sclip5, true);
-                }
-                Tuple.Tuple2<Integer, String> match = findMatch(conf, seq, reference, softp, 1);
-                int bp = match._1;
-                String extra = match._2;
-                if (bp == 0) {
-                    continue;
-                }
-                if (!(bp - softp > 30 && isOverlap(softp, bp, Tuple.tuple(del.end, del.mstart), rlen))) {
-                    continue;
-                }
-                bp--;
-                int dellen = bp - softp + 1;
-                Map<Integer, Character> ref = reference.referenceSequences;
-                while(ref.containsKey(bp) && ref.containsKey(softp - 1) && ref.get(bp).equals(ref.get(softp - 1))) {
-                    bp --;
-                    if (bp != 0) {
-                        softp--;
+                int softp = soft.isEmpty() ? 0 : soft.get(0)._1;
+                if (instance().conf.y)
+                    System.err.printf("%n%nWorking DEL 5' %d mate cluster cnt: %d%n", softp, del.varsCount);
+                if (softp != 0) {
+                    if (!softClips3End.containsKey(softp)) {
+                        continue;
                     }
-                }
-
-                final Variation variation = getVariation(hash, softp, "-" + dellen);
-                variation.cnt = 0;
-
-                SV sv = getSV(hash, softp);
-                sv.type = "DEL";
-                sv.pairs += del.cnt;
-                sv.splits += scv.cnt;
-                sv.clusters++;
-
-                if (!(cov.containsKey(softp) && cov.get(softp) > del.cnt)) {
-                    cov.put(softp, del.cnt);
-                }
-                if (cov.containsKey(bp) && cov.get(softp) < cov.get(bp)) {
-                    cov.put(softp, cov.get(bp));
-                }
-
-                adjCnt(variation, scv, hash.containsKey(softp) && ref.containsKey(softp)
-                        ? hash.get(softp).get(ref.get(softp).toString()) : null, conf);
-
-                int mcnt = del.cnt;
-                Variation tv = new Variation();
-                tv.cnt = mcnt;
-                tv.hicnt = mcnt;
-                tv.dirPlus = mcnt / 2;
-                tv.dirMinus = mcnt - mcnt / 2;
-                tv.qmean = del.qmean * mcnt / del.cnt;
-                tv.pmean = del.pmean * mcnt / del.cnt;
-                tv.Qmean = del.Qmean * mcnt / del.cnt;
-                tv.nm = del.nm * mcnt / del.cnt;
-                adjCnt(variation, tv, conf);
-
-                del.used = true;
-                markSV(softp, bp, Arrays.asList(svrdel), rlen, conf);
-                if (conf.y) {
-                    System.err.printf("    Found DEL SV from 5' softclip unhappy reads: %d -%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.cnt, mcnt);
-                }
-            } else { // Look within a read length
-                if(!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    referenceResource.getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
-                }
-                if (conf.y) {
-                    System.err.printf("%n%nWorking DEL 5' no softp mate cluster cnt: %d%n", del.cnt);
-                }
-
-                for (Map.Entry<Integer, Sclip> entry : sclip3.entrySet()) {
-                    Integer i = entry.getKey();
-                    Sclip scv = entry.getValue();
-
+                    Sclip scv = softClips3End.get(softp);
                     if (scv.used) {
                         continue;
                     }
-                    if (!(i >= del.end -3 && i - del.end < 3 * rlen)) {
-                        continue;
-                    }
-                    String seq = findconseq(scv, conf, 0);
+                    String seq = findconseq(scv, 0);
                     if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
-                        continue;
+                        continue; // next unless( $seq && length($seq) >= $SEED2 );
                     }
-                    softp = i;
-                    Tuple.Tuple2<Integer, String> match = findMatch(conf, seq, reference, softp, 1);
+                    if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
+                        referenceResource.getReference(Region.newModifiedRegion(region, del.mstart, del.mend), 300, reference);
+                        Region region = Region.newModifiedRegion(this.region, del.mstart - 200, del.mend + 200);
+                        partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
+                                bam, region, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
+                    }
+                    Tuple.Tuple2<Integer, String> match = findMatch(seq, reference, softp, 1);
                     int bp = match._1;
-                    String EXTRA = match._2;
-                    if (bp == 0) {
-                        match = findMatch(conf, seq, reference, softp, 1, Configuration.SEED_2, 0);
-                        bp = match._1;
-                        EXTRA = match._2;
-                    }
+                    String extra = match._2;
                     if (bp == 0) {
                         continue;
                     }
-                    if (!(bp - softp > 30 && isOverlap(softp, bp, Tuple.tuple(del.end, del.mstart), rlen))) continue;
+                    if (!(bp - softp > 30 && isOverlap(softp, bp, Tuple.tuple(del.end, del.mstart), maxReadLength))) {
+                        continue;
+                    }
                     bp--;
                     int dellen = bp - softp + 1;
+                    Map<Integer, Character> ref = reference.referenceSequences;
+                    while (ref.containsKey(bp) && ref.containsKey(softp - 1) && ref.get(bp).equals(ref.get(softp - 1))) {
+                        bp--;
+                        if (bp != 0) {
+                            softp--;
+                        }
+                    }
 
-                    final Variation variation = getVariation(hash, softp, "-" + dellen);
-                    variation.cnt = 0;
+                    final Variation variation = getVariation(nonInsertionVariants, softp, "-" + dellen);
+                    variation.varsCount = 0;
 
-                    SV sv = getSV(hash, softp);
+                    SV sv = getSV(nonInsertionVariants, softp);
                     sv.type = "DEL";
-                    sv.pairs += del.cnt;
-                    sv.splits += scv.cnt;
+                    sv.pairs += del.varsCount;
+                    sv.splits += scv.varsCount;
                     sv.clusters++;
 
-                    if (!(cov.containsKey(softp) && cov.get(softp) > del.cnt)) {
-                        cov.put(softp, del.cnt);
+                    if (!(refCoverage.containsKey(softp) && refCoverage.get(softp) > del.varsCount)) {
+                        refCoverage.put(softp, del.varsCount);
                     }
-                    if (cov.containsKey(bp) && cov.get(softp) < cov.get(bp)) {
-                        cov.put(softp, cov.get(bp));
+                    if (refCoverage.containsKey(bp) && refCoverage.get(softp) < refCoverage.get(bp)) {
+                        refCoverage.put(softp, refCoverage.get(bp));
                     }
-                    adjCnt(variation, scv, conf);
-                    int mcnt = del.cnt;
+
+                    adjCnt(variation, scv, nonInsertionVariants.containsKey(softp) && ref.containsKey(softp)
+                            ? nonInsertionVariants.get(softp).get(ref.get(softp).toString()) : null);
+
+                    int mcnt = del.varsCount;
                     Variation tv = new Variation();
-                    tv.cnt = mcnt;
-                    tv.hicnt = mcnt;
-                    tv.dirPlus = mcnt / 2;
-                    tv.dirMinus = mcnt - mcnt / 2;
-                    tv.qmean = del.qmean * mcnt / del.cnt;
-                    tv.pmean = del.pmean * mcnt / del.cnt;
-                    tv.Qmean = del.Qmean * mcnt / del.cnt;
-                    tv.nm = del.nm * mcnt / del.cnt;
-                    adjCnt(variation, tv, conf);
+                    tv.varsCount = mcnt;
+                    tv.highQualityReadsCount = mcnt;
+                    tv.varsCountOnForward = mcnt / 2;
+                    tv.varsCountOnReverse = mcnt - mcnt / 2;
+                    tv.meanQuality = del.meanQuality * mcnt / del.varsCount;
+                    tv.meanPosition = del.meanPosition * mcnt / del.varsCount;
+                    tv.meanMappingQuality = del.meanMappingQuality * mcnt / del.varsCount;
+                    tv.numberOfMismatches = del.numberOfMismatches * mcnt / del.varsCount;
+                    adjCnt(variation, tv);
+
                     del.used = true;
-                    markSV(softp, bp, Arrays.asList(svrdel), rlen, conf);
-                    if (conf.y) {
-                        System.err.printf("    Found DEL SV from 5' softclip happy reads: %d -%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.cnt, mcnt);
+                    markSV(softp, bp, Arrays.asList(svStructures.svrdel), maxReadLength);
+                    if (instance().conf.y) {
+                        System.err.printf("    Found DEL SV from 5' softclip unhappy reads: %d -%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.varsCount, mcnt);
                     }
-                    break;
+                } else { // Look within a read length
+                    if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
+                        referenceResource.getReference(Region.newModifiedRegion(region, del.mstart, del.mend), 300, reference);
+                    }
+                    if (instance().conf.y) {
+                        System.err.printf("%n%nWorking DEL 5' no softp mate cluster cnt: %d%n", del.varsCount);
+                    }
+
+                    for (Map.Entry<Integer, Sclip> entry : softClips3End.entrySet()) {
+                        Integer i = entry.getKey();
+                        Sclip scv = entry.getValue();
+
+                        if (scv.used) {
+                            continue;
+                        }
+                        if (!(i >= del.end - 3 && i - del.end < 3 * maxReadLength)) {
+                            continue;
+                        }
+                        String seq = findconseq(scv, 0);
+                        if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
+                            continue;
+                        }
+                        softp = i;
+                        Tuple.Tuple2<Integer, String> match = findMatch(seq, reference, softp, 1);
+                        int bp = match._1;
+                        String EXTRA = match._2;
+                        if (bp == 0) {
+                            match = findMatch(seq, reference, softp, 1, Configuration.SEED_2, 0);
+                            bp = match._1;
+                            EXTRA = match._2;
+                        }
+                        if (bp == 0) {
+                            continue;
+                        }
+                        if (!(bp - softp > 30 && isOverlap(softp, bp, Tuple.tuple(del.end, del.mstart), maxReadLength)))
+                            continue;
+                        bp--;
+                        int dellen = bp - softp + 1;
+
+                        final Variation variation = getVariation(nonInsertionVariants, softp, "-" + dellen);
+                        variation.varsCount = 0;
+
+                        SV sv = getSV(nonInsertionVariants, softp);
+                        sv.type = "DEL";
+                        sv.pairs += del.varsCount;
+                        sv.splits += scv.varsCount;
+                        sv.clusters++;
+
+                        if (!(refCoverage.containsKey(softp) && refCoverage.get(softp) > del.varsCount)) {
+                            refCoverage.put(softp, del.varsCount);
+                        }
+                        if (refCoverage.containsKey(bp) && refCoverage.get(softp) < refCoverage.get(bp)) {
+                            refCoverage.put(softp, refCoverage.get(bp));
+                        }
+                        adjCnt(variation, scv);
+                        int mcnt = del.varsCount;
+                        Variation tv = new Variation();
+                        tv.varsCount = mcnt;
+                        tv.highQualityReadsCount = mcnt;
+                        tv.varsCountOnForward = mcnt / 2;
+                        tv.varsCountOnReverse = mcnt - mcnt / 2;
+                        tv.meanQuality = del.meanQuality * mcnt / del.varsCount;
+                        tv.meanPosition = del.meanPosition * mcnt / del.varsCount;
+                        tv.meanMappingQuality = del.meanMappingQuality * mcnt / del.varsCount;
+                        tv.numberOfMismatches = del.numberOfMismatches * mcnt / del.varsCount;
+                        adjCnt(variation, tv);
+                        del.used = true;
+                        markSV(softp, bp, Arrays.asList(svStructures.svrdel), maxReadLength);
+                        if (instance().conf.y) {
+                            System.err.printf("    Found DEL SV from 5' softclip happy reads: %d -%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.varsCount, mcnt);
+                        }
+                        break;
+                    }
                 }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
             }
         }
-        for (Sclip del : svrdel) {
-            if (del.used) {
-                continue;
-            }
-            if (del.cnt < conf.minr) {
-                continue;
-            }
-            List<Tuple.Tuple2<Integer, Integer>> soft = del.soft.entrySet().stream()
-                    .map(entry -> Tuple.tuple(entry.getKey(), entry.getValue()))
-                    .sorted(comparing(tuple -> tuple._2, reverseOrder()))
-                    .collect(toList());
+        for (Sclip del : svStructures.svrdel) {
+            try {
+                lastStart = del.start;
+                if (del.used) {
+                    continue;
+                }
+                if (del.varsCount < instance().conf.minr) {
+                    continue;
+                }
+                List<Tuple.Tuple2<Integer, Integer>> soft = del.soft.entrySet().stream()
+                        .map(entry -> Tuple.tuple(entry.getKey(), entry.getValue()))
+                        .sorted(comparing(tuple -> tuple._2, reverseOrder()))
+                        .collect(toList());
 
-            int softp = soft.isEmpty() ? 0 : soft.get(0)._1;
-            if (softp != 0) {
-                if (conf.y) {
-                    System.err.printf("%n%nWorking DEL 3' %d mate cluster cnt: %s%n", softp, del.cnt);
-                }
-                if (!sclip5.containsKey(softp)) {
-                    continue;
-                }
-                Sclip scv = sclip5.get(softp);
-                if (scv.used) {
-                    continue;
-                }
-                String seq = findconseq(scv, conf, 0);
-                if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
-                    continue;
-                }
-                if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    referenceResource.getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
-                    parseSAM(Region.newModifiedRegion(region, del.mstart - 200, del.mend + 200),
-                            bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, referenceResource, conf,
-                            hash, iHash, cov, sclip3, sclip5, true);
-                }
-                Tuple.Tuple2<Integer, String> match = findMatch(conf, seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
-                int bp = match._1;
-                String EXTRA = match._2;
-                if (bp == 0) {
-                    match = findMatch(conf, seq, reference, softp, -1, Configuration.SEED_2, 0);
-                    bp = match._1;
-                    EXTRA = match._2;
-                }
-                if (bp == 0) {
-                    continue;
-                }
-                if (!(softp - bp > 30 && isOverlap(bp, softp, Tuple.tuple(del.mend, del.start), rlen))) continue;
-                bp++;
-                softp--;
-                int dellen = softp - bp + 1;
-                final Variation variation = getVariation(hash, bp, "-" + dellen);
-                variation.cnt = 0;
-
-                SV sv = getSV(hash, bp);
-                sv.type = "DEL";
-                sv.pairs += del.cnt;
-                sv.splits += scv.cnt;
-                sv.clusters++;
-
-                adjCnt(variation, scv, conf);
-                if (!(cov.containsKey(bp) && cov.get(bp) > del.cnt)) {
-                    cov.put(bp, del.cnt);
-                }
-                if (cov.containsKey(softp) && cov.get(softp) > cov.get(bp)) {
-                    cov.put(bp, cov.get(softp));
-                }
-                int mcnt = del.cnt;
-                Variation tv = new Variation();
-                tv.cnt = mcnt;
-                tv.hicnt = mcnt;
-                tv.dirPlus = mcnt / 2;
-                tv.dirMinus = mcnt - mcnt / 2;
-                tv.qmean = del.qmean * mcnt / del.cnt;
-                tv.pmean = del.pmean * mcnt / del.cnt;
-                tv.Qmean = del.Qmean * mcnt / del.cnt;
-                tv.nm = del.nm * mcnt / del.cnt;
-                adjCnt(variation, tv, conf);
-                del.used = true;
-                markSV(bp, softp, Arrays.asList(svfdel), rlen, conf);
-                if (conf.y) {
-                    System.err.printf("    Found DEL SV from 3' softclip unhappy reads: %d -+%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.cnt, mcnt);
-                }
-            } else {
-                if (conf.y) {
-                    System.err.printf("%n%nWorking DEL 3' no softp mate cluster %s %d %d cnt: %d%n", region.chr, del.mstart, del.mend, del.cnt);
-                }
-                if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    referenceResource.getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
-                }
-                for (Map.Entry<Integer, Sclip> entry : sclip5.entrySet()) {
-                    int i = entry.getKey();
-                    Sclip scv = entry.getValue();
+                int softp = soft.isEmpty() ? 0 : soft.get(0)._1;
+                if (softp != 0) {
+                    if (instance().conf.y) {
+                        System.err.printf("%n%nWorking DEL 3' %d mate cluster cnt: %s%n", softp, del.varsCount);
+                    }
+                    if (!softClips5End.containsKey(softp)) {
+                        continue;
+                    }
+                    Sclip scv = softClips5End.get(softp);
                     if (scv.used) {
                         continue;
                     }
-                    if (!(i <= del.start + 3 && del.start - i < 3 * rlen)) {
-                        continue;
-                    }
-                    String seq = findconseq(scv, conf, 0);
+                    String seq = findconseq(scv, 0);
                     if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                         continue;
                     }
-                    softp = i;
-                    Tuple.Tuple2<Integer, String> match = findMatch(conf, seq, reference, softp, -1);
+                    if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
+                        referenceResource.getReference(Region.newModifiedRegion(region, del.mstart, del.mend), 300, reference);
+                        Region region = Region.newModifiedRegion(this.region, del.mstart - 200, del.mend + 200);
+                        partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
+                                bam, region, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
+                    }
+                    Tuple.Tuple2<Integer, String> match = findMatch(seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
                     int bp = match._1;
                     String EXTRA = match._2;
                     if (bp == 0) {
-                        match = findMatch(conf, seq, reference, softp, - 1, Configuration.SEED_2, 0);
+                        match = findMatch(seq, reference, softp, -1, Configuration.SEED_2, 0);
                         bp = match._1;
                         EXTRA = match._2;
                     }
                     if (bp == 0) {
                         continue;
                     }
-                    if (!(softp - bp > 30 && isOverlap(bp, softp, Tuple.tuple(del.mend, del.start), rlen))) {
+                    if (!(softp - bp > 30 && isOverlap(bp, softp, Tuple.tuple(del.mend, del.start), maxReadLength)))
                         continue;
-                    }
                     bp++;
                     softp--;
                     int dellen = softp - bp + 1;
+                    final Variation variation = getVariation(nonInsertionVariants, bp, "-" + dellen);
+                    variation.varsCount = 0;
 
-                    final Variation variation = getVariation(hash, bp, "-" + dellen);
-                    variation.cnt = 0;
-
-                    SV sv = getSV(hash, bp);
+                    SV sv = getSV(nonInsertionVariants, bp);
                     sv.type = "DEL";
-                    sv.pairs += del.cnt;
-                    sv.splits += scv.cnt;
+                    sv.pairs += del.varsCount;
+                    sv.splits += scv.varsCount;
                     sv.clusters++;
 
-                    adjCnt(variation, scv, conf);
-                    if (!cov.containsKey(bp)) {
-                        cov.put(bp, del.cnt);
+                    adjCnt(variation, scv);
+                    if (!(refCoverage.containsKey(bp) && refCoverage.get(bp) > del.varsCount)) {
+                        refCoverage.put(bp, del.varsCount);
                     }
-                    if (cov.containsKey(softp) && cov.get(softp) > cov.get(bp)) {
-                        cov.put(bp, cov.get(softp));
+                    if (refCoverage.containsKey(softp) && refCoverage.get(softp) > refCoverage.get(bp)) {
+                        refCoverage.put(bp, refCoverage.get(softp));
                     }
-                    incCnt(cov, bp, scv.cnt);
-
-                    int mcnt = del.cnt;
+                    int mcnt = del.varsCount;
                     Variation tv = new Variation();
-                    tv.cnt = mcnt;
-                    tv.hicnt = mcnt;
-                    tv.dirPlus = mcnt / 2;
-                    tv.dirMinus = mcnt - mcnt / 2;
-                    tv.qmean = del.qmean * mcnt / del.cnt;
-                    tv.pmean = del.pmean * mcnt / del.cnt;
-                    tv.Qmean = del.Qmean * mcnt / del.cnt;
-                    tv.nm = del.nm * mcnt / del.cnt;
-                    adjCnt(variation, tv, conf);
+                    tv.varsCount = mcnt;
+                    tv.highQualityReadsCount = mcnt;
+                    tv.varsCountOnForward = mcnt / 2;
+                    tv.varsCountOnReverse = mcnt - mcnt / 2;
+                    tv.meanQuality = del.meanQuality * mcnt / del.varsCount;
+                    tv.meanPosition = del.meanPosition * mcnt / del.varsCount;
+                    tv.meanMappingQuality = del.meanMappingQuality * mcnt / del.varsCount;
+                    tv.numberOfMismatches = del.numberOfMismatches * mcnt / del.varsCount;
+                    adjCnt(variation, tv);
                     del.used = true;
-                    markSV(bp, softp, Arrays.asList(svfdel), rlen, conf);
-                    if (conf.y) {
-                        System.err.printf("    Found DEL SV from 3' softclip happy reads: %d -%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.cnt, mcnt);
+                    markSV(bp, softp, Arrays.asList(svStructures.svfdel), maxReadLength);
+                    if (instance().conf.y) {
+                        System.err.printf("    Found DEL SV from 3' softclip unhappy reads: %d -+%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.varsCount, mcnt);
                     }
-                    break;
+                } else {
+                    if (instance().conf.y) {
+                        System.err.printf("%n%nWorking DEL 3' no softp mate cluster %s %d %d cnt: %d%n", region.chr, del.mstart, del.mend, del.varsCount);
+                    }
+                    if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
+                        referenceResource.getReference(Region.newModifiedRegion(region, del.mstart, del.mend), 300, reference);
+                    }
+                    for (Map.Entry<Integer, Sclip> entry : softClips5End.entrySet()) {
+                        int i = entry.getKey();
+                        Sclip scv = entry.getValue();
+                        if (scv.used) {
+                            continue;
+                        }
+                        if (!(i <= del.start + 3 && del.start - i < 3 * maxReadLength)) {
+                            continue;
+                        }
+                        String seq = findconseq(scv, 0);
+                        if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
+                            continue;
+                        }
+                        softp = i;
+                        Tuple.Tuple2<Integer, String> match = findMatch(seq, reference, softp, -1);
+                        int bp = match._1;
+                        String EXTRA = match._2;
+                        if (bp == 0) {
+                            match = findMatch(seq, reference, softp, -1, Configuration.SEED_2, 0);
+                            bp = match._1;
+                            EXTRA = match._2;
+                        }
+                        if (bp == 0) {
+                            continue;
+                        }
+                        if (!(softp - bp > 30 && isOverlap(bp, softp, Tuple.tuple(del.mend, del.start), maxReadLength))) {
+                            continue;
+                        }
+                        bp++;
+                        softp--;
+                        int dellen = softp - bp + 1;
+
+                        final Variation variation = getVariation(nonInsertionVariants, bp, "-" + dellen);
+                        variation.varsCount = 0;
+
+                        SV sv = getSV(nonInsertionVariants, bp);
+                        sv.type = "DEL";
+                        sv.pairs += del.varsCount;
+                        sv.splits += scv.varsCount;
+                        sv.clusters++;
+
+                        adjCnt(variation, scv);
+                        if (!refCoverage.containsKey(bp)) {
+                            refCoverage.put(bp, del.varsCount);
+                        }
+                        if (refCoverage.containsKey(softp) && refCoverage.get(softp) > refCoverage.get(bp)) {
+                            refCoverage.put(bp, refCoverage.get(softp));
+                        }
+                        incCnt(refCoverage, bp, scv.varsCount);
+
+                        int mcnt = del.varsCount;
+                        Variation tv = new Variation();
+                        tv.varsCount = mcnt;
+                        tv.highQualityReadsCount = mcnt;
+                        tv.varsCountOnForward = mcnt / 2;
+                        tv.varsCountOnReverse = mcnt - mcnt / 2;
+                        tv.meanQuality = del.meanQuality * mcnt / del.varsCount;
+                        tv.meanPosition = del.meanPosition * mcnt / del.varsCount;
+                        tv.meanMappingQuality = del.meanMappingQuality * mcnt / del.varsCount;
+                        tv.numberOfMismatches = del.numberOfMismatches * mcnt / del.varsCount;
+                        adjCnt(variation, tv);
+                        del.used = true;
+                        markSV(bp, softp, Arrays.asList(svStructures.svfdel), maxReadLength);
+                        if (instance().conf.y) {
+                            System.err.printf("    Found DEL SV from 3' softclip happy reads: %d -%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.varsCount, mcnt);
+                        }
+                        break;
+                    }
                 }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
             }
         }
     }
 
     /**
      * Find INV SV for all structural variants structures
-     * @param conf Configuration
-     * @param hash map of variants on positions
-     * @param iHash map of insertions on positions
-     * @param cov map of coverage on positions
-     * @param sclip5 map of soft clips 5' on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param REF reference in a given region
-     * @param region region of interest
-     * @param bams list of BAM files from configuration
-     * @param svfinv3 list of INV SVs in forward direction in 3'
-     * @param svrinv3 list of INV SVs in reverse direction in 3'
-     * @param svfinv5 list of INV SVs in forward direction in 5'
-     * @param svrinv5 list of INV SVs in reverse direction in 5'
-     * @param rlen max read length
-     * @param chrs map of chromosome lengths
-     * @param referenceResource object for access to reference map
-     * @param sample sample name
-     * @param splice set of strings representing spliced regions
-     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
-     * @throws IOException if BAM file can't be read
      */
-    static void findINV(Configuration conf,
-                        Map<Integer, VariationMap<String, Variation>> hash,
-                        Map<Integer, VariationMap<String, Variation>> iHash,
-                        Map<Integer, Integer> cov,
-                        Map<Integer, Sclip> sclip5,
-                        Map<Integer, Sclip> sclip3,
-                        Reference REF, ReferenceResource referenceResource,
-                        Region region,
-                        String bams,
-                        Iterable<Sclip> svfinv3,
-                        Iterable<Sclip> svrinv3,
-                        Iterable<Sclip> svfinv5,
-                        Iterable<Sclip> svrinv5,
-                        int rlen,
-                        Map<String, Integer> chrs,
-                        String sample,
-                        Set<String> splice,
-                        String ampliconBasedCalling) throws IOException {
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, referenceResource, region, bams, svfinv5, 1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, referenceResource, region, bams, svrinv5, -1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, referenceResource, region, bams, svfinv3, 1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, referenceResource, region, bams, svrinv3, -1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
+     void findINV() {
+        findINVsub(svStructures.svfinv5, 1 , Side._5);
+        findINVsub(svStructures.svrinv5, -1 , Side._5);
+        findINVsub(svStructures.svfinv3, 1 , Side._3);
+        findINVsub(svStructures.svrinv3, -1 , Side._3);
     }
 
     /**
      * Find INV SV
      * Would only consider those with supports from both orientations
      * (svfinv5) --&gt; | &lt;-- (svrinv5) ..... (svfinv3) --&gt; | &lt;-- (svrinv3)
-     * @param conf Configuration
-     * @param hash map of variants on positions
-     * @param iHash map of insertions on positions
-     * @param cov map of coverage on positions
-     * @param sclip5 map of soft clips 5' on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param reference reference in a given region
-     * @param region chromosome in region of interest
-     * @param bams list of BAM files from configuration
      * @param svref list of INV SVs
      * @param dir direction specified in findINV()
      * @param side 3 or 5 end
-     * @param rlen max read length
-     * @param chrs map of chromosome lengths
-     * @param referenceResource object for access to reference map
-     * @param sample sample name
-     * @param splice set of strings representing spliced regions
-     * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
-     * @throws IOException if BAM file can't be read
      * @return created variation
      */
-    static Variation findINVsub(Configuration conf,
-                                Map<Integer, VariationMap<String, Variation>> hash,
-                                Map<Integer, VariationMap<String, Variation>> iHash,
-                                Map<Integer, Integer> cov,
-                                Map<Integer, Sclip> sclip5,
-                                Map<Integer, Sclip> sclip3,
-                                Reference reference, ReferenceResource referenceResource,
-                                Region region,
-                                String bams,
-                                Iterable<Sclip> svref,
-                                int dir,
-                                Side side,
-                                int rlen,
-                                Map<String, Integer> chrs,
-                                String sample,
-                                Set<String> splice,
-                                String ampliconBasedCalling) throws IOException {
+     Variation findINVsub(Iterable<Sclip> svref, int dir, Side side) {
+         int lastStart = 0;
         // dir = 1 means 3' soft clipping
         for (Sclip inv : svref) {
-            if (inv.used) {
-                continue;
-            }
-            if (inv.cnt < conf.minr) {
-                continue;
-            }
-            List<Tuple.Tuple2<Integer, Integer>> soft = inv.soft.entrySet().stream()
-                    .map(entry -> Tuple.tuple(entry.getKey(), entry.getValue()))
-                    .sorted(comparing(tuple -> tuple._2, reverseOrder()))
-                    .collect(toList());
-            int softp = soft.isEmpty() ? 0 : soft.get(0)._1;
-            Map<Integer, Sclip> sclip = dir == 1 ? sclip3 : sclip5;
-            if (conf.y) System.err.printf("%n%nWorking INV %d %d %s pair_cnt: %d%n", softp, dir, side, inv.cnt);
-            if (!isLoaded(region.chr, inv.mstart, inv.mend, reference)) {
-                referenceResource.getREF(Region.newModifiedRegion(region, inv.mstart, inv.mend), chrs, conf, 500, reference);
-                parseSAM(Region.newModifiedRegion(region, inv.mstart - 200, inv.mend + 200),
-                        bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, referenceResource, conf, hash,
-                        iHash, cov, sclip3, sclip5, true);
-            }
-            int bp = 0;
-            Sclip scv = new Sclip();
-            String seq = "";
-            String extra = "";
-            if (softp != 0) {
-                if (!sclip.containsKey(softp)) {
+            try {
+                lastStart = inv.start;
+                if (inv.used) {
                     continue;
                 }
-                scv = sclip.get(softp);
-                if (scv.used) {
+                if (inv.varsCount < instance().conf.minr) {
                     continue;
                 }
-                seq = findconseq(scv, conf, 0);
-                if (seq.isEmpty()) {
-                    continue;
+                List<Tuple.Tuple2<Integer, Integer>> soft = inv.soft.entrySet().stream()
+                        .map(entry -> Tuple.tuple(entry.getKey(), entry.getValue()))
+                        .sorted(comparing(tuple -> tuple._2, reverseOrder()))
+                        .collect(toList());
+                int softp = soft.isEmpty() ? 0 : soft.get(0)._1;
+                Map<Integer, Sclip> sclip = dir == 1 ? softClips3End : softClips5End;
+
+                if (instance().conf.y) {
+                    System.err.printf("%n%nWorking INV %d %d %s pair_cnt: %d%n", softp, dir, side, inv.varsCount);
                 }
-                Tuple.Tuple2<Integer, String> matchRev = findMatchRev(conf, seq, reference, softp, dir);
-                bp = matchRev._1;
-                extra = matchRev._2;
-                if (bp == 0 ) {
-                    matchRev = findMatchRev(conf, seq, reference, softp, dir, Configuration.SEED_2, 0);
-                    bp = matchRev._1;
-                    extra = matchRev._2;
+                if (!isLoaded(region.chr, inv.mstart, inv.mend, reference)) {
+                    referenceResource.getReference(Region.newModifiedRegion(region, inv.mstart, inv.mend), 500, reference);
+                    Region region = Region.newModifiedRegion(this.region, inv.mstart - 200, inv.mend + 200);
+                    partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
+                            bam, region, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
                 }
-                if (bp == 0) {
-                    continue;
-                }
-            } else {
-                // Look within 100bp to see whether a soft cliping can be found but not associated with discordant pairs
-                int sp = dir == 1 ? inv.end : inv.start; // starting position
-                for (int i = 1; i <= 2 * rlen; i++) {
-                    int cp = sp + i * dir;
-                    if (!sclip.containsKey(cp)) {
+                int bp = 0;
+                Sclip scv = new Sclip();
+                String seq = "";
+                String extra = "";
+                if (softp != 0) {
+                    if (!sclip.containsKey(softp)) {
                         continue;
                     }
-                    scv = sclip.get(cp);
+                    scv = sclip.get(softp);
                     if (scv.used) {
                         continue;
                     }
-                    seq = findconseq(scv, conf, 0);
+                    seq = findconseq(scv, 0);
                     if (seq.isEmpty()) {
                         continue;
                     }
-                    Tuple.Tuple2<Integer, String> matchRev = findMatchRev(conf, seq, reference, cp, dir);
+                    Tuple.Tuple2<Integer, String> matchRev = findMatchRev(seq, reference, softp, dir);
                     bp = matchRev._1;
                     extra = matchRev._2;
-                    if (bp == 0 ) {
-                        matchRev = findMatchRev(conf, seq, reference, cp, dir, Configuration.SEED_2, 0);
+                    if (bp == 0) {
+                        matchRev = findMatchRev(seq, reference, softp, dir, Configuration.SEED_2, 0);
                         bp = matchRev._1;
                         extra = matchRev._2;
                     }
                     if (bp == 0) {
                         continue;
                     }
-                    softp = cp;
-                    if ((dir == 1 && abs(bp - inv.mend) < Configuration.MINSVCDIST * rlen)
-                            || (dir == -1 && abs(bp - inv.mstart) < Configuration.MINSVCDIST * rlen)) break;
-                }
-                if (bp == 0) {
-                    continue;
-                }
-            }
-            if (conf.y) {
-                System.err.printf("    %d %d %d %s %s pair_cnt: %d soft_cnt: %d%n", softp, bp, dir, side, seq, inv.cnt, scv.cnt);
-            }
-            if (side == Side._5) {
-                if (dir == -1) {
-                    bp--;
-                }
-            } else {
-                if (dir == 1) {
-                    bp++;
-                    if (bp != 0) {
-                        softp--;
-                    }
                 } else {
-                    softp--;
+                    // Look within 100bp to see whether a soft cliping can be found but not associated with discordant pairs
+                    int sp = dir == 1 ? inv.end : inv.start; // starting position
+                    for (int i = 1; i <= 2 * maxReadLength; i++) {
+                        int cp = sp + i * dir;
+                        if (!sclip.containsKey(cp)) {
+                            continue;
+                        }
+                        scv = sclip.get(cp);
+                        if (scv.used) {
+                            continue;
+                        }
+                        seq = findconseq(scv, 0);
+                        if (seq.isEmpty()) {
+                            continue;
+                        }
+                        Tuple.Tuple2<Integer, String> matchRev = findMatchRev(seq, reference, cp, dir);
+                        bp = matchRev._1;
+                        extra = matchRev._2;
+                        if (bp == 0) {
+                            matchRev = findMatchRev(seq, reference, cp, dir, Configuration.SEED_2, 0);
+                            bp = matchRev._1;
+                            extra = matchRev._2;
+                        }
+                        if (bp == 0) {
+                            continue;
+                        }
+                        softp = cp;
+                        if ((dir == 1 && abs(bp - inv.mend) < Configuration.MINSVCDIST * maxReadLength)
+                                || (dir == -1 && abs(bp - inv.mstart) < Configuration.MINSVCDIST * maxReadLength))
+                            break;
+                    }
+                    if (bp == 0) {
+                        continue;
+                    }
                 }
-            }
-            if (side == Side._3) {
-                int tmp = bp;
-                bp = softp;
-                softp = tmp;
-            }
-            Map<Integer, Character> ref = reference.referenceSequences;
-            if ((dir == -1 && side == Side._5) || dir == 1 && side == Side._3) {
-                while (ref.containsKey(softp) && ref.containsKey(bp)
-                        && ref.get(softp) == complement(ref.get(bp))) {
-                    softp++;
-                    if (softp != 0) {
+                if (instance().conf.y) {
+                    System.err.printf("    %d %d %d %s %s pair_cnt: %d soft_cnt: %d%n", softp, bp, dir, side, seq, inv.varsCount, scv.varsCount);
+                }
+                if (side == Side._5) {
+                    if (dir == -1) {
                         bp--;
                     }
+                } else {
+                    if (dir == 1) {
+                        bp++;
+                        if (bp != 0) {
+                            softp--;
+                        }
+                    } else {
+                        softp--;
+                    }
                 }
-            }
-            while(ref.containsKey(softp - 1) && ref.containsKey(bp + 1)
-                    && ref.get(softp - 1) == complement(ref.get(bp + 1))) {
-                softp--;
-                if (softp != 0) {
-                    bp++;
+                if (side == Side._3) {
+                    int tmp = bp;
+                    bp = softp;
+                    softp = tmp;
                 }
-            }
-            if (bp > softp && bp - softp > 150 && (bp - softp) / (double) abs(inv.mlen) < 1.5) {
-                int len = bp - softp + 1;
-                String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp - Configuration.SVFLANK + 1, bp));
-                String ins3 = SequenceUtil.reverseComplement(joinRef(ref, softp, softp + Configuration.SVFLANK - 1));
-                String ins = ins5 + "<inv" + (len - 2 * Configuration.SVFLANK) + ">" + ins3;
-                if (len - 2 * Configuration.SVFLANK <= 0) {
-                    ins = SequenceUtil.reverseComplement(joinRef(ref, softp, bp));
+                Map<Integer, Character> ref = reference.referenceSequences;
+                if ((dir == -1 && side == Side._5) || dir == 1 && side == Side._3) {
+                    while (ref.containsKey(softp) && ref.containsKey(bp)
+                            && ref.get(softp) == complement(ref.get(bp))) {
+                        softp++;
+                        if (softp != 0) {
+                            bp--;
+                        }
+                    }
                 }
-                if (dir == 1 && !extra.isEmpty()) {
-                    extra = SequenceUtil.reverseComplement(extra);
-                    ins = extra + ins;
-                } else if (dir == -1 && !extra.isEmpty()) {
-                    ins = ins + extra;
+                while (ref.containsKey(softp - 1) && ref.containsKey(bp + 1)
+                        && ref.get(softp - 1) == complement(ref.get(bp + 1))) {
+                    softp--;
+                    if (softp != 0) {
+                        bp++;
+                    }
                 }
-                String gt = "-" + len + "^" + ins;
-                // TODO: 26/07/18 Seem that next statement is redundant since it assigns cnt to 0 if it is already 0
-                // $hash->{ $softp }->{ $gt }->{ cnt } = 0 unless( $hash->{ $softp }->{ $gt }->{ cnt } );
+                if (bp > softp && bp - softp > 150 && (bp - softp) / (double) abs(inv.mlen) < 1.5) {
+                    int len = bp - softp + 1;
+                    String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp - Configuration.SVFLANK + 1, bp));
+                    String ins3 = SequenceUtil.reverseComplement(joinRef(ref, softp, softp + Configuration.SVFLANK - 1));
+                    String ins = ins5 + "<inv" + (len - 2 * Configuration.SVFLANK) + ">" + ins3;
+                    if (len - 2 * Configuration.SVFLANK <= 0) {
+                        ins = SequenceUtil.reverseComplement(joinRef(ref, softp, bp));
+                    }
+                    if (dir == 1 && !extra.isEmpty()) {
+                        extra = SequenceUtil.reverseComplement(extra);
+                        ins = extra + ins;
+                    } else if (dir == -1 && !extra.isEmpty()) {
+                        ins = ins + extra;
+                    }
+                    String gt = "-" + len + "^" + ins;
 
-                final Variation vref = getVariation(hash, softp, gt);
-                inv.used = true;
-                vref.pstd = true;
-                vref.qstd = true;
+                    final Variation vref = getVariation(nonInsertionVariants, softp, gt);
+                    inv.used = true;
+                    vref.pstd = true;
+                    vref.qstd = true;
 
-                SV sv = getSV(hash, softp);
-                sv.type = "INV";
-                sv.splits += scv.cnt;
-                sv.pairs += inv.cnt;
-                sv.clusters++;
+                    SV sv = getSV(nonInsertionVariants, softp);
+                    sv.type = "INV";
+                    sv.splits += scv.varsCount;
+                    sv.pairs += inv.varsCount;
+                    sv.clusters++;
 
-                Variation vrefSoftp = dir == -1
-                        ? (hash.containsKey(softp) && ref.containsKey(softp) ? hash.get(softp).get(ref.get(softp).toString()) : null )
-                        : null;
-                adjCnt(vref, scv, vrefSoftp, conf);
-                Map<Integer, Map<String, Integer>> dels5 = new HashMap<>();
-                Map<String, Integer> map = new HashMap<>();
-                map.put(gt, inv.cnt);
-                dels5.put(softp, map);
-                cov.put(softp, cov.containsKey(softp - 1) ? cov.get(softp - 1) : inv.cnt);
-                scv.used = true;
-                realigndel(hash, dels5, cov, sclip5, sclip3, reference, region, chrs, rlen, bams, conf);
-                if (conf.y) {
-                    System.err.printf(
-                            "  Found INV SV: %s %d %s BP: %d cov: %d Cnt: %d EXTRA: %s %d %d %d cnt: %d %d\t DIR: %d Side: %s%n",
-                            seq, softp, gt, bp, cov.get(softp), inv.cnt, extra, inv.mstart, inv.mend, inv.mlen, scv.cnt, (bp - softp) / abs(inv.mlen), dir, side
-                    );
+                    Variation vrefSoftp = dir == -1
+                            ? (nonInsertionVariants.containsKey(softp) && ref.containsKey(softp) ? nonInsertionVariants.get(softp).get(ref.get(softp).toString()) : null)
+                            : null;
+                    adjCnt(vref, scv, vrefSoftp);
+                    Map<Integer, Map<String, Integer>> dels5 = new HashMap<>();
+                    Map<String, Integer> map = new HashMap<>();
+                    map.put(gt, inv.varsCount);
+                    dels5.put(softp, map);
+                    refCoverage.put(softp, refCoverage.containsKey(softp - 1) ? refCoverage.get(softp - 1) : inv.varsCount);
+                    scv.used = true;
+
+                    VariationRealigner variationRealigner = new VariationRealigner();
+                    variationRealigner.initFromScope(previousScope);
+                    variationRealigner.realigndel(bams, dels5);
+
+                    if (instance().conf.y) {
+                        System.err.printf(
+                                "  Found INV SV: %s %d %s BP: %d cov: %d Cnt: %d EXTRA: %s %d %d %d cnt: %d %d\t DIR: %d Side: %s%n",
+                                seq, softp, gt, bp, refCoverage.get(softp), inv.varsCount, extra, inv.mstart, inv.mend, inv.mlen, scv.varsCount, (bp - softp) / abs(inv.mlen), dir, side
+                        );
+                    }
+                    return vref;
                 }
-                return vref;
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastStart), region);
             }
         }
         return null;
@@ -2593,43 +2012,38 @@ public class StructuralVariantsProcessor {
 
     /**
      * Output remaining soft-clipped reads that haven't been used
-     * @param sclip5 map of soft clips 5' on positions
-     * @param sclip3 map of soft clips 3' on positions
-     * @param conf Configuration
      */
-    static void outputClipping(Map<Integer, Sclip> sclip5,
-                                      Map<Integer, Sclip> sclip3,
-                                      Configuration conf) {
+    public void outputClipping() {
         System.err.println("5' Remaining clipping reads");
-        for (Map.Entry<Integer, Sclip> entry: sclip5.entrySet()) {
+        for (Map.Entry<Integer, Sclip> entry: softClips5End.entrySet()) {
             int position_p = entry.getKey();
             Sclip sclip_sc = entry.getValue();
 
             if (sclip_sc.used) {
                 continue;
             }
-            if (sclip_sc.cnt < conf.minr) {
+            if (sclip_sc.varsCount < instance().conf.minr) {
                 continue;
             }
-            String seq = findconseq(sclip_sc, conf, 0);
+            String seq = findconseq(sclip_sc, 0);
             if (!seq.isEmpty() && seq.length() > Configuration.SEED_2) {
                 seq = new StringBuilder(seq).reverse().toString();
-                System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.cnt, seq);
+                System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.varsCount, seq);
             }
         }
         System.err.println("3' Remaining clipping reads");
-        for (Map.Entry<Integer, Sclip> entry: sclip3.entrySet()) {
+        for (Map.Entry<Integer, Sclip> entry: softClips3End.entrySet()) {
             int position_p = entry.getKey();
             Sclip sclip_sc = entry.getValue();
             if (sclip_sc.used) {
                 continue;
             }
-            if (sclip_sc.cnt < conf.minr) {
+            if (sclip_sc.varsCount < instance().conf.minr) {
                 continue;
             }
-            String seq = findconseq(sclip_sc, conf, 0);
+            String seq = findconseq(sclip_sc, 0);
             if (!seq.isEmpty() && seq.length() > Configuration.SEED_2) {
-                System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.cnt, seq);
+                System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.varsCount, seq);
             }
         }
     }

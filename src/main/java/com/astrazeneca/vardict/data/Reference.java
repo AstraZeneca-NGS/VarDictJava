@@ -2,6 +2,10 @@ package com.astrazeneca.vardict.data;
 
 import java.util.*;
 
+/**
+ * Class storage reference sequences for the region and list of loaded region.
+ * Used for comparing reference sequences and query sequences.
+ */
 public class Reference {
     public List<LoadedRegion> loadedRegions;
     public Map<Integer, Character> referenceSequences;

@@ -12,18 +12,18 @@ public class Vars {
     /**
      * Reference variant
      */
-    public Variant ref;
+    public Variant referenceVariant;
 
     /**
      * List of all variants except reference variant
      */
-    public List<Variant> var = new ArrayList<>();
+    public List<Variant> variants = new ArrayList<>();
 
     /**
      * Map of all variants except reference variant.
      * Key - variant description string, value - variant
      */
-    public Map<String, Variant> varn = new HashMap<>();
+    public Map<String, Variant> varDescriptionStringToVariants = new HashMap<>();
 
     public String sv = "";
 }
