@@ -1,6 +1,7 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
+import com.astrazeneca.vardict.ReferenceResource;
 import com.astrazeneca.vardict.data.Region;
 import com.astrazeneca.vardict.Utils;
 import com.astrazeneca.vardict.collection.Tuple;
@@ -21,7 +22,6 @@ import static com.astrazeneca.vardict.collection.VariationMap.removeSV;
 import static com.astrazeneca.vardict.data.Patterns.*;
 import static com.astrazeneca.vardict.modules.CigarUtils.getAlignedLength;
 import static com.astrazeneca.vardict.modules.SAMFileParser.parseSAM;
-import static com.astrazeneca.vardict.ReferenceResource.getREF;
 import static com.astrazeneca.vardict.ReferenceResource.isLoaded;
 import static com.astrazeneca.vardict.modules.StructuralVariantsProcessor.findMatch;
 import static com.astrazeneca.vardict.modules.StructuralVariantsProcessor.markDUPSV;
@@ -54,7 +54,7 @@ public class VariationRealigner {
     public static void realignIndels(Region region,
                                      Map<String, Integer> chrs,
                                      int rlen,
-                                     Reference reference,
+                                     Reference reference, ReferenceResource referenceResource,
                                      Configuration conf,
                                      String bam,
                                      Map<Integer, VariationMap<String, Variation>> hash,
@@ -77,14 +77,14 @@ public class VariationRealigner {
         if (conf.y)
             System.err.println("Start Realignlgdel");
         realignlgdel(hash, cov, sclip5, sclip3, sample, splice, ampliconBasedCalling,
-                reference, region, chrs, iHash, rlen, bam, svStructures.svfdel, svStructures.svrdel, conf);
+                reference, referenceResource, region, chrs, iHash, rlen, bam, svStructures.svfdel, svStructures.svrdel, conf);
         if (conf.y)
             System.err.println("Start Realignlgins30");
         realignlgins30(hash, iHash, cov, sclip5, sclip3, reference, region, chrs, rlen, bam, conf);
         if (conf.y)
             System.err.println("Start Realignlgins");
         realignlgins(hash, iHash, cov, sclip5, sclip3, sample, splice, ampliconBasedCalling,
-                reference, region, chrs, rlen, bam, svStructures.svfdup, svStructures.svrdup, conf);
+                reference, referenceResource, region, chrs, rlen, bam, svStructures.svfdup, svStructures.svrdup, conf);
     }
 
     /**
@@ -685,7 +685,7 @@ public class VariationRealigner {
                              Map<Integer, Sclip> sclip3,
                              String sample, Set<String> splice,
                              String ampliconBasedCalling,
-                             Reference reference,
+                             Reference reference, ReferenceResource referenceResource,
                              Region region,
                              Map<String, Integer> chrs,
                              Map<Integer, VariationMap<String, Variation>> iHash,
@@ -776,10 +776,10 @@ public class VariationRealigner {
                     }
                     Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
                     if(!isLoaded(chr, tts, tte, reference)) {
-                        getREF(modifiedRegion, chrs, conf, rlen, reference);
+                        referenceResource.getREF(modifiedRegion, chrs, conf, rlen, reference);
                     }
                     parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
-                            rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                            rlen, reference, referenceResource, conf, hash, iHash, cov, sclip3, sclip5, true);
                 }
             }
             int dellen = p - bp;
@@ -984,10 +984,10 @@ public class VariationRealigner {
                     }
                     Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
                     if (!isLoaded(chr, tts, tte, reference)) {
-                        getREF(modifiedRegion, chrs, conf, rlen, reference);
+                        referenceResource.getREF(modifiedRegion, chrs, conf, rlen, reference);
                     }
                     parseSAM(modifiedRegion, bam, chrs, sample, splice, ampliconBasedCalling,
-                            rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                            rlen, reference, referenceResource, conf, hash, iHash, cov, sclip3, sclip5, true);
                 }
             }
 
@@ -1104,7 +1104,7 @@ public class VariationRealigner {
                              Map<Integer, Sclip> sclip3,
                              String sample, Set<String> splice,
                              String ampliconBasedCalling,
-                             Reference reference,
+                             Reference reference, ReferenceResource referenceResource,
                              Region region,
                              Map<String, Integer> chrs,
                              int rlen,
@@ -1177,10 +1177,10 @@ public class VariationRealigner {
                     }
                     Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
                     if(!isLoaded(chr, tts, tte, reference)) {
-                        getREF(modifiedRegion, chrs, conf, rlen, reference);
+                        referenceResource.getREF(modifiedRegion, chrs, conf, rlen, reference);
                     }
                     parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
-                            rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                            rlen, reference, referenceResource, conf, hash, iHash, cov, sclip3, sclip5, true);
                 }
                 if (bi - p > conf.SVMINLEN + 2 * Configuration.SVFLANK ) {
                     ins = joinRef(ref, p, p + Configuration.SVFLANK - 1);
@@ -1336,10 +1336,10 @@ public class VariationRealigner {
                     }
                     Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
                     if(!isLoaded(chr, tts, tte, reference)) {
-                        getREF(modifiedRegion, chrs, conf, rlen, reference);
+                        referenceResource.getREF(modifiedRegion, chrs, conf, rlen, reference);
                     }
                     parseSAM(modifiedRegion,  bam, chrs, sample, splice, ampliconBasedCalling,
-                            rlen, reference, conf, hash, iHash, cov, sclip3, sclip5, true);
+                            rlen, reference, referenceResource, conf, hash, iHash, cov, sclip3, sclip5, true);
                 }
                 int shift5 = 0;
                 while (ref.containsKey(p - 1) && ref.containsKey(bi - 1)

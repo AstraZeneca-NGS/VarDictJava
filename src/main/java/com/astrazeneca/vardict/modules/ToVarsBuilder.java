@@ -1,6 +1,7 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
+import com.astrazeneca.vardict.ReferenceResource;
 import com.astrazeneca.vardict.Utils;
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
@@ -53,7 +54,7 @@ public class ToVarsBuilder {
                                                             Set<String> SPLICE,
                                                             String ampliconBasedCalling,
                                                             int Rlen,
-                                                            Configuration conf) throws IOException {
+                                                            Configuration conf, ReferenceResource referenceResource) throws IOException {
         Map<Integer, VariationMap<String, Variation>> hash = new HashMap<>(); // variations map
         Map<Integer, VariationMap<String, Variation>> iHash = new HashMap<>(); // insertions map
         Map<Integer, Integer> cov = new HashMap<>();
@@ -64,7 +65,7 @@ public class ToVarsBuilder {
 
         Tuple.Tuple5<Map<Integer, VariationMap<String, Variation>>, Map<Integer, VariationMap<String, Variation>>,
                 Map<Integer, Integer>, Integer, Double> parseTpl =
-                parseSAM(region, bam, chrs, sample, SPLICE, ampliconBasedCalling, Rlen, reference,
+                parseSAM(region, bam, chrs, sample, SPLICE, ampliconBasedCalling, Rlen, reference, referenceResource,
                         conf, hash,
                         iHash, cov, sclip3, sclip5, svflag);
 

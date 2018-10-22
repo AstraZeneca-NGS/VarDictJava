@@ -28,7 +28,11 @@ public class Main {
             if (cmd.getOptions().length == 0 || cmd.hasOption("H")) {
                 help(options);
             }
-            new Main().run(cmd);
+            Configuration conf = new Main().run(cmd);
+
+            ReferenceResource referenceResource = new ReferenceResource();
+            VarDict varDict = new VarDict(conf, referenceResource);
+            varDict.start();
         } catch (MissingOptionException e) {
             List<?> missingOptions = e.getMissingOptions();
             System.err.print("Missing required option(s): ");
@@ -45,7 +49,7 @@ public class Main {
         }
     }
 
-    private void run(CommandLine cmd) throws ParseException, IOException {
+    public Configuration run(CommandLine cmd) throws ParseException, IOException {
         Configuration conf = new Configuration();
 
         // -v is not used
@@ -150,8 +154,7 @@ public class Main {
         conf.threads = Math.max(readThreadsCount(cmd), 1);
         conf.referenceExtension = getIntValue(cmd, "Y", 1200);
 
-        VarDict.start(conf);
-
+        return conf;
     }
 
     private int readThreadsCount(CommandLine cmd) throws ParseException {
@@ -183,7 +186,7 @@ public class Main {
     }
 
     @SuppressWarnings("static-access")
-    private static Options buildOptions() {
+    public static Options buildOptions() {
         Options options = new Options();
         options.addOption("H", "?", false, "Print this help page");
         options.addOption("h", "header", false, "Print a header row describing columns");

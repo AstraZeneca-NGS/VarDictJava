@@ -27,12 +27,8 @@ dependencies {
     compile('com.github.samtools:htsjdk:2.8.0') {
         transitive = false
     }
-    // https://mvnrepository.com/artifact/org.powermock/powermock-module-junit4
-    testCompile group: 'org.powermock', name: 'powermock-api-mockito2', version: '2.0.0-beta.5'
-    testCompile group: 'org.powermock', name: 'powermock-module-testng', version: '2.0.0-beta.5'
+    testCompile 'org.mockito:mockito-core:2.23.0'
     testCompile 'org.testng:testng:6.9.13.6'
-    testCompile 'net.bytebuddy:byte-buddy:1.8.3'
-    testCompile 'net.bytebuddy:byte-buddy-agent:1.8.3'
 }
 
 mainClassName = "com.astrazeneca.vardict.Main"
@@ -74,4 +70,7 @@ jar {
     }
 }
 
+jacoco {
+    toolVersion = "0.8.2"
+}
 applicationDistribution.from('VarDict/teststrandbias.R','VarDict/testsomatic.R','VarDict/var2vcf_valid.pl','VarDict/var2vcf_paired.pl').into('bin')
