@@ -512,10 +512,6 @@ public class CigarUtils {
             dlen -= tslen;
             rm += tslen;
             newCigarStr += dlen + "D" + rm + "M";
-            if (dlen == 0) {
-                RDOFF = RDOFF + rm;
-                newCigarStr = RDOFF + "M";
-            }
         } else {
             newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
         }
