@@ -1011,6 +1011,13 @@ public class StructuralVariantsProcessor {
                     sv.splits += cnt3;
                     sv.clusters += pairs != 0 ? 1 : 0;
 
+                    if (!cov.containsKey(p3)) {
+                        cov.put(p3, pairs + sc3v.cnt);
+                    }
+                    if (cov.containsKey(bp) && cov.get(bp) < cov.get(p3)) {
+                        cov.put(bp, cov.get(p3));
+                    }
+
                     adjCnt(vref, sc3v, conf);
                     Variation tmp = new Variation();
                     tmp.cnt = pairs;
