@@ -235,8 +235,11 @@ public class ToVarsBuilder {
                         if (cov.containsKey(p + 1) && ttcov < cov.get(p + 1) - cnt.cnt) {
                             ttcov = cov.get(p + 1);
                             // Adjust the reference
-                            getVariationMaybe(hash, p + 1, ref.get(p + 1)).dirPlus -= fwd;
-                            getVariationMaybe(hash, p + 1, ref.get(p + 1)).dirMinus -= rev;
+                            Variation variantNextPosition = getVariationMaybe(hash, p + 1, ref.get(p + 1));
+                            if (variantNextPosition != null) {
+                                variantNextPosition.dirPlus -= fwd;
+                                variantNextPosition.dirMinus -= rev;
+                            }
                         }
                         tcov = ttcov;
                     }
