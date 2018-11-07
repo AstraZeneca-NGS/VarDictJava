@@ -1171,7 +1171,8 @@ public class VarDict {
 
     /**
      * Amplicon variant calling
-     *
+     * An amplicon is a piece of DNA or RNA that is the source and/or product of
+     * natural or artificial amplification or replication events.
      * @param rg region
      * @param vars result of {@link ToVarsBuilder ToVarsBuilder#toVars} calling
      * @param positions map of position =&gt; (list of (region number, region))
@@ -1190,19 +1191,15 @@ public class VarDict {
         List<Integer> pp = new ArrayList<>(positions.keySet());
         Collections.sort(pp);
         for (Integer p : pp) {
-
             final List<Tuple2<Integer, Region>> v = positions.get(p);
-
             // good variants
             List<Tuple2<Variant, String>> gvs = new ArrayList<>();
             //reference variants
             List<Variant> ref = new ArrayList<>();
-            String nt = null;
             double maxaf = 0;
-            //vartype may take values SNV (Single Nucleotide Variant), Complex (or MNV (Multiple Nucleotide Variant)),
+            // vartype may take values SNV (Single Nucleotide Variant), Complex (or MNV (Multiple Nucleotide Variant)),
             // Insertion, Deletion
             String vartype = "SNV";
-            boolean flag = false;
             Variant vref;
             List<Variant> vrefList = new ArrayList<>();
             //DNA sequencing coverage
@@ -1212,9 +1209,8 @@ public class VarDict {
             //good amplicon
             Set<String> goodmap = new HashSet<>();
             List<Integer> vcovs = new ArrayList<>();
-            //amps map of amplicons.
-            //An amplicon is a piece of DNA or RNA that is the source and/or product of
-            //natural or artificial amplification or replication events.
+            //Contains list of good variants on each amplicon in position
+            Map<Integer, List<Variant>> goodVariantsOnAmp = new LinkedHashMap<>();
             for (Tuple2<Integer, Region> amps : v) {
                 final int amp = amps._1;
                 //chromosome name
@@ -1223,11 +1219,11 @@ public class VarDict {
                 final int S = amps._2.start;
                 //end index
                 final int E = amps._2.end;
-
                 Vars vtmp = vars.get(amp).get(p);
                 List<Variant> l = vtmp == null ? null : vtmp.var;
                 Variant refAmpP = vtmp == null ? null : vtmp.ref;
                 if (l != null && !l.isEmpty()) {
+                    List<Variant> goodVars = new ArrayList<>();
                     for (Variant tv : l) {
                         vcovs.add(tv.tcov);
                         if (tv.tcov > maxcov) {
@@ -1236,13 +1232,10 @@ public class VarDict {
                         vartype = tv.varType();
                         if (isGoodVar(tv, refAmpP, vartype, splice, conf)) {
                             gvs.add(tuple(tv, chr + ":" + S + "-" + E));
-                            if (nt != null && !tv.n.equals(nt)) {
-                                flag = true;
-                            }
+                            goodVars.add(tv);
+                            goodVariantsOnAmp.put(amp, goodVars);
                             if (tv.freq > maxaf) {
                                 maxaf = tv.freq;
-                                nt = tv.n;
-                                vref = tv;
                             }
                             goodmap.add(format("%s-%s-%s", amp, tv.refallele, tv.varallele));
                         }
@@ -1262,7 +1255,7 @@ public class VarDict {
             for (int t : vcovs) {
                 //The amplicon that has depth less than 1/50 of the max depth will be considered
                 // not working and thus not used.
-                if (t < maxcov / 50) {
+                if (t < maxcov / (double) 50) {
                     nocov++;
                 }
             }
@@ -1288,11 +1281,12 @@ public class VarDict {
                     continue;
                 }
             } else {
-                for (Tuple2<Variant, String> goodVariant : gvs) {
-                    vrefList.add(goodVariant._1);
-                }
+                fillVrefList(gvs, vrefList);
             }
+
+            boolean flag = isAmpBiasFlag(goodVariantsOnAmp);
             List<Tuple2<Variant, String>> goodVariants = gvs;
+
             for (int i = 0; i < vrefList.size(); i++) {
                 vref = vrefList.get(i);
                 if (flag) { // different good variants detected in different amplicons
@@ -1312,9 +1306,10 @@ public class VarDict {
                     goodVariants = gcnt;
                 }
 
+                int gvscnt = countVariantOnAmplicons(vref, goodVariantsOnAmp);
+
                 //bad variants
                 List<Tuple2<Variant, String>> badv = new ArrayList<>();
-                int gvscnt = goodVariants.size();
                 if (gvscnt != v.size() || flag) {
                     for (Tuple2<Integer, Region> amps : v) {
                         int amp = amps._1;
@@ -1367,6 +1362,76 @@ public class VarDict {
                 out.println();
             }
         }
+    }
+
+    /**
+     * Count amplicons where good variant appears
+     * @param vref variant to check
+     * @param goodVariantsOnAmp map of amplicons and lists of variants
+     * @return number of amplicons
+     */
+    private static int countVariantOnAmplicons(Variant vref, Map<Integer, List<Variant>> goodVariantsOnAmp) {
+        int gvscnt = 0;
+        for (Map.Entry<Integer, List<Variant>> entry: goodVariantsOnAmp.entrySet()) {
+            List<Variant> variants = entry.getValue();
+            for(Variant variant : variants) {
+                if (variant.equals(vref)) {
+                    gvscnt++;
+                }
+            }
+        }
+        return gvscnt;
+    }
+
+    /**
+     * If variant with the same varallele and refallele is already added to output list, skip it.
+     * The variant with the biggest frequency will be added.
+     * Variant must be skipped to avoid duplicates because identical variants can be on different amplicons.
+     * @param gvs good variants per start-end
+     * @param vrefList list of variants on all amplicons in position
+     */
+    private static void fillVrefList(List<Tuple2<Variant, String>> gvs, List<Variant> vrefList) {
+        for (Tuple2<Variant, String> goodVariant : gvs) {
+            boolean variantWasAdded = false;
+            for (Variant var : vrefList) {
+                if (var.varallele.equals(goodVariant._1.varallele)
+                        && var.refallele.equals(goodVariant._1.refallele)) {
+                    variantWasAdded = true;
+                }
+            }
+            if (!variantWasAdded) vrefList.add(goodVariant._1);
+        }
+    }
+
+    /**
+     * Determine if different amplicon contains different variants and set AMPBIAS flag.
+     * Check if each amplicon on position contains identical lists of Variants. If some variants are absent between
+     * amplicons, or differ by variant description string, returns true.
+     * @param goodVariantsOnAmp map amplicons on list of its variants.
+     * @return true if variants are differ, false if not
+     */
+    private static boolean isAmpBiasFlag(Map<Integer, List<Variant>> goodVariantsOnAmp) {
+        if (goodVariantsOnAmp.isEmpty()) return false;
+
+        for (int i = goodVariantsOnAmp.keySet().iterator().next(); i < goodVariantsOnAmp.keySet().size() - 1; i++) {
+            List<Variant> goodVariantListFirst = goodVariantsOnAmp.get(i);
+            List<Variant> goodVariantListSecond = goodVariantsOnAmp.get(i + 1);
+            if (goodVariantListSecond == null || goodVariantListFirst.size() != goodVariantListSecond.size()) {
+                return true;
+            }
+
+            Collections.sort(goodVariantListFirst, VAR_TCOV_COMPARATOR);
+            Collections.sort(goodVariantListSecond, VAR_TCOV_COMPARATOR);
+
+            for (int j = 0; j < goodVariantListFirst.size(); j++) {
+                Variant var1 = goodVariantListFirst.get(j);
+                Variant var2 = goodVariantListSecond.get(j);
+                if (!var1.n.equals(var2.n)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     final static Comparator<Variant> VAR_TCOV_COMPARATOR = new Comparator<Variant>() {

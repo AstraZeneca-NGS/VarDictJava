@@ -109,7 +109,7 @@ public class ToVarsBuilder {
             }
             if (vk.size() == 1 && ref.containsKey(p) && vk.contains(ref.get(p).toString())) {
                 // ignore if only reference were seen and no pileup to avoid computation
-                if (!conf.doPileup && !conf.bam.hasBam2() && conf.ampliconBasedCalling == null) {
+                if (!conf.doPileup && !conf.bam.hasBam2() && ampliconBasedCalling == null) {
                     continue;
                 }
             }
@@ -292,7 +292,7 @@ public class ToVarsBuilder {
                     }
                 }
             }
-            if (!conf.doPileup && maxfreq <= conf.freq && conf.ampliconBasedCalling == null) {
+            if (!conf.doPileup && maxfreq <= conf.freq && ampliconBasedCalling == null) {
                 if (!conf.bam.hasBam2()) {
                     vars.remove(p);
                     continue;
