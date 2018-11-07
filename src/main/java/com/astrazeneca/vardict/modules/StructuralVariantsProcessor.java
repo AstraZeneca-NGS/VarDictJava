@@ -20,7 +20,6 @@ import java.util.*;
 
 import static com.astrazeneca.vardict.collection.VariationMap.getSV;
 import static com.astrazeneca.vardict.data.Patterns.*;
-import static com.astrazeneca.vardict.ReferenceResource.getREF;
 import static com.astrazeneca.vardict.ReferenceResource.isLoaded;
 import static com.astrazeneca.vardict.collection.VariationMap.SV;
 import static com.astrazeneca.vardict.modules.SAMFileParser.getMrnm;
@@ -368,6 +367,7 @@ public class StructuralVariantsProcessor {
      * @param sclip5 map of soft clips 5' on positions
      * @param svStructures Contains all structural variants ends for deletions, duplications, inversions, insertions
     and structures for structural variant analysis
+     * @param referenceResource object for access to reference map
      * @throws IOException if BAM file can't be read
      */
     static void findAllSVs(Region region, String bam, Map<String, Integer> chrs, String sample,
@@ -375,16 +375,16 @@ public class StructuralVariantsProcessor {
                                   Configuration conf, Map<Integer, VariationMap<String, Variation>> hash,
                                   Map<Integer, VariationMap<String, Variation>> iHash, Map<Integer, Integer> cov,
                                   Map<Integer, Sclip> sclip3, Map<Integer, Sclip> sclip5,
-                                  SVStructures svStructures) throws IOException {
+                                  SVStructures svStructures, ReferenceResource referenceResource) throws IOException {
         if (conf.y) {
             System.err.println("Start Structural Variants: DEL\n");
         }
-        findDEL(conf, hash, iHash, cov, sclip5, sclip3, reference, region, bam, svStructures.svfdel,
+        findDEL(conf, hash, iHash, cov, sclip5, sclip3, reference, referenceResource, region, bam, svStructures.svfdel,
                 svStructures.svrdel, rlen, chrs, sample, splice, ampliconBasedCalling);
         if (conf.y) {
             System.err.println("Start Structural Variants: INV\n");
         }
-        findINV(conf, hash, iHash, cov, sclip5, sclip3, reference, region, bam, svStructures.svfinv3,
+        findINV(conf, hash, iHash, cov, sclip5, sclip3, reference, referenceResource, region, bam, svStructures.svfinv3,
                 svStructures.svrinv3, svStructures.svfinv5, svStructures.svrinv5,
                 rlen, chrs, sample, splice, ampliconBasedCalling);
         if (conf.y) {
@@ -394,17 +394,17 @@ public class StructuralVariantsProcessor {
         if (conf.y) {
             System.err.println("Start Structural Variants: DEL discordant pairs only\n");
         }
-        findDELdisc(conf, hash, cov, sclip5, sclip3, reference, region, svStructures.svfdel,
+        findDELdisc(conf, hash, cov, sclip5, sclip3, reference, referenceResource, region, svStructures.svfdel,
                 svStructures.svrdel, splice, rlen, chrs) ;
         if (conf.y) {
             System.err.println("Start Structural Variants: INV discordant pairs only\n");
         }
-        findINVdisc(hash, cov, sclip5, sclip3, reference, region, svStructures.svfinv3, svStructures.svrinv3,
+        findINVdisc(hash, cov, sclip5, sclip3, reference, referenceResource, region, svStructures.svfinv3, svStructures.svrinv3,
                 svStructures.svfinv5, svStructures.svrinv5, conf, rlen, chrs);
         if (conf.y) {
             System.err.println("Start Structural Variants: DUP discordant pairs only\n");
         }
-        findDUPdisc(hash, iHash, cov, sclip5, sclip3, reference, region, bam, sample, splice,
+        findDUPdisc(hash, iHash, cov, sclip5, sclip3, reference, referenceResource, region, bam, sample, splice,
                 ampliconBasedCalling, svStructures.svfdup, svStructures.svrdup, conf, rlen, chrs);
     }
 
@@ -1103,6 +1103,7 @@ public class StructuralVariantsProcessor {
      * @param svrinv3 list of INV SVs in reverse direction of 3'
      * @param svrinv5 list of INV SVs in reverse direction of 5'
      * @param conf Configuration
+     * @param referenceResource object for access to reference map
      * @param RLEN max read length
      * @param chrs map of chromosome lengths
      */
@@ -1110,7 +1111,7 @@ public class StructuralVariantsProcessor {
                              Map<Integer, Integer> cov,
                              Map<Integer, Sclip> sclip5,
                              Map<Integer, Sclip> sclip3,
-                             Reference reference, Region region,
+                             Reference reference, ReferenceResource referenceResource, Region region,
                              List<Sclip> svfinv3,
                              List<Sclip> svrinv3,
                              List<Sclip> svfinv5,
@@ -1157,7 +1158,7 @@ public class StructuralVariantsProcessor {
                     int pe = abs((me+rms)/2);
                     if (!ref.containsKey(pe)) {
                         Region modifiedRegion = Region.newModifiedRegion(region, pe - 150, pe + 150);
-                        getREF(modifiedRegion, chrs, conf, 300, reference);
+                        referenceResource.getREF(modifiedRegion, chrs, conf, 300, reference);
                     }
                     int len = pe - bp + 1;
 
@@ -1240,7 +1241,7 @@ public class StructuralVariantsProcessor {
                     int bp = abs((me + rms)/2);
                     if (!ref.containsKey(bp)) {
                         Region modifiedRegion = Region.newModifiedRegion(region, bp - 150, bp + 150);
-                        getREF(modifiedRegion, chrs, conf, 300, reference);
+                        referenceResource.getREF(modifiedRegion, chrs, conf, 300, reference);
                     }
                     int len = pe - bp + 1;
                     String ins5 = SequenceUtil.reverseComplement(joinRef(ref, bp, bp + Configuration.SVFLANK - 1));
@@ -1309,6 +1310,7 @@ public class StructuralVariantsProcessor {
      * @param svrdup list of DUP SVs in discordant pairs in reverse direction
      * @param conf Configuration
      * @param RLEN max read length
+     * @param referenceResource object for access to reference map
      * @param chrs map of chromosome lengths
      * @throws IOException if BAM file can't be read
      */
@@ -1317,7 +1319,7 @@ public class StructuralVariantsProcessor {
                              Map<Integer, Integer> cov,
                              Map<Integer, Sclip> sclip5,
                              Map<Integer, Sclip> sclip3,
-                             Reference reference,
+                             Reference reference, ReferenceResource referenceResource,
                              Region region,
                              String bam,
                              String sample,
@@ -1354,10 +1356,10 @@ public class StructuralVariantsProcessor {
 
             if(!ReferenceResource.isLoaded(region.chr, ms, me, reference)) {
                 if (!ref.containsKey(bp)) {
-                    getREF(Region.newModifiedRegion(region, bp - 150, bp + 150), chrs, conf, 300, reference);
+                    referenceResource.getREF(Region.newModifiedRegion(region, bp - 150, bp + 150), chrs, conf, 300, reference);
                 }
                 parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice,
-                        ampliconBasedCalling, RLEN, reference, conf, hash,
+                        ampliconBasedCalling, RLEN, reference, referenceResource, conf, hash,
                         iHash, cov, sclip3, sclip5, true);
             }
 
@@ -1491,10 +1493,10 @@ public class StructuralVariantsProcessor {
             int tpe = pe;
             if (!ReferenceResource.isLoaded(region.chr, ms, me, reference) ) {
                 if (!ref.containsKey(pe)) {
-                    getREF(Region.newModifiedRegion(region, pe - 150, pe + 150), chrs, conf, 300, reference);
+                    referenceResource.getREF(Region.newModifiedRegion(region, pe - 150, pe + 150), chrs, conf, 300, reference);
                 }
                 parseSAM(Region.newModifiedRegion(region, ms - 200, me + 200), bam, chrs, sample, splice,
-                        ampliconBasedCalling, RLEN, reference, conf, hash,
+                        ampliconBasedCalling, RLEN, reference, referenceResource, conf, hash,
                         iHash, cov, sclip3, sclip5, true);
             }
             int cntf = cnt;
@@ -1825,6 +1827,7 @@ public class StructuralVariantsProcessor {
      * @param svfdel list of DEL SVs in discordant pairs in forward direction
      * @param svrdel list of DEL SVs in discordant pairs in reverse direction
      * @param conf Configuration
+     * @param referenceResource object for access to reference map
      * @param rlen max read length
      * @param chrs map of chromosome lengths
      */
@@ -1833,7 +1836,7 @@ public class StructuralVariantsProcessor {
                             Map<Integer, Integer> cov,
                             Map<Integer, Sclip> sclip5,
                             Map<Integer, Sclip> sclip3,
-                            Reference REF,
+                            Reference REF, ReferenceResource referenceResource,
                             Region region,
                             List<Sclip> svfdel,
                             List<Sclip> svrdel,
@@ -1955,7 +1958,7 @@ public class StructuralVariantsProcessor {
                 cov.put(bp, cov.get(del.start));
             }
             del.used = true;
-            getREF(Region.newModifiedRegion(region, del.mstart - 100, del.mend + 100), chrs, conf, 200, REF);
+            referenceResource.getREF(Region.newModifiedRegion(region, del.mstart - 100, del.mend + 100), chrs, conf, 200, REF);
             markSV(del.mend, del.start, Arrays.asList(svfdel), rlen, conf);
         }
     }
@@ -1976,6 +1979,7 @@ public class StructuralVariantsProcessor {
      * @param rlen max read length
      * @param chrs map of chromosome lengths
      * @param sample sample name
+     * @param referenceResource object for access to reference map
      * @param splice set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @throws IOException if BAM file can't be read
@@ -1986,7 +1990,7 @@ public class StructuralVariantsProcessor {
                         Map<Integer, Integer> cov,
                         Map<Integer, Sclip> sclip5,
                         Map<Integer, Sclip> sclip3,
-                        Reference reference,
+                        Reference reference, ReferenceResource referenceResource,
                         Region region,
                         String bams,
                         List<Sclip> svfdel,
@@ -2023,9 +2027,9 @@ public class StructuralVariantsProcessor {
                     continue; // next unless( $seq && length($seq) >= $SEED2 );
                 }
                 if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
+                    referenceResource.getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
                     parseSAM(Region.newModifiedRegion(region, del.mstart - 200, del.mend + 200),
-                            bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf, hash,
+                            bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, referenceResource, conf, hash,
                             iHash, cov, sclip3, sclip5, true);
                 }
                 Tuple.Tuple2<Integer, String> match = findMatch(conf, seq, reference, softp, 1);
@@ -2085,7 +2089,7 @@ public class StructuralVariantsProcessor {
                 }
             } else { // Look within a read length
                 if(!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
+                    referenceResource.getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
                 }
                 if (conf.y) {
                     System.err.printf("%n%nWorking DEL 5' no softp mate cluster cnt: %d%n", del.cnt);
@@ -2186,9 +2190,9 @@ public class StructuralVariantsProcessor {
                     continue;
                 }
                 if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
+                    referenceResource.getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
                     parseSAM(Region.newModifiedRegion(region, del.mstart - 200, del.mend + 200),
-                            bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf,
+                            bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, referenceResource, conf,
                             hash, iHash, cov, sclip3, sclip5, true);
                 }
                 Tuple.Tuple2<Integer, String> match = findMatch(conf, seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
@@ -2243,7 +2247,7 @@ public class StructuralVariantsProcessor {
                     System.err.printf("%n%nWorking DEL 3' no softp mate cluster %s %d %d cnt: %d%n", region.chr, del.mstart, del.mend, del.cnt);
                 }
                 if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                    getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
+                    referenceResource.getREF(Region.newModifiedRegion(region, del.mstart, del.mend), chrs, conf, 300, reference);
                 }
                 for (Map.Entry<Integer, Sclip> entry : sclip5.entrySet()) {
                     int i = entry.getKey();
@@ -2334,6 +2338,7 @@ public class StructuralVariantsProcessor {
      * @param svrinv5 list of INV SVs in reverse direction in 5'
      * @param rlen max read length
      * @param chrs map of chromosome lengths
+     * @param referenceResource object for access to reference map
      * @param sample sample name
      * @param splice set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
@@ -2345,7 +2350,7 @@ public class StructuralVariantsProcessor {
                         Map<Integer, Integer> cov,
                         Map<Integer, Sclip> sclip5,
                         Map<Integer, Sclip> sclip3,
-                        Reference REF,
+                        Reference REF, ReferenceResource referenceResource,
                         Region region,
                         String bams,
                         Iterable<Sclip> svfinv3,
@@ -2357,10 +2362,10 @@ public class StructuralVariantsProcessor {
                         String sample,
                         Set<String> splice,
                         String ampliconBasedCalling) throws IOException {
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, region, bams, svfinv5, 1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, region, bams, svrinv5, -1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, region, bams, svfinv3, 1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
-        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, region, bams, svrinv3, -1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
+        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, referenceResource, region, bams, svfinv5, 1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
+        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, referenceResource, region, bams, svrinv5, -1 , Side._5, rlen, chrs, sample, splice, ampliconBasedCalling);
+        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, referenceResource, region, bams, svfinv3, 1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
+        findINVsub(conf, hash, iHash, cov, sclip5, sclip3, REF, referenceResource, region, bams, svrinv3, -1 , Side._3, rlen, chrs, sample, splice, ampliconBasedCalling);
     }
 
     /**
@@ -2381,6 +2386,7 @@ public class StructuralVariantsProcessor {
      * @param side 3 or 5 end
      * @param rlen max read length
      * @param chrs map of chromosome lengths
+     * @param referenceResource object for access to reference map
      * @param sample sample name
      * @param splice set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
@@ -2393,7 +2399,7 @@ public class StructuralVariantsProcessor {
                                 Map<Integer, Integer> cov,
                                 Map<Integer, Sclip> sclip5,
                                 Map<Integer, Sclip> sclip3,
-                                Reference reference,
+                                Reference reference, ReferenceResource referenceResource,
                                 Region region,
                                 String bams,
                                 Iterable<Sclip> svref,
@@ -2420,9 +2426,9 @@ public class StructuralVariantsProcessor {
             Map<Integer, Sclip> sclip = dir == 1 ? sclip3 : sclip5;
             if (conf.y) System.err.printf("%n%nWorking INV %d %d %s pair_cnt: %d%n", softp, dir, side, inv.cnt);
             if (!isLoaded(region.chr, inv.mstart, inv.mend, reference)) {
-                getREF(Region.newModifiedRegion(region, inv.mstart, inv.mend), chrs, conf, 500, reference);
+                referenceResource.getREF(Region.newModifiedRegion(region, inv.mstart, inv.mend), chrs, conf, 500, reference);
                 parseSAM(Region.newModifiedRegion(region, inv.mstart - 200, inv.mend + 200),
-                        bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, conf, hash,
+                        bams, chrs, sample, splice, ampliconBasedCalling, rlen, reference, referenceResource, conf, hash,
                         iHash, cov, sclip3, sclip5, true);
             }
             int bp = 0;

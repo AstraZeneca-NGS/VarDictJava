@@ -1,6 +1,7 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
+import com.astrazeneca.vardict.ReferenceResource;
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
 import com.astrazeneca.vardict.data.*;
@@ -66,6 +67,7 @@ public class SAMFileParser {
      * @param sclip3 map of soft clips 3' on positions
      * @param sclip5 map of soft clips 5' on positions
      * @param svflag true if BAM file is re-parsed due to structural variants analysis on extended region of interest
+     * @param referenceResource object for access to reference map
      * @return Tuple of (noninsertion variant  structure, insertion variant structure, coverage, maxmimum read length)
      * @throws IOException if BAM file can't be read
      */
@@ -75,7 +77,7 @@ public class SAMFileParser {
                                                              Map<String, Integer> chrs,
                                                              String sample, Set<String> splice,
                                                              String ampliconBasedCalling, int rlen,
-                                                             Reference reference, Configuration conf,
+                                                             Reference reference, ReferenceResource referenceResource, Configuration conf,
                                                              Map<Integer, VariationMap<String, Variation>> hash,
                                                              Map<Integer, VariationMap<String, Variation>> iHash,
                                                              Map<Integer, Integer> cov,
@@ -1199,14 +1201,14 @@ public class SAMFileParser {
         adjMNP(hash, mnp, cov, ref, sclip3, sclip5, conf);
 
         if (conf.performLocalRealignment) {
-            VariationRealigner.realignIndels(region, chrs, rlen, reference, conf, bam, hash, iHash, cov, sclip3,
+            VariationRealigner.realignIndels(region, chrs, rlen, reference, referenceResource, conf, bam, hash, iHash, cov, sclip3,
                     sclip5, sample, splice, ampliconBasedCalling, ins, dels5,
                     svStructures);
         }
 
         if(!conf.disableSV) {
             findAllSVs(region, bam, chrs, sample, splice, ampliconBasedCalling, rlen,
-                    reference, conf, hash, iHash, cov, sclip3, sclip5, svStructures);
+                    reference, conf, hash, iHash, cov, sclip3, sclip5, svStructures, referenceResource);
         }
         if (conf.y) {
             outputClipping(sclip5, sclip3, conf);

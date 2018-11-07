@@ -1,30 +1,37 @@
 package com.astrazeneca.vardict.integrationtests;
 
+import com.astrazeneca.vardict.Configuration;
 import com.astrazeneca.vardict.integrationtests.utils.CSVReferenceManager;
 import com.astrazeneca.vardict.integrationtests.utils.OutputFileCreator;
 import com.astrazeneca.vardict.integrationtests.utils.VarDictInput;
 import com.astrazeneca.vardict.*;
-import org.mockito.invocation.InvocationOnMock;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.testng.PowerMockTestCase;
+import org.apache.commons.cli.BasicParser;
+import org.apache.commons.cli.ParseException;
+import org.mockito.InjectMocks;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
 import org.testng.Assert;
 import org.testng.annotations.*;
 
 import java.io.*;
 import java.util.*;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 
-@PrepareForTest(ReferenceResource.class)
-public class IntegrationTest extends PowerMockTestCase {
+public class IntegrationTest {
 
     private final static String DEFAULT_ARGS = "-z -c 1 -S 2 -E 3 -g 4 -G ";
     private final static String PATH_TO_TESTCASES = "testdata/integrationtestcases/";
 
     private ByteArrayOutputStream outContent;
+
+    @Spy
+    private ReferenceResource referenceResource;
+
+    @InjectMocks
+    private VarDict vardict;
 
     private static class TestCase {
         VarDictInput input;
@@ -41,27 +48,16 @@ public class IntegrationTest extends PowerMockTestCase {
         CSVReferenceManager.init();
     }
 
-    static void mockReferenceResource(String fastaFileName) throws Exception {
-        PowerMockito.mockStatic(ReferenceResource.class);
-
-        PowerMockito.when(ReferenceResource.retrieveSubSeq(anyString(), anyString(), anyInt(), anyInt()))
-                .thenAnswer(invocation -> {
-                    Object[] args = invocation.getArguments();
-                    return CSVReferenceManager.getReader(fastaFileName).queryFasta((String) args[1], (Integer) args[2], (Integer) args[3]);
-                });
-
-        PowerMockito.when(ReferenceResource.getREF(any(), any(), any()))
-                .thenAnswer(InvocationOnMock::callRealMethod);
-        PowerMockito.when(ReferenceResource.getREF(any(), any(), any(), anyInt(), any()))
-                .thenAnswer(InvocationOnMock::callRealMethod);
-        PowerMockito.when(ReferenceResource.isLoaded(anyString(), anyInt(), anyInt(), any()))
-                .thenAnswer(InvocationOnMock::callRealMethod);
-        PowerMockito.when(ReferenceResource.addPositionsToSeedSequence(any(), anyInt(), anyInt(), anyString()))
-                .thenAnswer(InvocationOnMock::callRealMethod);
+    private void mockReferenceResource(String fastaFileName) throws Exception {
+        Mockito.doAnswer(invocation -> {
+            Object[] args = invocation.getArguments();
+            return CSVReferenceManager.getReader(fastaFileName).queryFasta((String) args[1], (Integer) args[2], (Integer) args[3]);
+        }).when(referenceResource).retrieveSubSeq(anyString(), anyString(), anyInt(), anyInt());
     }
 
     @BeforeMethod
     public void setUpStreams() {
+        MockitoAnnotations.initMocks(this);
         outContent = new ByteArrayOutputStream();
         System.setOut(new PrintStream(outContent));
     }
@@ -90,7 +86,8 @@ public class IntegrationTest extends PowerMockTestCase {
         TestCase testCase = (TestCase) testCaseObject;
         mockReferenceResource(testCase.input.fasta);
 
-        Main.main(getArgs(testCase.input));
+        runVarDict(getArgs(testCase.input));
+
         assertResults(testCase);
     }
 
@@ -146,6 +143,13 @@ public class IntegrationTest extends PowerMockTestCase {
                 .split("\\s");
     }
 
+
+    private void runVarDict(String[] args) throws ParseException, IOException {
+        Configuration conf = new Main().run(new BasicParser().parse(Main.buildOptions(), args));
+        vardict = new VarDict(conf, referenceResource);
+        vardict.start();
+    }
+
     public static File makeBedFile(VarDictInput varDictInput) throws IOException {
         File bed = File.createTempFile("tmpbed", ".bed");
         bed.deleteOnExit();
@@ -176,7 +180,8 @@ public class IntegrationTest extends PowerMockTestCase {
         mockReferenceResource(fastaPath);
 
         String[] args = (bed + " -b " + bam + " " + DEFAULT_ARGS + fastaPath + "csv").split("\\s");
-        Main.main(args);
+
+        runVarDict(args);
     }
 
     @DataProvider(name = "correctBedFiles")
@@ -201,7 +206,9 @@ public class IntegrationTest extends PowerMockTestCase {
         String fastaPath ="hg19.fa";
         mockReferenceResource(fastaPath);
         String[] args = (bed + " -b " + bam + " " + DEFAULT_ARGS + fastaPath + ".csv").split("\\s");
-        Main.main(args);
+
+        runVarDict(args);
+
         String actualOutput = "Simple,hg19.fa,L861Q.bam,chr7,55259400,55259600\n" + outContent.toString();
         Assert.assertEquals(actualOutput, output.toString());
     }
@@ -213,7 +220,7 @@ public class IntegrationTest extends PowerMockTestCase {
         String fastaPath ="hg19.fa";
         mockReferenceResource(fastaPath);
         String[] args = (bed + " -b " + bam + " " + DEFAULT_ARGS + fastaPath + ".csv").split("\\s");
-        Main.main(args);
+        runVarDict(args);
     }
 }
 

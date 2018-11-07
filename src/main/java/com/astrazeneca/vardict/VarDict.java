@@ -15,7 +15,6 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.astrazeneca.vardict.ReferenceResource.getREF;
 import static com.astrazeneca.vardict.modules.ToVarsBuilder.toVars;
 import static com.astrazeneca.vardict.variations.Variant.callingEmptySimpleVariant;
 import static com.astrazeneca.vardict.variations.Variant.joinEmptyVariantWithTcov;
@@ -30,13 +29,18 @@ import static java.lang.String.format;
 import static java.util.Collections.singletonList;
 
 public class VarDict {
+    ReferenceResource referenceResource;
+    Configuration conf;
 
+    public VarDict(Configuration conf, ReferenceResource referenceResource) {
+        this.referenceResource = referenceResource;
+        this.conf = conf;
+    }
     /**
      * The main method to start Vardict in any mode.
-     * @param conf prepared configuration object from arguments
      * @throws IOException if BAM file can't be read
      */
-    public static void start(Configuration conf) throws IOException {
+    public void start() throws IOException {
         if (conf.printHeader) {
             System.out.println(join("\t",
                     "Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt", "Depth", "AltDepth", "RefFwdReads",
@@ -54,7 +58,7 @@ public class VarDict {
         if (conf.regionOfInterest != null) {
             Region region = Region.buildRegion(conf.regionOfInterest, conf.numberNucleotideToExtend, chrs,
                     conf.isZeroBasedDefined() ? conf.zeroBased : false);
-            nonAmpVardict(singletonList(singletonList(region)), chrs, conf.ampliconBasedCalling, sample, samplem, conf);
+            nonAmpVardict(singletonList(singletonList(region)), chrs, conf.ampliconBasedCalling, sample, samplem, conf, referenceResource);
         } else {
             Tuple3<String, Boolean, List<String>> tpl = readBedFile(conf);
             String ampliconBasedCalling = tpl._1;
@@ -64,12 +68,12 @@ public class VarDict {
             if (ampliconBasedCalling != null) {
                 List<List<Region>> segs = toRegions(segraw, chrs, zeroBased != null ? zeroBased : false, conf.delimiter);
                 if (conf.threads == 1)
-                    ampVardictNotParallel(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
+                    ampVardictNotParallel(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf, referenceResource);
                 else
-                    ampVardictParallel(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf);
+                    ampVardictParallel(segs, chrs, ampliconBasedCalling, conf.bam.getBam1(), sample, conf, referenceResource);
             } else {
                 List<List<Region>> regions = toRegions(segraw, chrs, zeroBased, conf);
-                nonAmpVardict(regions, chrs, null, sample, samplem, conf);
+                nonAmpVardict(regions, chrs, null, sample, samplem, conf, referenceResource);
             }
         }
     }
@@ -296,7 +300,8 @@ public class VarDict {
                                       String ampliconBasedCalling,
                                       String sample,
                                       String samplem,
-                                      Configuration conf) throws IOException {
+                                      Configuration conf,
+                                      ReferenceResource referenceResource) throws IOException {
 
         if (conf.bam.hasBam2()) {
             Tuple2<String, String> stpl = getSampleNames(sample, samplem, conf.bam.getBam1(), conf.bam.getBam2(),
@@ -304,14 +309,14 @@ public class VarDict {
             sample = stpl._1;
             samplem = stpl._2;
             if (conf.threads == 1)
-                somaticNotParallel(segs, chrs, ampliconBasedCalling, sample, samplem, conf);
+                somaticNotParallel(segs, chrs, ampliconBasedCalling, sample, samplem, conf, referenceResource);
             else
-                somaticParallel(segs, chrs, ampliconBasedCalling, sample, samplem, conf);
+                somaticParallel(segs, chrs, ampliconBasedCalling, sample, samplem, conf, referenceResource);
         } else {
             if (conf.threads == 1)
-                vardictNotParallel(segs, chrs, ampliconBasedCalling, sample, conf);
+                vardictNotParallel(segs, chrs, ampliconBasedCalling, sample, conf, referenceResource);
             else
-                vardictParallel(segs, chrs, ampliconBasedCalling, sample, conf);
+                vardictParallel(segs, chrs, ampliconBasedCalling, sample, conf, referenceResource);
         }
     }
 
@@ -319,7 +324,8 @@ public class VarDict {
                                         final Map<String, Integer> chrs,
                                         final String ampliconBasedCalling,
                                         final String sample,
-                                        final Configuration conf) {
+                                        final Configuration conf,
+                                        ReferenceResource referenceResource) {
         final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(10);
         executor.submit(new Runnable() {
@@ -329,7 +335,7 @@ public class VarDict {
                 try {
                     for (List<Region> list : segs) {
                         for (Region region : list) {
-                            toPrint.put(executor.submit(new VardictWorker(region, chrs, new HashSet<String>(), ampliconBasedCalling, sample, conf)));
+                            toPrint.put(executor.submit(new VardictWorker(region, chrs, new HashSet<String>(), ampliconBasedCalling, sample, conf, referenceResource)));
                         }
                     }
                     toPrint.put(NULL_FUTURE);
@@ -357,13 +363,14 @@ public class VarDict {
                                            final Map<String, Integer> chrs,
                                            final String ampliconBasedCalling,
                                            final String sample,
-                                           final Configuration conf) throws IOException {
+                                           final Configuration conf,
+                                           ReferenceResource referenceResource) throws IOException {
         for (List<Region> list : segs) {
             for (Region region : list) {
-                Reference reference = getREF(region, chrs, conf);
+                Reference reference = referenceResource.getREF(region, chrs, conf);
                 final Set<String> splice = new HashSet<>();
                 Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), reference, chrs, sample,
-                        splice, ampliconBasedCalling, 0, conf);
+                        splice, ampliconBasedCalling, 0, conf, referenceResource);
                 vardict(region, tpl._2, sample, splice, conf, System.out);
             }
         }
@@ -374,7 +381,8 @@ public class VarDict {
                                         final String ampliconBasedCalling,
                                         final String sample,
                                         String samplem,
-                                        final Configuration conf) {
+                                        final Configuration conf,
+                                        ReferenceResource referenceResource) {
         final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toSamdict = new LinkedBlockingQueue<>(10);
 
@@ -386,11 +394,11 @@ public class VarDict {
                     for (List<Region> list : segs) {
                         for (Region region : list) {
                             final Set<String> splice = new ConcurrentHashSet<>();
-                            Reference reference = getREF(region, chrs, conf);
+                            Reference reference = referenceResource.getREF(region, chrs, conf);
                             Future<Tuple2<Integer, Map<Integer, Vars>>> f1 = executor.submit(new ToVarsWorker(region,
-                                    conf.bam.getBam1(), chrs, sample, splice, ampliconBasedCalling, reference, conf));
+                                    conf.bam.getBam1(), chrs, sample, splice, ampliconBasedCalling, reference, conf, referenceResource));
                             Future<OutputStream> f2 = executor.submit(new SomdictWorker(region,
-                                    conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, reference, conf, f1, sample));
+                                    conf.bam.getBam2(), chrs, splice, ampliconBasedCalling, reference, conf, f1, sample, referenceResource));
                             toSamdict.put(f2);
                         }
                     }
@@ -420,16 +428,17 @@ public class VarDict {
                                            final String ampliconBasedCalling,
                                            final String sample,
                                            String samplem,
-                                           final Configuration conf) throws IOException {
+                                           final Configuration conf,
+                                           ReferenceResource referenceResource) throws IOException {
         for (List<Region> list : segs) {
             for (Region region : list) {
                 final Set<String> splice = new ConcurrentHashSet<>();
-                Reference reference = getREF(region, chrs, conf);
+                Reference reference = referenceResource.getREF(region, chrs, conf);
                 Tuple2<Integer, Map<Integer, Vars>> t1 = toVars(region, conf.bam.getBam1(), reference, chrs, sample,
-                        splice, ampliconBasedCalling, 0, conf);
+                        splice, ampliconBasedCalling, 0, conf, referenceResource);
                 Tuple2<Integer, Map<Integer, Vars>> t2 = toVars(region, conf.bam.getBam2(), reference, chrs, sample,
-                        splice, ampliconBasedCalling, t1._1, conf);
-                somdict(region, t1._2, t2._2, sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1, t2._1), conf, System.out);
+                        splice, ampliconBasedCalling, t1._1, conf, referenceResource);
+                somdict(region, t1._2, t2._2, sample, chrs, splice, ampliconBasedCalling, Math.max(t1._1, t2._1), conf, System.out, referenceResource);
             }
         }
     }
@@ -507,6 +516,7 @@ public class VarDict {
      * @param splice set of strings representing introns in splice
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @param rlen max read length
+     * @param referenceResource object for access to reference map
      * @param conf Configuration
      * @param out output stream
      * @return maximum read length
@@ -516,7 +526,7 @@ public class VarDict {
                        String sample,
                        Map<String, Integer> chrs, Set<String> splice,
                        String ampliconBasedCalling, int rlen,
-                       Configuration conf, PrintStream out) throws IOException {
+                       Configuration conf, PrintStream out, ReferenceResource referenceResource) throws IOException {
 
         Set<Integer> ps = new HashSet<>(vars1.keySet());
         ps.addAll(vars2.keySet());
@@ -631,7 +641,7 @@ public class VarDict {
                                 v2.varn.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
                                 if (vref.cov < conf.minr + 3 && !nt.contains("<")) {
                                     Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, segs.chr, p, nt, chrs, sample,
-                                            splice, ampliconBasedCalling, rlen, conf);
+                                            splice, ampliconBasedCalling, rlen, conf, referenceResource);
                                     rlen = tpl._1;
                                     String newtype = tpl._2;
                                     if ("FALSE".equals(newtype)) {
@@ -727,7 +737,7 @@ public class VarDict {
                         if (v2.varn.get(nt).cov < conf.minr + 3 && !nt.contains("<")
                                 && (nt.length() > 10 || mm.find())) {
                             Tuple2<Integer, String> tpl = combineAnalysis(v2.varn.get(nt), v1nt, segs.chr, p, nt,
-                                    chrs, sample, splice, ampliconBasedCalling, rlen, conf);
+                                    chrs, sample, splice, ampliconBasedCalling, rlen, conf, referenceResource);
                             rlen = tpl._1;
                             newtype = tpl._2;
                             if ("FALSE".equals(newtype)) {
@@ -772,7 +782,7 @@ public class VarDict {
      * @param chr chromosome
      * @param p position
      * @param nt nucleotide
-     *
+     * @param referenceResource object for access to reference map
      * @param chrs map of chromosome lengths
      * @param sample sample name
      * @param splice set of strings representing introns in splice
@@ -787,7 +797,7 @@ public class VarDict {
                                                    Map<String, Integer> chrs,
                                                    String sample, Set<String> splice,
                                                    String ampliconBasedCalling, int rlen,
-                                                   Configuration conf) throws IOException {
+                                                   Configuration conf, ReferenceResource referenceResource) throws IOException {
         if (conf.y) {
             System.err.printf("Start Combine %s %s\n", p, nt);
         }
@@ -797,9 +807,9 @@ public class VarDict {
         }
 
         Region region = new Region(chr, var1.sp - rlen, var1.ep + rlen, "");
-        Reference reference = getREF(region, chrs, conf);
+        Reference reference = referenceResource.getREF(region, chrs, conf);
         Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1() + ":" + conf.bam.getBam2(),
-                reference, chrs, sample, splice, ampliconBasedCalling, rlen, conf);
+                reference, chrs, sample, splice, ampliconBasedCalling, rlen, conf, referenceResource);
         rlen = tpl._1;
         Map<Integer, Vars> vars = tpl._2;
         Variant vref = getVarMaybe(vars, p, varn, nt);
@@ -951,9 +961,10 @@ public class VarDict {
         final String ampliconBasedCalling;
         final Configuration conf;
         Reference reference;
+        ReferenceResource referenceResource;
 
         public ToVarsWorker(Region region, String bam, Map<String, Integer> chrs, String sample, Set<String> splice,
-                            String ampliconBasedCalling, Reference reference, Configuration conf) {
+                            String ampliconBasedCalling, Reference reference, Configuration conf, ReferenceResource referenceResource) {
             super();
             this.region = region;
             this.bam = bam;
@@ -963,14 +974,15 @@ public class VarDict {
             this.ampliconBasedCalling = ampliconBasedCalling;
             this.conf = conf;
             this.reference = reference;
+            this.referenceResource = referenceResource;
         }
 
         @Override
         public Tuple2<Integer, Map<Integer, Vars>> call() throws Exception {
             if (reference == null) {
-                reference = getREF(region, chrs, conf);
+                reference = referenceResource.getREF(region, chrs, conf);
             }
-            return toVars(region, bam, reference, chrs, sample, splice, ampliconBasedCalling, 0, conf);
+            return toVars(region, bam, reference, chrs, sample, splice, ampliconBasedCalling, 0, conf, referenceResource);
         }
     }
 
@@ -979,14 +991,16 @@ public class VarDict {
         final Future<Tuple2<Integer, Map<Integer, Vars>>> first;
         final ToVarsWorker second;
         final String sample;
+        ReferenceResource referenceResource;
 
         public SomdictWorker(Region region, String bam, Map<String, Integer> chrs, Set<String> splice,
                              String ampliconBasedCalling, Reference reference, Configuration conf,
                 Future<Tuple2<Integer, Map<Integer, Vars>>> first,
-                String sample) {
+                String sample, ReferenceResource referenceResource) {
             this.first = first;
-            this.second = new ToVarsWorker(region, bam, chrs, sample, splice, ampliconBasedCalling, reference, conf);
+            this.second = new ToVarsWorker(region, bam, chrs, sample, splice, ampliconBasedCalling, reference, conf, referenceResource);
             this.sample = sample;
+            this.referenceResource = referenceResource;
         }
 
         @Override
@@ -996,7 +1010,7 @@ public class VarDict {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream out = new PrintStream(baos);
             somdict(second.region, t1._2, t2._2, sample, second.chrs, second.splice, second.ampliconBasedCalling,
-                    Math.max(t1._1, t2._1), second.conf, out);
+                    Math.max(t1._1, t2._1), second.conf, out, referenceResource);
             out.close();
             return baos;
         }
@@ -1010,9 +1024,10 @@ public class VarDict {
         private Map<String, Integer> chrs;
         private Set<String> splice;
         private String ampliconBasedCalling;
+        private ReferenceResource referenceResource;
 
         public VardictWorker(Region region, Map<String, Integer> chrs, Set<String> splice, String ampliconBasedCalling,
-                             String sample, Configuration conf) {
+                             String sample, Configuration conf, ReferenceResource referenceResource) {
             super();
             this.region = region;
             this.chrs = chrs;
@@ -1020,13 +1035,14 @@ public class VarDict {
             this.ampliconBasedCalling = ampliconBasedCalling;
             this.sample = sample;
             this.conf = conf;
+            this.referenceResource = referenceResource;
         }
 
         @Override
         public OutputStream call() throws Exception {
-            Reference reference = getREF(region, chrs, conf);
+            Reference reference = referenceResource.getREF(region, chrs, conf);
             Tuple2<Integer, Map<Integer, Vars>> tpl = toVars(region, conf.bam.getBam1(), reference,
-                    chrs, sample, splice, ampliconBasedCalling, 0, conf);
+                    chrs, sample, splice, ampliconBasedCalling, 0, conf, referenceResource);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream out = new PrintStream(baos);
             vardict(region, tpl._2, sample, splice, conf, out);
@@ -1078,7 +1094,7 @@ public class VarDict {
 
     private static void ampVardictParallel(final List<List<Region>> segs, final Map<String, Integer> chrs,
             final String ampliconBasedCalling,
-            final String bam1, final String sample, final Configuration conf) {
+            final String bam1, final String sample, final Configuration conf, ReferenceResource referenceResource) {
 
         final ExecutorService executor = Executors.newFixedThreadPool(conf.threads);
         final BlockingQueue<Future<OutputStream>> toPrint = new LinkedBlockingQueue<>(21);
@@ -1103,7 +1119,7 @@ public class VarDict {
                                 }
                                 list.add(tuple(j, region));
                             }
-                            ToVarsWorker toVars = new ToVarsWorker(region, bam1, chrs, sample, splice, ampliconBasedCalling, null, conf);
+                            ToVarsWorker toVars = new ToVarsWorker(region, bam1, chrs, sample, splice, ampliconBasedCalling, null, conf, referenceResource);
                             if (workers.size() == regions.size() - 1) {
                                 toPrint.put(executor.submit(new AmpVardictWorker(pos, rg, sample, workers, toVars)));
                             } else {
@@ -1139,7 +1155,8 @@ public class VarDict {
                                               final String ampliconBasedCalling,
                                               final String bam1,
                                               final String sample,
-                                              final Configuration conf) throws IOException {
+                                              final Configuration conf,
+                                              ReferenceResource referenceResource) throws IOException {
 
         for (List<Region> regions : segs) {
             Map<Integer, List<Tuple2<Integer, Region>>> pos = new HashMap<>();
@@ -1157,7 +1174,7 @@ public class VarDict {
                     }
                     list.add(tuple(j, region));
                 }
-                vars.add(toVars(region, bam1, getREF(region, chrs, conf), chrs, sample, splice, ampliconBasedCalling, 0, conf)._2);
+                vars.add(toVars(region, bam1, referenceResource.getREF(region, chrs, conf), chrs, sample, splice, ampliconBasedCalling, 0, conf, referenceResource)._2);
                 j++;
             }
             ampVardict(rg, vars, pos, sample, splice, conf, System.out);

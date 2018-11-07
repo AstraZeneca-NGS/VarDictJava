@@ -8,9 +8,10 @@ cache:
     - $HOME/.gradle/wrapper/
 jdk:
   - oraclejdk8
-  - oraclejdk10
+  - oraclejdk11
   - openjdk8
   - openjdk10
+  - openjdk11
 script:
   - ./gradlew test jacocoTestReport
   - ./gradlew installDist

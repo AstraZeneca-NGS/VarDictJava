@@ -36,7 +36,7 @@ public class ReferenceResource {
      * @param end end position of region
      * @return array of nucleotide bases in the region of fasta
      */
-    public static String[] retrieveSubSeq(String fasta, String chr, int start, int end) {
+    public String[] retrieveSubSeq(String fasta, String chr, int start, int end) {
         IndexedFastaSequenceFile idx = fetchFasta(fasta);
         ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
         byte[] bases = seq.getBases();
@@ -50,7 +50,7 @@ public class ReferenceResource {
      * @param conf Vardict Configuration
      * @return reference object contains sequence map: key - position, value - base and seed map
      */
-    public static Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf) {
+    public Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf) {
         Reference ref = new Reference();
         return getREF(region, chrs, conf, conf.referenceExtension, ref);
     }
@@ -64,7 +64,7 @@ public class ReferenceResource {
      * @param ref reference
      * @return reference object contains sequence map: key - position, value - base and seed map
      */
-    public static Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf, int extension, Reference ref) {
+    public Reference getREF(Region region, Map<String, Integer> chrs, Configuration conf, int extension, Reference ref) {
         int sequenceStart = region.start - conf.numberNucleotideToExtend - extension < 1 ? 1
                 : region.start - conf.numberNucleotideToExtend - extension;
         int len = chrs.containsKey(region.chr) ? chrs.get(region.chr) : 0;
@@ -98,7 +98,6 @@ public class ReferenceResource {
 
             keySequence = substr(exon, i, Configuration.SEED_2);
             ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
-
         }
 
         if (conf.y) {
@@ -116,7 +115,7 @@ public class ReferenceResource {
      * @param keySequence sequence length of SEED_1 parameter from chromosome
      * @return updated Reference
      */
-    public static Reference addPositionsToSeedSequence(Reference ref, int sequenceStart, int i, String keySequence) {
+    private static Reference addPositionsToSeedSequence(Reference ref, int sequenceStart, int i, String keySequence) {
         List<Integer> seedPositions = ref.seed.getOrDefault(keySequence, new ArrayList<>());
         seedPositions.add(i + sequenceStart);
         ref.seed.put(keySequence, seedPositions);
