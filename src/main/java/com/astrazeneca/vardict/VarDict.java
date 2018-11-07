@@ -619,15 +619,10 @@ public class VarDict {
                                 int rrc = v2r != null && v2r.rrc != 0 ? v2r.rrc : 0;
                                 tvf = join("\t", tcov, 0, rfc, rrc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
                             } else if (v2.ref != null) {
-                                // TODO: This "if" will never be run
-                                if (v2.ref == null) {
-                                    Variant v2m = getVarMaybe(v2, var, 0);
-                                    int tcov = v2m != null && v2m.tcov != 0 ? v2m.tcov : 0;
-                                    tvf = joinEmptyVariantWithTcov(tcov);
-                                } else {
-                                    Variant v2ref = v2.ref;
-                                    tvf = joinVariantWithNM(v2ref);
-                                }
+                                Variant v2ref = v2.ref;
+                                tvf = joinVariantWithNM(v2ref);
+                            } else {
+                                tvf = joinEmptyVariantWithTcov(0);
                             }
                             String type = "StrongSomatic";
                             jregex.Matcher mm = MINUS_NUM_NUM.matcher(nt);
