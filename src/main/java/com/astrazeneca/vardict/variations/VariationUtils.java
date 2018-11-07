@@ -346,13 +346,13 @@ public class VariationUtils {
     }
 
     /**
-     * Returns <tt>true</tt> whether a variant meet specified criteria
+     * Returns true whether a variant meet specified criteria
      * @param vref variant
      * @param referenceVar reference variant    $rref
      * @param type Type of variant
      * @param splice set of strings representing introns in splice
      * @param conf Configuration (contains preferences for min, freq, filter and etc)
-     * @return <tt>true</tt> if variant meet specified criteria
+     * @return true if variant meet specified criteria
      */
     public static boolean isGoodVar(Variant vref, Variant referenceVar, String type,
                                     Set<String> splice,

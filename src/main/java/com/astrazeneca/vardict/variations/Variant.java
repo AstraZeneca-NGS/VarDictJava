@@ -192,7 +192,7 @@ public class Variant {
      * there're no more than 3 reads
      * @param goodq quality threshold
      * @param lofreq The minimum allele frequency allowed in normal for a somatic mutation
-     * @return Returns <tt>true</tt> if variance is considered noise if the quality is below <code>goodq</code>
+     * @return Returns true if variance is considered noise if the quality is below <code>goodq</code>
      * and there're no more than 3 reads in coverage
      */
     public boolean isNoise(double goodq,
