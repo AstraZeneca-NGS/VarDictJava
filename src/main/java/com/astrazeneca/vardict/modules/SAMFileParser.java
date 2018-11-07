@@ -67,6 +67,7 @@ public class SAMFileParser {
      * @param sclip3 map of soft clips 3' on positions
      * @param sclip5 map of soft clips 5' on positions
      * @param svflag true if BAM file is re-parsed due to structural variants analysis on extended region of interest
+     * @param referenceResource object for access to reference map
      * @return Tuple of (noninsertion variant  structure, insertion variant structure, coverage, maxmimum read length)
      * @throws IOException if BAM file can't be read
      */

@@ -676,6 +676,7 @@ public class VariationRealigner {
      * @param bam BAM file list
      * @param svfdel list of DEL SVs in forward strand
      * @param svrdel list of DEL SVs in reverse strand
+     * @param referenceResource object for access to reference map
      * @param conf configuration
      * @throws IOException if BAM file can't be read
      */
@@ -1094,6 +1095,7 @@ public class VariationRealigner {
      * @param bam BAM file list
      * @param svfdup list of DUP SVs in forward strand
      * @param svrdup list of DUP SVs in reverse strand
+     * @param referenceResource object for access to reference map
      * @param conf configuration
      * @throws IOException if BAM file can't be read
      */

@@ -42,6 +42,7 @@ public class ToVarsBuilder {
      * @param SPLICE set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @param Rlen maximum read length
+     * @param referenceResource object for access to reference map
      * @param conf VarDict configuration
      * @return Tuple of (maximum read length, variant structure)
      * @throws IOException if BAM file can't be read

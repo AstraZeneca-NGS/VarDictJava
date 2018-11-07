@@ -38,7 +38,6 @@ public class VarDict {
     }
     /**
      * The main method to start Vardict in any mode.
-     * @param conf prepared configuration object from arguments
      * @throws IOException if BAM file can't be read
      */
     public void start() throws IOException {
@@ -517,6 +516,7 @@ public class VarDict {
      * @param splice set of strings representing introns in splice
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @param rlen max read length
+     * @param referenceResource object for access to reference map
      * @param conf Configuration
      * @param out output stream
      * @return maximum read length
@@ -782,7 +782,7 @@ public class VarDict {
      * @param chr chromosome
      * @param p position
      * @param nt nucleotide
-     *
+     * @param referenceResource object for access to reference map
      * @param chrs map of chromosome lengths
      * @param sample sample name
      * @param splice set of strings representing introns in splice

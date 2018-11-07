@@ -367,6 +367,7 @@ public class StructuralVariantsProcessor {
      * @param sclip5 map of soft clips 5' on positions
      * @param svStructures Contains all structural variants ends for deletions, duplications, inversions, insertions
     and structures for structural variant analysis
+     * @param referenceResource object for access to reference map
      * @throws IOException if BAM file can't be read
      */
     static void findAllSVs(Region region, String bam, Map<String, Integer> chrs, String sample,
@@ -1102,6 +1103,7 @@ public class StructuralVariantsProcessor {
      * @param svrinv3 list of INV SVs in reverse direction of 3'
      * @param svrinv5 list of INV SVs in reverse direction of 5'
      * @param conf Configuration
+     * @param referenceResource object for access to reference map
      * @param RLEN max read length
      * @param chrs map of chromosome lengths
      */
@@ -1308,6 +1310,7 @@ public class StructuralVariantsProcessor {
      * @param svrdup list of DUP SVs in discordant pairs in reverse direction
      * @param conf Configuration
      * @param RLEN max read length
+     * @param referenceResource object for access to reference map
      * @param chrs map of chromosome lengths
      * @throws IOException if BAM file can't be read
      */
@@ -1824,6 +1827,7 @@ public class StructuralVariantsProcessor {
      * @param svfdel list of DEL SVs in discordant pairs in forward direction
      * @param svrdel list of DEL SVs in discordant pairs in reverse direction
      * @param conf Configuration
+     * @param referenceResource object for access to reference map
      * @param rlen max read length
      * @param chrs map of chromosome lengths
      */
@@ -1975,6 +1979,7 @@ public class StructuralVariantsProcessor {
      * @param rlen max read length
      * @param chrs map of chromosome lengths
      * @param sample sample name
+     * @param referenceResource object for access to reference map
      * @param splice set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
      * @throws IOException if BAM file can't be read
@@ -2333,6 +2338,7 @@ public class StructuralVariantsProcessor {
      * @param svrinv5 list of INV SVs in reverse direction in 5'
      * @param rlen max read length
      * @param chrs map of chromosome lengths
+     * @param referenceResource object for access to reference map
      * @param sample sample name
      * @param splice set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
@@ -2380,6 +2386,7 @@ public class StructuralVariantsProcessor {
      * @param side 3 or 5 end
      * @param rlen max read length
      * @param chrs map of chromosome lengths
+     * @param referenceResource object for access to reference map
      * @param sample sample name
      * @param splice set of strings representing spliced regions
      * @param ampliconBasedCalling string of maximum_distance:minimum_overlap for amplicon based calling
