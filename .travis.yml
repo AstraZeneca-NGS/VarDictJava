@@ -14,3 +14,4 @@ jdk:
 script:
   - ./gradlew test jacocoTestReport
   - ./gradlew installDist
+  - ./gradlew javadoc

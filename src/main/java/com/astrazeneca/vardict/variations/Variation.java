@@ -108,9 +108,9 @@ public class Variation {
     }
 
     /**
-     * $addDir
      * Add count for direction
      * @param dir false for forward strand, true for reverse strand
+     * @param add amount of counts need to be added in the specific direction
      */
     public void addDir(boolean dir, int add) {
         if (dir)
@@ -120,9 +120,9 @@ public class Variation {
     }
 
     /**
-     * $subDir
      * Subtract count for direction
      * @param dir false for forward strand, true for reverse strand
+     * @param sub amount of counts need to be subtracted in the specific direction
      */
     public void subDir(boolean dir, int sub) {
         if (dir)

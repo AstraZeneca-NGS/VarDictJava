@@ -150,7 +150,7 @@ public class Configuration {
     public double lofreq = 0.05d; // -V
 
     /**
-     * Any base with quality <=10 will be consider low quality in soft-clipped seq and extension will stop.
+     * Any base with quality &lt;=10 will be consider low quality in soft-clipped seq and extension will stop.
      */
     public static final int LOWQUAL = 10;
 
@@ -239,7 +239,7 @@ public class Configuration {
      */
     public int INSSTDAMT = 4; //-A
     /**
-     * The minimum structural variant length to be presented using <DEL> <DUP> <INV> <INS>, etc.
+     * The minimum structural variant length to be presented using &lt;DEL&gt; &lt;DUP&gt; &lt;INV&gt; &lt;INS&gt;, etc.
      */
     public int SVMINLEN = 1000; //-L
     /**

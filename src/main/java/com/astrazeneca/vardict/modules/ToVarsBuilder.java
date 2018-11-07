@@ -43,7 +43,7 @@ public class ToVarsBuilder {
      * @param Rlen maximum read length
      * @param conf VarDict configuration
      * @return Tuple of (maximum read length, variant structure)
-     * @throws IOException
+     * @throws IOException if BAM file can't be read
      */
     public static Tuple.Tuple2<Integer, Map<Integer, Vars>> toVars(Region region,
                                                             String bam,
