@@ -296,11 +296,9 @@ public class SAMFileParser {
                         rlen = rlen2;
                     }
 
-                    // If 'SA' tag (supplementary alignment) is present
-                    if (conf.samfilter != null && record.getStringAttribute(SAMTag.SA.name()) != null) {
-                        if (flag.isSupplementaryAlignment()) { // the supplementary alignment
-                            continue; // Ignore the supplementary for now so that it won't skew the coverage
-                        }
+                    if (conf.samfilter != null && flag.isSupplementaryAlignment()) {
+                         // the supplementary alignment
+                        continue; // Ignore the supplementary for now so that it won't skew the coverage
                     }
 
                     //TODO: Determine whether to filter a read in CRISPR mode
