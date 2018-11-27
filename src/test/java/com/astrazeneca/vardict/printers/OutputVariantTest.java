@@ -59,7 +59,7 @@ public class OutputVariantTest {
     public void testColumnsSomaticVariant(){
         Variant variant = new Variant();
         Region region = new Region("chr1", 1234560, 1234570, ".");
-        OutputVariant somaticOutputVariant = new SomaticOutputVariant(variant, variant, variant, region, "", "", "");
+        OutputVariant somaticOutputVariant = new SomaticOutputVariant(variant, variant, variant, variant, region, "", "", "");
 
         printer.setOut(new PrintStream(outContent));
         printer.print(somaticOutputVariant);
@@ -70,7 +70,7 @@ public class OutputVariantTest {
     @Test
     public void testColumnsNullSomaticVariant(){
         Region region = new Region("chr1", 1234560, 1234570, ".");
-        OutputVariant somaticOutputVariant = new SomaticOutputVariant(null, null, null, region, "", "", "");
+        OutputVariant somaticOutputVariant = new SomaticOutputVariant(null, null, null,null, region, "", "", "");
 
         printer.setOut(new PrintStream(outContent));
         printer.print(somaticOutputVariant);
@@ -84,7 +84,7 @@ public class OutputVariantTest {
         Region region = new Region("chr1", 1234560, 1234570, ".");
         List<Tuple.Tuple2<Variant, String>> goodVariants = new ArrayList<>();
         List<Tuple.Tuple2<Variant, String>> badVariants = new ArrayList<>();
-        OutputVariant ampliconOutputVariant = new AmpliconOutputVariant( new Variant(), region, goodVariants, badVariants, position, 1, 0, false);
+        OutputVariant ampliconOutputVariant = new AmpliconOutputVariant(new Variant(), region, goodVariants, badVariants, position, 1, 0, false);
 
         printer.setOut(new PrintStream(outContent));
         printer.print(ampliconOutputVariant);

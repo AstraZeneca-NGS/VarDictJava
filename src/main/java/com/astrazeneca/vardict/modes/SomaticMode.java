@@ -3,19 +3,18 @@ package com.astrazeneca.vardict.modes;
 import com.astrazeneca.vardict.data.ReferenceResource;
 import com.astrazeneca.vardict.collection.ConcurrentHashSet;
 import com.astrazeneca.vardict.collection.DirectThreadExecutor;
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.Reference;
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
+import com.astrazeneca.vardict.data.scopedata.InitialData;
 import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.postprocessmodules.SomaticPostProcessModule;
 import com.astrazeneca.vardict.printers.VariantPrinter;
-import com.astrazeneca.vardict.variations.Vars;
 
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -36,6 +35,9 @@ public class SomaticMode extends AbstractMode {
         printHeader();
     }
 
+    /**
+     * In not parallel mode each region will be processed in sequence.
+     */
     @Override
     public void notParallel() {
         VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
@@ -45,21 +47,37 @@ public class SomaticMode extends AbstractMode {
 
                 final Set<String> splice = new ConcurrentHashSet<>();
                 Reference ref = referenceResource.getReference(region);
-                CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> bam1VariationsFuture = pipeline(instance().conf.bam.getBam1(),
-                        region, ref, referenceResource, 0, splice, variantPrinter, new DirectThreadExecutor());
+                Scope<InitialData> initialScope1 = new Scope<>(
+                        instance().conf.bam.getBam1(),
+                        region, ref, referenceResource,
+                        0,
+                        splice,
+                        variantPrinter,
+                        new InitialData());
+                CompletableFuture<Scope<AlignedVarsData>> bam1VariationsFuture = pipeline(initialScope1, new DirectThreadExecutor());
 
-                Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> bam1Variations = bam1VariationsFuture.join();
+                Scope<AlignedVarsData> bam1Variations = bam1VariationsFuture.join();
 
-                CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> bam2VariationFuture = pipeline(instance().conf.bam.getBam2(),
-                        region, ref, referenceResource, bam1Variations.maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
+                Scope<InitialData> initialScope2 = new Scope<>(
+                        instance().conf.bam.getBam2(),
+                        region, ref, referenceResource,
+                        bam1Variations.maxReadLength,
+                        splice,
+                        variantPrinter,
+                        new InitialData());
+                CompletableFuture<Scope<AlignedVarsData>> bam2VariationFuture = pipeline(initialScope2, new DirectThreadExecutor());
 
-                CompletableFuture<Void> somaticProcessOutput = bam2VariationFuture.thenAcceptBoth(bam1VariationsFuture, new SomaticPostProcessModule(referenceResource, variantPrinter));
+                CompletableFuture<Void> somaticProcessOutput = bam2VariationFuture.thenAcceptBoth(bam1VariationsFuture,
+                        new SomaticPostProcessModule(referenceResource, variantPrinter));
 
                 somaticProcessOutput.join();
             }
         }
     }
 
+    /**
+     * In parallel mode somatic workers are created for each region and are processed in parallel.
+     */
     @Override
     protected AbstractParallelMode createParallelMode() {
         return new AbstractParallelMode() {
@@ -78,6 +96,10 @@ public class SomaticMode extends AbstractMode {
         };
     }
 
+    /**
+     * Class needed for somatic parallel mode. Each worker will process pipeline for region on both BAM files
+     * (tumor and normal).
+     */
     private class SomdictWorker implements Callable<OutputStream> {
         private final Region region;
         private final Set<String> splice;
@@ -96,12 +118,24 @@ public class SomaticMode extends AbstractMode {
             VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
             variantPrinter.setOut(out);
 
-            CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> bam1VariationFuture =
-                    pipeline(instance().conf.bam.getBam1(),
-                            region, ref, referenceResource, 0, splice, variantPrinter, new DirectThreadExecutor());
-            CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> bam2VariationFuture =
-                    pipeline(instance().conf.bam.getBam2(),
-                            region, ref, referenceResource, 0, splice, variantPrinter, new DirectThreadExecutor());
+            Scope<InitialData> initialScope1 = new Scope<>(
+                    instance().conf.bam.getBam1(),
+                    region, ref, referenceResource,
+                    0,
+                    splice,
+                    variantPrinter,
+                    new InitialData());
+
+            CompletableFuture<Scope<AlignedVarsData>> bam1VariationFuture = pipeline(initialScope1, new DirectThreadExecutor());
+
+            Scope<InitialData> initialScope2 = new Scope<>(
+                    instance().conf.bam.getBam2(),
+                    region, ref, referenceResource,
+                    0,
+                    splice,
+                    variantPrinter,
+                    new InitialData());
+            CompletableFuture<Scope<AlignedVarsData>> bam2VariationFuture = pipeline(initialScope2, new DirectThreadExecutor());
 
             CompletableFuture<Void> somaticProcessOutput = bam2VariationFuture.thenAcceptBoth(bam1VariationFuture,
                     new SomaticPostProcessModule(referenceResource, variantPrinter));

@@ -6,15 +6,15 @@ import com.astrazeneca.vardict.collection.DirectThreadExecutor;
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.Reference;
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
+import com.astrazeneca.vardict.data.scopedata.CombineAnalysisData;
+import com.astrazeneca.vardict.data.scopedata.InitialData;
 import com.astrazeneca.vardict.data.scopedata.Scope;
-import com.astrazeneca.vardict.modes.AbstractMode;
 import com.astrazeneca.vardict.printers.SomaticOutputVariant;
 import com.astrazeneca.vardict.printers.VariantPrinter;
 import com.astrazeneca.vardict.variations.Variant;
 import com.astrazeneca.vardict.variations.Vars;
 
-import java.io.IOException;
-import java.io.PrintStream;
 import java.util.*;
 import java.util.function.BiConsumer;
 
@@ -22,6 +22,7 @@ import static com.astrazeneca.vardict.Utils.printExceptionAndContinue;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.MINUS_NUM_NUM;
+import static com.astrazeneca.vardict.modes.AbstractMode.pipeline;
 import static com.astrazeneca.vardict.variations.VariationUtils.VarsType.var;
 import static com.astrazeneca.vardict.variations.VariationUtils.VarsType.varn;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
@@ -29,8 +30,7 @@ import static com.astrazeneca.vardict.variations.VariationUtils.*;
 /**
  * Class for preparation of variants found in somatic (paired) analysis to the output
  */
-public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>,
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> {
+public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsData>, Scope<AlignedVarsData>> {
     private static final String STRONG_SOMATIC = "StrongSomatic";
     private static final String SAMPLE_SPECIFIC = "SampleSpecific";
     private static final String DELETION = "Deletion";
@@ -54,16 +54,17 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
         this.variantPrinter = variantPrinter;
     }
     /**
-     * Performs analysis of variations from both samples (BAM1 and BAM2).
+     * Performs analysis of variants from both samples (BAM1 and BAM2).
+     * Creates variant output for variants from aligned map and prints them.
      */
     @Override
-    public void accept(Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> scopeFromBam2,
-                       Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> scopeFromBam1) {
+    public void accept(Scope<AlignedVarsData> scopeFromBam2,
+                       Scope<AlignedVarsData> scopeFromBam1) {
 
         Region region = scopeFromBam1.region;
         Set<String> splice = scopeFromBam1.splice;
-        Map<Integer, Vars> variationsFromBam1 = scopeFromBam1.data._2;
-        Map<Integer, Vars> variationsFromBam2 = scopeFromBam2.data._2;
+        Map<Integer, Vars> variationsFromBam1 = scopeFromBam1.data.alignedVariants;
+        Map<Integer, Vars> variationsFromBam2 = scopeFromBam2.data.alignedVariants;
 
         maxReadLength = Math.max(scopeFromBam1.maxReadLength, scopeFromBam2.maxReadLength);
 
@@ -96,6 +97,36 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
         }
     }
 
+    /**
+     * Implements variations analysis from one sample, print out the result.
+     * @param variants variations from one BAM
+     * @param isFirstCover if the first calling
+     * @param varLabel type of variation (LikelyLOH, LikelySomatic, Germline, AFDiff, StrongSomatic)
+     * */
+    void callingForOneSample(Vars variants, boolean isFirstCover, String varLabel, Region region, Set<String> splice) {
+        if (variants.variants.isEmpty()) {
+            return;
+        }
+        for (Variant variant : variants.variants) {
+            SomaticOutputVariant outputVariant;
+            variant.vartype = variant.varType();
+            if (!variant.isGoodVar(variants.referenceVariant, variant.vartype, splice)) {
+                continue;
+            }
+            if (variant.vartype.equals(COMPLEX)) {
+                variant.adjComplex();
+            }
+
+            if (isFirstCover) {
+                outputVariant = new SomaticOutputVariant(variant, variant, null, variant, region, "", variants.sv, varLabel);
+                variantPrinter.print(outputVariant);
+            } else {
+                outputVariant = new SomaticOutputVariant(variant, variant, variant, null, region, variants.sv, "", varLabel);
+                variantPrinter.print(outputVariant);
+            }
+        }
+    }
+
     void callingForBothSamples(Integer position, Vars v1, Vars v2, Region region, Set<String> splice)  {
         if (v1.variants.isEmpty() && v2.variants.isEmpty()) {
             return;
@@ -106,7 +137,6 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
             printVariationsFromSecondSample(position, v1, v2, region, splice);
         }
     }
-
     /**
      * Analyse variations from BAM1 based on variations from BAM2.
      * @param position position on which analysis is processed
@@ -128,7 +158,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
             Variant v2nt = getVarMaybe(v2, varn, nt);
             if (v2nt != null) {
                 String type = determinateType(v2, vref, v2nt, splice);
-                outputVariant = new SomaticOutputVariant(vref, vref, v2nt, region, v1.sv, v2.sv, type);
+                outputVariant = new SomaticOutputVariant(vref, v2nt, vref, v2nt, region, v1.sv, v2.sv, type);
                 variantPrinter.print(outputVariant);
             } else { // sample 1 only, should be strong somatic
                 Variant varForPrint = new Variant();
@@ -151,10 +181,10 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                     v2nt = new Variant();
                     v2.varDescriptionStringToVariants.put(nt, v2nt); // Ensure it's initialized before passing to combineAnalysis
                     if (vref.positionCoverage < instance().conf.minr + 3 && !nt.contains("<")) {
-                        Tuple.Tuple2<Integer, String> tpl = combineAnalysis(vref, v2nt, region.chr, position, nt,
+                        CombineAnalysisData tpl = combineAnalysis(vref, v2nt, region.chr, position, nt,
                                 splice, maxReadLength);
-                        maxReadLength = tpl._1;
-                        String newtype = tpl._2;
+                        maxReadLength = tpl.maxReadLength;
+                        String newtype = tpl.type;
                         if ("FALSE".equals(newtype)) {
                             numberOfProcessedVariation++;
                             continue;
@@ -165,10 +195,10 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                     }
                 }
                 if (type.equals(STRONG_SOMATIC)) {
-                    outputVariant = new SomaticOutputVariant(vref, vref, varForPrint, region, v1.sv, v2.sv, STRONG_SOMATIC);
+                    outputVariant = new SomaticOutputVariant(vref, vref, vref, varForPrint, region, v1.sv, v2.sv, STRONG_SOMATIC);
                     variantPrinter.print(outputVariant);
                 } else {
-                    outputVariant = new SomaticOutputVariant(vref, vref, v2nt, region, v1.sv, v2.sv, type);
+                    outputVariant = new SomaticOutputVariant(vref, vref, vref, v2nt, region, v1.sv, v2.sv, type);
                     variantPrinter.print(outputVariant);
                 }
             }
@@ -194,7 +224,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                     }
 
                     v1nt.vartype = v1nt.varType();
-                    outputVariant = new SomaticOutputVariant(v1nt, v1nt, v2var, region, v1.sv, v2.sv, type);
+                    outputVariant = new SomaticOutputVariant(v1nt, v2var, v1nt, v2var, region, v1.sv, v2.sv, type);
                     variantPrinter.print(outputVariant);
                 } else {
                     Variant v1var = getVarMaybe(v1, var, 0);
@@ -217,7 +247,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                     varForPrint.refReverseCoverage = rev;
                     varForPrint.genotype = genotype;
 
-                    outputVariant = new SomaticOutputVariant(v2var, varForPrint, v2var, region, "", v2.sv, STRONG_LOH);
+                    outputVariant = new SomaticOutputVariant(v2var, v2var, varForPrint, v2var, region, "", v2.sv, STRONG_LOH);
                     variantPrinter.print(outputVariant);
                 }
             }
@@ -245,7 +275,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
             jregex.Matcher mm = MINUS_NUM_NUM.matcher(descriptionString);
             if (v2.varDescriptionStringToVariants.get(descriptionString).positionCoverage < instance().conf.minr + 3
                     && !descriptionString.contains("<") && (descriptionString.length() > 10 || mm.find())) {
-                Tuple.Tuple2<Integer, String> tpl = combineAnalysis(
+                CombineAnalysisData tpl = combineAnalysis(
                         v2.varDescriptionStringToVariants.get(descriptionString),
                         v1nt,
                         region.chr,
@@ -253,8 +283,8 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                         descriptionString,
                         splice,
                         maxReadLength);
-                maxReadLength = tpl._1;
-                newType = tpl._2;
+                maxReadLength = tpl.maxReadLength;
+                newType = tpl.type;
                 if (FALSE.equals(newType)) {
                     return;
                 }
@@ -275,22 +305,22 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                 v2var.adjComplex();
             }
 
-            SomaticOutputVariant outputVariant = new SomaticOutputVariant(v2var, varForPrint, v2var, region, "", v2.sv, type);
+            SomaticOutputVariant outputVariant = new SomaticOutputVariant(v2var, v2var, varForPrint, v2var, region, "", v2.sv, type);
             variantPrinter.print(outputVariant);
         }
     }
 
     /**
      * Analyse two variations and return their type.
-     * @param variants variations fro BAM2
-     * @param etalonVariant a variation to compare with
+     * @param variants variations from BAM2
+     * @param standardVariant a variation to compare with
      * @param variantToCompare a variation to be compared
      * @return type of variation (LikelyLOH, LikelySomatic, Germline, AFDiff, StrongSomatic)
      * */
-     String determinateType(Vars variants, Variant etalonVariant, Variant variantToCompare, Set<String> splice) {
+     String determinateType(Vars variants, Variant standardVariant, Variant variantToCompare, Set<String> splice) {
         String type;
-        if (variantToCompare.isGoodVar(variants.referenceVariant, etalonVariant.vartype, splice)) {
-            if (etalonVariant.frequency > (1 - instance().conf.lofreq) && variantToCompare.frequency < 0.8d && variantToCompare.frequency > 0.2d) {
+        if (variantToCompare.isGoodVar(variants.referenceVariant, standardVariant.vartype, splice)) {
+            if (standardVariant.frequency > (1 - instance().conf.lofreq) && variantToCompare.frequency < 0.8d && variantToCompare.frequency > 0.2d) {
                 type = LIKELY_LOH;
             } else {
                 if (variantToCompare.frequency < instance().conf.lofreq || variantToCompare.positionCoverage <= 1) {
@@ -306,41 +336,12 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                 type = AF_DIFF;
             }
         }
-        if (variantToCompare.isNoise() && etalonVariant.vartype.equals(SNV)) {
+        if (variantToCompare.isNoise() && standardVariant.vartype.equals(SNV)) {
             type = STRONG_SOMATIC;
         }
         return type;
     }
 
-    /**
-     * Implements variations analysis from one sample, print out the result.
-     * @param variants variations from one BAM
-     * @param isFirstCover if the first calling
-     * @param varLabel type of variation (LikelyLOH, LikelySomatic, Germline, AFDiff, StrongSomatic)
-     * */
-     void callingForOneSample(Vars variants, boolean isFirstCover, String varLabel, Region region, Set<String> splice) {
-        if (variants.variants.isEmpty()) {
-            return;
-        }
-        for (Variant variant : variants.variants) {
-            SomaticOutputVariant outputVariant;
-            variant.vartype = variant.varType();
-            if (!variant.isGoodVar(variants.referenceVariant, variant.vartype, splice)) {
-                continue;
-            }
-            if (variant.vartype.equals(COMPLEX)) {
-                variant.adjComplex();
-            }
-
-            if (isFirstCover) {
-                outputVariant = new SomaticOutputVariant(variant, null, variant, region, "", variants.sv, varLabel);
-                variantPrinter.print(outputVariant);
-            } else {
-                outputVariant = new SomaticOutputVariant(variant, variant, null, region, variants.sv, "", varLabel);
-                variantPrinter.print(outputVariant);
-            }
-        }
-    }
 
     /**
      * Taken a likely somatic indels and see whether combine two bam files still support somatic status. This is mainly for Indels
@@ -357,13 +358,10 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
      * @param maxReadLength max read length
      * @return (new <code>maxReadLength</code>, "FALSE" | "")
      */
-      Tuple.Tuple2<Integer, String> combineAnalysis(Variant variant1,
-                                                         Variant variant2,
-                                                         String chrName,
-                                                         int position,
-                                                         String nucleotide,
-                                                         Set<String> splice,
-                                                         int maxReadLength)  {
+      CombineAnalysisData combineAnalysis(Variant variant1, Variant variant2,
+                                          String chrName, int position,
+                                          String nucleotide, Set<String> splice,
+                                          int maxReadLength)  {
         Configuration config = instance().conf;
         if (config.y) {
             System.err.printf("Start Combine %s %s\n", position, nucleotide);
@@ -371,19 +369,13 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
         Region region = new Region(chrName, variant1.startPosition - maxReadLength, variant1.endPosition + maxReadLength, "");
         Reference ref = referenceResource.getReference(region);
 
-        Tuple.Tuple2<Integer, Map<Integer, Vars>> tpl = AbstractMode.pipeline(
-                config.bam.getBam1() + ":" + config.bam.getBam2(),
-                region,
-                ref,
-                referenceResource,
-                maxReadLength,
-                splice,
-                variantPrinter,
-                new DirectThreadExecutor()
-        ).join().data;
+        Scope<InitialData> currentScope = new Scope<>(config.bam.getBam1() + ":" + config.bam.getBam2(),
+                  region, ref, referenceResource, maxReadLength, splice,
+                  variantPrinter, new InitialData());
+        AlignedVarsData tpl = pipeline(currentScope, new DirectThreadExecutor()).join().data;
 
-        maxReadLength = tpl._1;
-        Map<Integer, Vars> vars = tpl._2;
+        maxReadLength = tpl.maxReadLength;
+        Map<Integer, Vars> vars = tpl.alignedVariants;
         Variant vref = getVarMaybe(vars, position, varn, nucleotide);
         if (vref != null) {
             if (config.y) {
@@ -433,7 +425,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                 variant2.hasAtLeast2DiffQualities = true;
 
                 if (variant2.totalPosCoverage <= 0) {
-                    return tuple(maxReadLength, FALSE);
+                    return new CombineAnalysisData(maxReadLength, FALSE);
                 }
 
                 variant2.frequency = variant2.positionCoverage / (double)variant2.totalPosCoverage;
@@ -441,17 +433,17 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<Tuple.Tuple2<I
                 variant2.genotype = vref.genotype;
                 variant2.strandBiasFlag = strandBias(variant2.refForwardCoverage, variant2.refReverseCoverage) + ";" +
                         strandBias(variant2.varsCountOnForward, variant2.varsCountOnReverse);
-                return tuple(maxReadLength, GERMLINE);
+                return new CombineAnalysisData(maxReadLength, GERMLINE);
             } else if (vref.positionCoverage < variant1.positionCoverage - 2) {
                 if (config.y) {
                     System.err.printf("Combine produce less: %s %s %s %s %s\n", chrName, position, nucleotide, vref.positionCoverage, variant1.positionCoverage);
                 }
-                return tuple(maxReadLength, FALSE);
+                return new CombineAnalysisData(maxReadLength, FALSE);
             } else {
-                return tuple(maxReadLength, EMPTY_STRING);
+                return new CombineAnalysisData(maxReadLength, EMPTY_STRING);
             }
 
         }
-        return tuple(maxReadLength, FALSE);
+        return new CombineAnalysisData(maxReadLength, FALSE);
     }
 }

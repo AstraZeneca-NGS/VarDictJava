@@ -10,14 +10,13 @@ import java.io.PrintStream;
  */
 public abstract class VariantPrinter {
     protected PrintStream out;
-    private String delimiter = "\t";
 
     /**
      * Prints special variant output structure to the set output
      * @param variant output variant structure
      */
     public void print(OutputVariant variant) {
-        out.println(variant.outputString(delimiter));
+        out.println(variant.toString());
     }
 
     /**
@@ -39,14 +38,6 @@ public abstract class VariantPrinter {
 
     public PrintStream getOut() {
         return out;
-    }
-
-    /**
-     * Set delimiter to print variants between fields. Default is <code>\t</code> (tab delimiter).
-     * @param delimiter string contains delimiter
-     */
-    public void setDelimiter(String delimiter) {
-        this.delimiter = delimiter;
     }
 
     /**

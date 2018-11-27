@@ -16,7 +16,10 @@ import static com.astrazeneca.vardict.data.Patterns.*;
 import static com.astrazeneca.vardict.variations.VariationUtils.isHasAndEquals;
 import static com.astrazeneca.vardict.variations.VariationUtils.isHasAndNotEquals;
 
-public class CigarUtils {
+/**
+ * Class for process CIGAR string of record in SAM/BAM file and modify it if it fits to matchers.
+ */
+public class CigarModifier {
     private int position;
     private String cigarStr;
     private final String originalCigar;
@@ -26,8 +29,8 @@ public class CigarUtils {
     private int indel;
     private Region region;
 
-    CigarUtils(int position, String cigarStr, String querySequence,
-               String queryQuality, Map<Integer, Character> reference, int indel, Region region) {
+    CigarModifier(int position, String cigarStr, String querySequence,
+                  String queryQuality, Map<Integer, Character> reference, int indel, Region region) {
         this.position = position;
         this.cigarStr = cigarStr;
         this.originalCigar = cigarStr;
@@ -38,6 +41,10 @@ public class CigarUtils {
         this.region = region;
     }
 
+    /**
+     * Method modify cigar by applying different matchers.
+     * @return modified position and cigar string
+     */
     public Tuple.Tuple2<Integer, String> modifyCigar() {
         //flag is set to true if CIGAR string is modified and should be looked at again
         boolean flag = true;
@@ -133,22 +140,19 @@ public class CigarUtils {
                 mm = D_M_D_DD_M_D_I_D_M_D_DD.matcher(cigarStr);
                 jregex.Matcher threeIndelsMatcher = threeIndelsPattern.matcher(cigarStr);
                 jregex.Matcher threeDeletionsMatcher = threeDeletionsPattern.matcher(cigarStr);
-                if (mm.find()) { //If CIGAR string contains matched sequence, deletion, short (<=9 bases) matched
-                    // sequence, insertion, short (<=9 bases) matched sequence and deletion
+                if (mm.find()) {
                     flag = twoDeletionsInsertionToComplex(mm, flag);
                 } else if (threeDeletionsMatcher.find()) {
                     flag = threeDeletions(threeDeletionsMatcher, flag);
                 } else if (threeIndelsMatcher.find()) {
                     flag = threeIndels(threeIndelsMatcher, flag);
                 }
-                // Combine two close deletions (<15bp) into one correct from <10 to <15
+
                 Matcher cm = DIG_D_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
-                if (cm.find()) { //If CIGAR string contains deletion, short (<= 9 bases) matched sequence, deletion and
-                    // possibly insertion
+                if (cm.find()) {
                     flag  = combineToCloseToCorrect(cm, flag);
                 }
 
-                // Combine two close indels (<15bp) into one
                 cm = NOTDIG_DIG_I_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
                 if (cm.find() && !"D".equals(cm.group(1))) {
                     flag = combineToCloseToOne(cm, flag);
@@ -167,19 +171,17 @@ public class CigarUtils {
                 }
             }
 
-            //The following two clauses to capture sometimes mis-softly clipped reads by aligner
             Matcher mtch = ANY_NUMBER_M_NUMBER_S_END.matcher(cigarStr);
             if (mtch.find()) {
                 captureMisSoftlyMS(mtch);
-            } else if ((mtch = BEGIN_ANY_DIG_M_END.matcher(cigarStr)).find()) { // Make >=3 mismatches in the end as soft
-                // clipping
+            } else if ((mtch = BEGIN_ANY_DIG_M_END.matcher(cigarStr)).find()) {
                 captureMisSoftly3Mismatches(mtch);
             }
 
             mtch = DIG_S_DIG_M.matcher(cigarStr);
             if (mtch.find()) {
                 combineDigSDigM(mtch);
-            } else if ((mtch = BEGIN_DIG_M.matcher(cigarStr)).find()) {// Make >=3 mismatches in the end as soft clipping
+            } else if ((mtch = BEGIN_DIG_M.matcher(cigarStr)).find()) {
                 combineBeginDigM(mtch);
             }
             return tuple(position, cigarStr);
@@ -189,8 +191,12 @@ public class CigarUtils {
         return tuple(position, cigarStr);
     }
 
-    private void combineBeginDigM(Matcher mtch) {
-        int mch = toInt(mtch.group(1));
+    /**
+     * Combine matched sequence to soft clip and matched and realign position. Make >=3 mismatches in the end as soft clipping
+     * @param matcher Regexp find matched sequence at the start of the CIGAR
+     */
+    private void combineBeginDigM(Matcher matcher) {
+        int mch = toInt(matcher.group(1));
         int rn = 0;
         int rrn = 0;
         int rmch = 0;
@@ -211,16 +217,20 @@ public class CigarUtils {
         }
         if (rn >= 3) {
             mch -= rn;
-            cigarStr = mtch.replaceFirst(rn + "S" + mch + "M");
+            cigarStr = matcher.replaceFirst(rn + "S" + mch + "M");
             position += rn;
         }
     }
 
-    private void combineDigSDigM(Matcher mtch) {
+    /**
+     * Combine soft clip and matched sequence and realign position
+     * @param matcher Regexp find softclip and matched sequence at the start of the CIGAR
+     */
+    private void combineDigSDigM(Matcher matcher) {
         //length of matched sequence
-        int mch = toInt(mtch.group(2));
+        int mch = toInt(matcher.group(2));
         //length of soft-clipping
-        int soft = toInt(mtch.group(1));
+        int soft = toInt(matcher.group(1));
         //number of bases before matched sequence that match in reference and read sequences
         int rn = 0;
         Set<Character> RN = new HashSet<>();
@@ -233,9 +243,9 @@ public class CigarUtils {
             mch += rn;
             soft -= rn;
             if (soft > 0) {
-                cigarStr = mtch.replaceFirst(soft + "S" + mch + "M");
+                cigarStr = matcher.replaceFirst(soft + "S" + mch + "M");
             } else {
-                cigarStr = mtch.replaceFirst(mch + "M");
+                cigarStr = matcher.replaceFirst(mch + "M");
             }
             position -= rn;
             rn = 0;
@@ -285,11 +295,15 @@ public class CigarUtils {
         }
     }
 
-    private void captureMisSoftly3Mismatches(Matcher mtch) {
-        String ov5 = mtch.group(1);
-        int mch = toInt(mtch.group(2));
-        int refoff = position + toInt(mtch.group(2));
-        int rdoff = toInt(mtch.group(2));
+    /**
+     * Trying to capture sometimes mis-softly clipped reads by aligner. Make >=3 mismatches in the end as soft clipping
+     * @param matcher Regexp find the matched sequence only
+     */
+    private void captureMisSoftly3Mismatches(Matcher matcher) {
+        String ov5 = matcher.group(1);
+        int mch = toInt(matcher.group(2));
+        int refoff = position + toInt(matcher.group(2));
+        int rdoff = toInt(matcher.group(2));
         if (!ov5.isEmpty()) { //If prefix is present
             //Add all matched and deletion lengths to reference position
             refoff += sum(globalFind(ALIGNED_LENGTH_MND, ov5)); // reference position
@@ -321,17 +335,21 @@ public class CigarUtils {
         }
     }
 
-    private void captureMisSoftlyMS(Matcher mtch) {
+    /**
+     * Trying to capture sometimes mis-softly clipped reads by aligner
+     * @param matcher Regexp finds number-M-number-S at end of CIGAR string ^(.*?) captures everything before M-S complex
+     */
+    private void captureMisSoftlyMS(Matcher matcher) {
         //prefix of CIGAR string before last matched sequence
-        String ov5 = mtch.group(1);
+        String ov5 = matcher.group(1);
         //length of matched sequence
-        int mch = toInt(mtch.group(2));
+        int mch = toInt(matcher.group(2));
         //length of soft-clipping
-        int soft = toInt(mtch.group(3));
+        int soft = toInt(matcher.group(3));
         //offset of soft-clipped sequence in the reference string (position + length of matched)
-        int refoff = position + toInt(mtch.group(2));
+        int refoff = position + toInt(matcher.group(2));
         //offset of soft-clipped sequence in the read
-        int rdoff = toInt(mtch.group(2));
+        int rdoff = toInt(matcher.group(2));
         if (!ov5.isEmpty()) { //If prefix is present
             //Add all matched and deletion lengths to reference position
             refoff += sum(globalFind(ALIGNED_LENGTH_MND, ov5)); // reference position
@@ -403,12 +421,18 @@ public class CigarUtils {
         }
     }
 
-    private boolean combineToCloseToOne(Matcher cm, boolean flag) {
+    /**
+     * Combine two close indels (<15bp) into one
+     * @param matcher Regexp finds not_digit-number-I-number-M-number-D and optionally number-I
+     * @param flag flag to determine if read was processed before
+     * @return true if length of internal matched sequences is no more than 15
+     */
+    private boolean combineToCloseToOne(Matcher matcher, boolean flag) {
         //If CIGAR string contains any letter except D, matched sequence, deletion and possibly insertion
-        String op = cm.group(5);
-        int g2 = toInt(cm.group(2));
-        int g3 = toInt(cm.group(3));
-        int g4 = toInt(cm.group(4));
+        String op = matcher.group(5);
+        int g2 = toInt(matcher.group(2));
+        int g3 = toInt(matcher.group(3));
+        int g4 = toInt(matcher.group(4));
 
         if (g3 <= 15) {
             //length of matched sequence and deletion
@@ -420,28 +444,36 @@ public class CigarUtils {
             } else if (op.equals("D")) {
                 dlen += g4;
                 //last insertion string
-                if (cm.groupCount() > 5) {
-                    String istr = cm.group(6);
+                if (matcher.groupCount() > 5) {
+                    String istr = matcher.group(6);
                     if (istr != null) { //If digit and after it Insertion is present after deletion,
                         // add its length to ilen
                         ilen += toInt(istr.substring(0, istr.length() - 1));
                     }
                 }
             }
-            cm = DIG_I_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
+            matcher = DIG_I_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
             //Replace I-M-D-I? complex with deletion and insertion
-            cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
+            cigarStr = matcher.replaceFirst(dlen + "D" + ilen + "I");
             flag = true;
         }
         return flag;
     }
 
-    private boolean combineToCloseToCorrect(Matcher cm, boolean flag) {
-        int g1 = toInt(cm.group(1));
-        int g2 = toInt(cm.group(2));
-        int g3 = toInt(cm.group(3));
+    /**
+     * Combine two close deletions (<15bp) into one correct from <10 to <15.
+     * If CIGAR string contains deletion, short (<= 9 bases) matched sequence, deletion and possibly insertion,
+     * replace with deletion and insertion.
+     * @param matcher Regexp finds number-D-digit-M-number-D and optionally number-I
+     * @param flag flag to determine if read was processed before
+     * @return true if length of internal matched sequences is no more than 15
+     */
+    private boolean combineToCloseToCorrect(Matcher matcher, boolean flag) {
+        int g1 = toInt(matcher.group(1));
+        int g2 = toInt(matcher.group(2));
+        int g3 = toInt(matcher.group(3));
         if (g2 <= 15) {
-            String op = cm.group(4);
+            String op = matcher.group(4);
             //length of both deletions and matched sequence
             int dlen = g1 + g2;
             //matched sequence length
@@ -450,49 +482,56 @@ public class CigarUtils {
                 ilen += g3;
             } else if (op.equals("D")) {
                 dlen += g3;
-                if (cm.groupCount() > 4) {
+                if (matcher.groupCount() > 4) {
                     //insertion string
-                    String istr = cm.group(5);
+                    String istr = matcher.group(5);
                     if (istr != null) { //If insertion is present after 2nd deletion, add its length to $ilen
                         ilen += toInt(istr.substring(0, istr.length() - 1));
                     }
                 }
             }
-            cigarStr = cm.replaceFirst(dlen + "D" + ilen + "I");
+            cigarStr = matcher.replaceFirst(dlen + "D" + ilen + "I");
             flag = true;
         }
         return flag;
     }
 
-    private boolean threeIndels(jregex.Matcher threeIndelsMatcher, boolean flag) {
-        int tslen = toInt(threeIndelsMatcher.group(5)) + toInt(threeIndelsMatcher.group(8));
-        if ("I".equals(threeIndelsMatcher.group(4))) {
-            tslen += toInt(threeIndelsMatcher.group(3));
+    /**
+     * If CIGAR string contains of 3 deletions/insertions with matched sequences, replace with deletion and matched,
+     * or deletion, insertion and matched if matched and insertion more then zero
+     * @param matcher regexp found 3 deletions/insertions with matched sequences between them
+     * @param flag to determine if read was processed before
+     * @return true if length of internal matched sequences is no more than 15
+     */
+    private boolean threeIndels(jregex.Matcher matcher, boolean flag) {
+        int tslen = toInt(matcher.group(5)) + toInt(matcher.group(8));
+        if ("I".equals(matcher.group(4))) {
+            tslen += toInt(matcher.group(3));
         }
-        if ("I".equals(threeIndelsMatcher.group(7))) {
-            tslen += toInt(threeIndelsMatcher.group(6));
+        if ("I".equals(matcher.group(7))) {
+            tslen += toInt(matcher.group(6));
         }
-        if ("I".equals(threeIndelsMatcher.group(10))) {
-            tslen += toInt(threeIndelsMatcher.group(9));
-        }
-
-        int dlen = toInt(threeIndelsMatcher.group(5)) + toInt(threeIndelsMatcher.group(8));
-        if ("D".equals(threeIndelsMatcher.group(4))) {
-            dlen += toInt(threeIndelsMatcher.group(3));
-        }
-        if ("D".equals(threeIndelsMatcher.group(7))) {
-            dlen += toInt(threeIndelsMatcher.group(6));
-        }
-        if ("D".equals(threeIndelsMatcher.group(10))) {
-            dlen += toInt(threeIndelsMatcher.group(9));
+        if ("I".equals(matcher.group(10))) {
+            tslen += toInt(matcher.group(9));
         }
 
-        int mid = toInt(threeIndelsMatcher.group(5)) + toInt(threeIndelsMatcher.group(8));
-        String ov5 = threeIndelsMatcher.group(1);
-        int refoff = position + toInt(threeIndelsMatcher.group(2));
-        int rdoff = toInt(threeIndelsMatcher.group(2));
-        int RDOFF = toInt(threeIndelsMatcher.group(2));
-        int rm = toInt(threeIndelsMatcher.group(11));
+        int dlen = toInt(matcher.group(5)) + toInt(matcher.group(8));
+        if ("D".equals(matcher.group(4))) {
+            dlen += toInt(matcher.group(3));
+        }
+        if ("D".equals(matcher.group(7))) {
+            dlen += toInt(matcher.group(6));
+        }
+        if ("D".equals(matcher.group(10))) {
+            dlen += toInt(matcher.group(9));
+        }
+
+        int mid = toInt(matcher.group(5)) + toInt(matcher.group(8));
+        String ov5 = matcher.group(1);
+        int refoff = position + toInt(matcher.group(2));
+        int rdoff = toInt(matcher.group(2));
+        int RDOFF = toInt(matcher.group(2));
+        int rm = toInt(matcher.group(11));
 
         if (!ov5.isEmpty()) { //If the complex is not at start of CIGAR string
             refoff += sum(globalFind(ALIGNED_LENGTH_MND, ov5)); // reference position // - 975 -
@@ -511,7 +550,11 @@ public class CigarUtils {
         if (tslen <= 0) {
             dlen -= tslen;
             rm += tslen;
-            newCigarStr += dlen + "D" + rm + "M";
+            if (dlen > 0) {
+                newCigarStr += dlen + "D" + rm + "M";
+            } else {
+                newCigarStr += rm + "M";
+            }
         } else {
             newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
         }
@@ -522,30 +565,37 @@ public class CigarUtils {
         return flag;
     }
 
-    private boolean threeDeletions(jregex.Matcher threeDeletionsMatcher, boolean flag) {
+    /**
+     * If CIGAR string contains of 3 deletions with matched sequences, replace with deletion and matched
+     * or deletion, insertion and matched if matched and insertion more then zero
+     * @param matcher regexp found 3 deletions with matched sequences between them
+     * @param flag to determine if read was processed before
+     * @return true if length of internal matched sequences is no more than 15
+     */
+    private boolean threeDeletions(jregex.Matcher matcher, boolean flag) {
         //length of both matched sequences and insertion
-        int tslen = toInt(threeDeletionsMatcher.group(4)) + toInt(threeDeletionsMatcher.group(6));
+        int tslen = toInt(matcher.group(4)) + toInt(matcher.group(6));
         //length of deletions and internal matched sequences
-        int dlen = toInt(threeDeletionsMatcher.group(3)) + toInt(threeDeletionsMatcher.group(4)) +
-                toInt(threeDeletionsMatcher.group(5)) + toInt(threeDeletionsMatcher.group(6)) +
-                toInt(threeDeletionsMatcher.group(7));
+        int dlen = toInt(matcher.group(3)) + toInt(matcher.group(4)) +
+                toInt(matcher.group(5)) + toInt(matcher.group(6)) +
+                toInt(matcher.group(7));
 
         //length of internal matched sequences
-        int mid = toInt(threeDeletionsMatcher.group(4)) + toInt(threeDeletionsMatcher.group(6));
+        int mid = toInt(matcher.group(4)) + toInt(matcher.group(6));
 
         //prefix of CIGAR string before the M-D-M-I-M-D complex
-        String ov5 = threeDeletionsMatcher.group(1);
+        String ov5 = matcher.group(1);
 
         //offset of first deletion in the reference sequence
-        int refoff = position + toInt(threeDeletionsMatcher.group(2));
+        int refoff = position + toInt(matcher.group(2));
 
         //offset of first deletion in the read
-        int rdoff = toInt(threeDeletionsMatcher.group(2));
+        int rdoff = toInt(matcher.group(2));
 
         //offset of first deletion in the read corrected by possibly matching bases
-        int RDOFF = toInt(threeDeletionsMatcher.group(2));
+        int RDOFF = toInt(matcher.group(2));
 
-        int rm = toInt(threeDeletionsMatcher.group(8));
+        int rm = toInt(matcher.group(8));
 
         if (!ov5.isEmpty()) { //If the complex is not at start of CIGAR string
             refoff += sum(globalFind(ALIGNED_LENGTH_MND, ov5)); // reference position // - 937 -
@@ -565,7 +615,11 @@ public class CigarUtils {
         if (tslen <= 0) {
             dlen -= tslen;
             rm += tslen;
-            newCigarStr += dlen + "D" + rm + "M";
+            if (dlen > 0) {
+                newCigarStr += dlen + "D" + rm + "M";
+            } else {
+                newCigarStr += rm + "M";
+            }
         } else {
             newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
         }
@@ -576,29 +630,37 @@ public class CigarUtils {
         return flag;
     }
 
-    private boolean twoDeletionsInsertionToComplex(jregex.Matcher mm, boolean flag) {
+    /**
+     * If CIGAR string contains matched sequence, deletion, short (<=9 bases) matched
+       sequence, insertion, short (<=9 bases) matched sequence and deletion, replace with deletion and matched
+     * @param matcher Regexp finds number-M-number-D-digit-M-number-I-digit-M-number-D. ^(.*?) captures everything before the
+     * M-D-M-I-M-D complex
+     * @param flag to determine if read was processed before
+     * @return true if length of internal matched sequences is no more than 15
+     */
+    private boolean twoDeletionsInsertionToComplex(jregex.Matcher matcher, boolean flag) {
         //length of both matched sequences and insertion
-        int tslen = toInt(mm.group(4)) + toInt(mm.group(5)) + toInt(mm.group(6));
+        int tslen = toInt(matcher.group(4)) + toInt(matcher.group(5)) + toInt(matcher.group(6));
 
         //length of deletions and internal matched sequences
-        int dlen = toInt(mm.group(3)) + toInt(mm.group(4)) + toInt(mm.group(6)) + toInt(mm.group(7));
+        int dlen = toInt(matcher.group(3)) + toInt(matcher.group(4)) + toInt(matcher.group(6)) + toInt(matcher.group(7));
 
         //length of internal matched sequences
-        int mid = toInt(mm.group(4)) + toInt(mm.group(6));
+        int mid = toInt(matcher.group(4)) + toInt(matcher.group(6));
 
         //prefix of CIGAR string before the M-D-M-I-M-D complex
-        String ov5 = mm.group(1);
+        String ov5 = matcher.group(1);
 
         //offset of first deletion in the reference sequence
-        int refoff = position + toInt(mm.group(2));
+        int refoff = position + toInt(matcher.group(2));
 
         //offset of first deletion in the read
-        int rdoff = toInt(mm.group(2));
+        int rdoff = toInt(matcher.group(2));
 
         //offset of first deletion in the read corrected by possibly matching bases
-        int RDOFF = toInt(mm.group(2));
+        int RDOFF = toInt(matcher.group(2));
 
-        int rm = toInt(mm.group(8));
+        int rm = toInt(matcher.group(8));
 
         if (!ov5.isEmpty()) { //If the complex is not at start of CIGAR string
             refoff += sum(globalFind(ALIGNED_LENGTH_MND, ov5)); // reference position
@@ -623,24 +685,27 @@ public class CigarUtils {
             newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
         }
         if (mid <= 15) {
-            //If length of internal matched sequences is no more than 10, replace M-D-M-I-M-D complex with M-D-I
+            //If length of internal matched sequences is no more than 15, replace M-D-M-I-M-D complex with M-D-I
             cigarStr = D_M_D_DD_M_D_I_D_M_D_DD_prim.matcher(cigarStr).replaceFirst(newCigarStr);
             flag = true;
         }
         return flag;
     }
 
-    private boolean beginDigitMNumberIorDNumberM(jregex.Matcher mm) {
-        int tmid = toInt(mm.group(1));
-        int mlen = toInt(mm.group(4));
+    /**
+     * If CIGAR starts with 1-9 bases long matched sequence, insertion or deletion and matched sequence,
+     * sequence and insertion/deletion are replaced with soft-clipping up to 1st matching base in last matched sequence.
+     * For deletion position is adjusted by deletion length.
+     * @param matcher Regexp finds digit-M-number-(I or D)-number-M
+     * @return true (cigar was processed)
+     */
+    private boolean beginDigitMNumberIorDNumberM(jregex.Matcher matcher) {
+        int tmid = toInt(matcher.group(1));
+        int mlen = toInt(matcher.group(4));
         int tn = 0;
-                    /*
-                    Sequence and insertion/deletion are replaced with soft-clipping up to
-                    1st matching base in last matched sequence
-                    For deletion position is adjusted by deletion length
-                     */
-        int tslen = tmid + (mm.group(3).equals("I") ? toInt(mm.group(2)) : 0);
-        position += tmid + (mm.group(3).equals("D") ? toInt(mm.group(2)) : 0);
+
+        int tslen = tmid + (matcher.group(3).equals("I") ? toInt(matcher.group(2)) : 0);
+        position += tmid + (matcher.group(3).equals("D") ? toInt(matcher.group(2)) : 0);
         while ((tn < mlen) && isHasAndNotEquals(querySequence.charAt(tslen + tn), reference, position + tn)) {
             tn++;
         }

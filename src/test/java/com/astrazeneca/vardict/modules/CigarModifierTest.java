@@ -18,7 +18,7 @@ import java.util.Map;
 
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 
-public class CigarUtilsTest {
+public class CigarModifierTest {
     @AfterMethod
     public void cleanUp () {
         GlobalReadOnlyScope.clear();
@@ -41,7 +41,7 @@ public class CigarUtilsTest {
             put(1, 'A');
             put(2, 'A');
         }};
-        Tuple.Tuple4<Integer, String, String, Integer> result = CigarParser.findOffset(
+        Tuple.Tuple4<Integer, String, String, Integer> result = new CigarParser(false).findOffset(
                 referencePosition,
                 readPosition,
                 cigarLength,
@@ -124,7 +124,7 @@ public class CigarUtilsTest {
             highQualityReadsCount = 45;
             lowQualityReadsCount = 35;
         }};
-        CigarParser.subCnt(variation, direction, 3, 1.5, 5, 2);
+        new CigarParser(false).subCnt(variation, direction, 3, 1.5, 5, 2);
         Variation expectedVariation = (Variation) expectedVariationObject;
         Assert.assertEquals(variation.varsCount, expectedVariation.varsCount);
         Assert.assertEquals(variation.varsCountOnReverse, expectedVariation.varsCountOnReverse);
@@ -205,7 +205,7 @@ public class CigarUtilsTest {
             highQualityReadsCount = 45;
             lowQualityReadsCount = 35;
         }};
-        CigarParser.addCnt(variation, direction, 3, 1.5, 5, 2);
+        new CigarParser(false).addCnt(variation, direction, 3, 1.5, 5, 2);
         Variation expectedVariation = (Variation) expectedVariationObject;
         Assert.assertEquals(variation.varsCount, expectedVariation.varsCount);
         Assert.assertEquals(variation.varsCountOnReverse, expectedVariation.varsCountOnReverse);
@@ -276,6 +276,6 @@ public class CigarUtilsTest {
 
     @Test(dataProvider = "dataForIsBEGIN_ATGC_AMP_ATGCs_END_Test")
     public void isBEGIN_ATGC_AMP_ATGCs_END(final String s, final boolean result) {
-        Assert.assertEquals(CigarParser.isBEGIN_ATGC_AMP_ATGCs_END(s), result);
+        Assert.assertEquals(new CigarParser(false).isBEGIN_ATGC_AMP_ATGCs_END(s), result);
     }
 }

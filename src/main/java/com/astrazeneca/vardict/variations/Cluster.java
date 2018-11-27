@@ -1,5 +1,8 @@
 package com.astrazeneca.vardict.variations;
 
+/**
+ * Class to store data about SV clusters. Contains extended information about count of mates in this cluster.
+ */
 public class Cluster extends Mate {
     public int cnt;
 

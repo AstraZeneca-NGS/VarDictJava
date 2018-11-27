@@ -7,6 +7,9 @@ import java.util.*;
 import static com.astrazeneca.vardict.Utils.toInt;
 import static java.util.Collections.singletonList;
 
+/**
+ * Build regions from -R option or the BED file
+ */
 class RegionBuilder {
 
     static final BedRowFormat DEFAULT_BED_ROW_FORMAT = new BedRowFormat(2, 6, 7, 9, 10, 12);
@@ -166,6 +169,12 @@ class RegionBuilder {
         return singletonList(singletonList(new Region(chr, start, end, gene)));
     }
 
+    /**
+     * Corrects chromosome: if it doesn't have "chr" in name and it contains in BAM file header, add "chr" label to  it.
+     * @param chromosomesLengths map of chromosome names and lengths from BAM file header
+     * @param chr chromosome name
+     * @return corrected chromosome name
+     */
     String correctChromosome(Map<String, Integer> chromosomesLengths, String chr) {
         if (!chromosomesLengths.containsKey(chr)) {
             if (chr.startsWith(CHR_LABEL)) {

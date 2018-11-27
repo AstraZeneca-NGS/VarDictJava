@@ -5,9 +5,15 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-
+/**
+ * A set projection for a {@link ConcurrentHashMap}.
+ *
+ */
 public class ConcurrentHashSet<E> implements Set<E>{
 
+    /**
+     * The delegate map.
+     */
     private Map<E, Boolean> _map = new ConcurrentHashMap<>();
 
     @Override

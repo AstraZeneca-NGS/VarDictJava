@@ -10,10 +10,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The data after variation realigner and structural variants steps in pipeline. Used for creating Variants from Variations.
+ * The data created after variation realigner and structural variants steps in pipeline.
+ * Used for creating Variants from Variations in toVarsBuilder step.
  */
 public class RealignedVariationData {
-
     public final Map<Integer, VariationMap<String, Variation>> nonInsertionVariants;
     public final Map<Integer, VariationMap<String, Variation>> insertionVariants;
     public final Map<Integer, Sclip> softClips5End;

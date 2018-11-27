@@ -1,6 +1,6 @@
 package com.astrazeneca.vardict;
 
-import com.astrazeneca.vardict.collection.Tuple;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
 import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
 import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.postprocessmodules.SimplePostProcessModule;
@@ -46,8 +46,8 @@ public class ExceptionCounterTest {
         variantMap.put(1, new Vars() {{
             variants.add(null);
         }});
-        Tuple.Tuple2<Integer, Map <Integer, Vars>> tuple = new Tuple.Tuple2<>(1, variantMap);
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> newScope = new Scope<>(null, null, null,
+        AlignedVarsData tuple = new AlignedVarsData(1, variantMap);
+        Scope<AlignedVarsData> newScope = new Scope<>(null, null, null,
                 null, 0, null, null, tuple);
         SimplePostProcessModule module = runMethod();
         Configuration.MAX_EXCEPTION_COUNT = 1;
@@ -63,8 +63,8 @@ public class ExceptionCounterTest {
         variantMap.put(1, new Vars() {{
             variants.add(null);
         }});
-        Tuple.Tuple2<Integer, Map <Integer, Vars>> tuple = new Tuple.Tuple2<>(1, variantMap);
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> newScope = new Scope<>(null, null, null,
+        AlignedVarsData tuple = new AlignedVarsData(1, variantMap);
+        Scope<AlignedVarsData> newScope = new Scope<>(null, null, null,
                 null, 0, null, null, tuple);
         SimplePostProcessModule module = runMethod();
         Configuration.MAX_EXCEPTION_COUNT = 1;

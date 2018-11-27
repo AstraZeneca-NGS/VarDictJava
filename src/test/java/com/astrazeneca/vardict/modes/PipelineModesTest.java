@@ -2,11 +2,12 @@ package com.astrazeneca.vardict.modes;
 
 import com.astrazeneca.vardict.Configuration;
 import com.astrazeneca.vardict.collection.DirectThreadExecutor;
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.Reference;
 import com.astrazeneca.vardict.data.ReferenceResource;
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
 import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
+import com.astrazeneca.vardict.data.scopedata.InitialData;
 import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.integrationtests.IntegrationTest;
 import com.astrazeneca.vardict.integrationtests.utils.CSVReferenceManager;
@@ -40,6 +41,11 @@ public class PipelineModesTest {
     private String bam;
     private VariantPrinter variantPrinter = new SystemOutVariantPrinter();
     private Map<String, Integer> chrLengths;
+    List<List<Region>> segments = new ArrayList<>();
+    List<Region> regions = new ArrayList<>();
+
+    Reference ref;
+    Scope<InitialData> initialScope;
 
     @Spy
     private ReferenceResource referenceResource;
@@ -65,6 +71,9 @@ public class PipelineModesTest {
         GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, null);
         instance().conf.bam = new Configuration.BamNames(bam);
         instance().conf.freq = 0.001;
+        regions.add(region);
+        segments.add(regions);
+
         MockitoAnnotations.initMocks(this);
     }
 
@@ -82,20 +91,13 @@ public class PipelineModesTest {
     @Test
     public void testSimpleModePipelineNormal() throws ExecutionException, InterruptedException {
         mockReferenceResource("hg19.fa");
-        List<List<Region>> segments = new ArrayList<>();
-        List<Region> regions = new ArrayList<>();
-        regions.add(region);
-        segments.add(regions);
 
         simpleMode = new SimpleMode(segments, referenceResource);
-        Reference ref = referenceResource.getReference(region);
-        variantPrinter.setOut(new PrintStream(outContent));
+        createScope();
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = simpleMode.pipeline(initialScope, new DirectThreadExecutor());
 
-        CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = simpleMode.pipeline(bam, region, ref, referenceResource, 0,
-                new HashSet<>(), variantPrinter, new DirectThreadExecutor());
-
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> tuple2Scope = pipeline.get();
-        Set<Map.Entry<Integer, Vars>> entryVars = tuple2Scope.data._2.entrySet();
+        Scope<AlignedVarsData> varsDataScope = pipeline.get();
+        Set<Map.Entry<Integer, Vars>> entryVars = varsDataScope.data.alignedVariants.entrySet();
         List<Vars> actualListOfVars = entryVars.stream().map(Map.Entry::getValue).collect(Collectors.toList());
 
         assertEquals(actualListOfVars.size(), 1);
@@ -107,20 +109,13 @@ public class PipelineModesTest {
     @Test(expectedExceptions = RuntimeException.class)
     public void testSimpleModePipelineException()  {
         mockReferenceResource("hg19.fa");
-        List<List<Region>> segments = new ArrayList<>();
-        List<Region> regions = new ArrayList<>();
-        regions.add(region);
-        segments.add(regions);
 
         simpleMode = new SimpleMode(segments, referenceResource);
-        Reference ref = referenceResource.getReference(region);
-        variantPrinter.setOut(new PrintStream(outContent));
         System.setErr(new PrintStream(outContent));
         instance().conf.bam = null;
         Configuration.MAX_EXCEPTION_COUNT = 5;
-
-        CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = simpleMode.pipeline(bam, region, ref, referenceResource, 0,
-                new HashSet<>(), variantPrinter, new DirectThreadExecutor());
+        createScope();
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = simpleMode.pipeline(initialScope, new DirectThreadExecutor());
         pipeline.join();
         assertTrue(outContent.toString().contains("NullPointerException"));
     }
@@ -128,20 +123,13 @@ public class PipelineModesTest {
     @Test
     public void testSomaticModePipelineNormal() throws ExecutionException, InterruptedException {
         mockReferenceResource("hg19.fa");
-        List<List<Region>> segments = new ArrayList<>();
-        List<Region> regions = new ArrayList<>();
-        regions.add(region);
-        segments.add(regions);
 
         somaticMode = new SomaticMode(segments, referenceResource);
-        Reference ref = referenceResource.getReference(region);
-        variantPrinter.setOut(new PrintStream(outContent));
+        createScope();
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = somaticMode.pipeline(initialScope, new DirectThreadExecutor());
 
-        CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = somaticMode.pipeline(bam, region, ref, referenceResource, 0,
-                new HashSet<>(), variantPrinter, new DirectThreadExecutor());
-
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> tuple2Scope = pipeline.get();
-        Set<Map.Entry<Integer, Vars>> entryVars = tuple2Scope.data._2.entrySet();
+        Scope<AlignedVarsData> tuple2Scope = pipeline.get();
+        Set<Map.Entry<Integer, Vars>> entryVars = tuple2Scope.data.alignedVariants.entrySet();
         List<Vars> actualListOfVars = entryVars.stream().map(Map.Entry::getValue).collect(Collectors.toList());
 
         assertEquals(actualListOfVars.size(), 1);
@@ -153,20 +141,13 @@ public class PipelineModesTest {
     @Test(expectedExceptions = RuntimeException.class)
     public void testSomaticModePipelineException() {
         mockReferenceResource("hg19.fa");
-        List<List<Region>> segments = new ArrayList<>();
-        List<Region> regions = new ArrayList<>();
-        regions.add(region);
-        segments.add(regions);
 
         somaticMode = new SomaticMode(segments, referenceResource);
-        Reference ref = referenceResource.getReference(region);
-        variantPrinter.setOut(new PrintStream(outContent));
         System.setErr(new PrintStream(outContent));
         instance().conf.bam = null;
         Configuration.MAX_EXCEPTION_COUNT = 5;
-
-        CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = somaticMode.pipeline(bam, region, ref, referenceResource, 0,
-                new HashSet<>(), variantPrinter, new DirectThreadExecutor());
+        createScope();
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = somaticMode.pipeline(initialScope, new DirectThreadExecutor());
         pipeline.join();
         assertTrue(outContent.toString().contains("NullPointerException"));
     }
@@ -179,20 +160,13 @@ public class PipelineModesTest {
         instance().conf.freq = 0.001;
 
         mockReferenceResource("hg19.fa");
-        List<List<Region>> segments = new ArrayList<>();
-        List<Region> regions = new ArrayList<>();
-        regions.add(region);
-        segments.add(regions);
-
+        createScope();
         ampliconMode = new AmpliconMode(segments, referenceResource);
-        Reference ref = referenceResource.getReference(region);
-        variantPrinter.setOut(new PrintStream(outContent));
 
-        CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = ampliconMode.pipeline(bam, region, ref, referenceResource, 0,
-                new HashSet<>(), variantPrinter, new DirectThreadExecutor());
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = ampliconMode.pipeline(initialScope, new DirectThreadExecutor());
 
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> tuple2Scope = pipeline.get();
-        Set<Map.Entry<Integer, Vars>> entryVars = tuple2Scope.data._2.entrySet();
+        Scope<AlignedVarsData> tuple2Scope = pipeline.get();
+        Set<Map.Entry<Integer, Vars>> entryVars = tuple2Scope.data.alignedVariants.entrySet();
         List<Vars> actualListOfVars = entryVars.stream().map(Map.Entry::getValue).collect(Collectors.toList());
 
         assertEquals(actualListOfVars.size(), 178);
@@ -205,18 +179,11 @@ public class PipelineModesTest {
         Configuration.MAX_EXCEPTION_COUNT = 5;
 
         mockReferenceResource("hg19.fa");
-        List<List<Region>> segments = new ArrayList<>();
-        List<Region> regions = new ArrayList<>();
-        regions.add(region);
-        segments.add(regions);
 
         ampliconMode = new AmpliconMode(segments, referenceResource);
-        Reference ref = referenceResource.getReference(region);
-        variantPrinter.setOut(new PrintStream(outContent));
         System.setErr(new PrintStream(outContent));
-
-        CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = ampliconMode.pipeline(bam, region, ref, referenceResource, 0,
-                new HashSet<>(), variantPrinter, new DirectThreadExecutor());
+        createScope();
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = ampliconMode.pipeline(initialScope, new DirectThreadExecutor());
 
         pipeline.join();
         assertTrue(outContent.toString().contains("NullPointerException"));
@@ -227,5 +194,12 @@ public class PipelineModesTest {
             Object[] args = invocation.getArguments();
             return CSVReferenceManager.getReader(fastaFileName).queryFasta((String) args[1], (Integer) args[2], (Integer) args[3]);
         }).when(referenceResource).retrieveSubSeq(any(), anyString(), anyInt(), anyInt());
+    }
+
+    public void createScope() {
+        variantPrinter.setOut(new PrintStream(outContent));
+        ref = referenceResource.getReference(region);
+        initialScope = new Scope<>(bam, region, ref, referenceResource, 0, new HashSet<>(),
+                variantPrinter, new InitialData());
     }
 }

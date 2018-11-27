@@ -1,15 +1,11 @@
 package com.astrazeneca.vardict.variations;
 
-import com.astrazeneca.vardict.data.Region;
-
 import java.text.DecimalFormat;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
-import static com.astrazeneca.vardict.Utils.join;
 import static com.astrazeneca.vardict.data.Patterns.ANY_SV;
 import static com.astrazeneca.vardict.Utils.substr;
 
@@ -187,7 +183,6 @@ public class Variant {
      * Debug information
      */
     public String DEBUG = "";
-
 
     /**
      * A variant is considered noise if the quality is below <code>goodq</code> and
@@ -405,5 +400,4 @@ public class Variant {
                 ", DEBUG='" + DEBUG + '\'' +
                 '}';
     }
-
 }

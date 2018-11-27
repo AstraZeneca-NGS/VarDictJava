@@ -7,7 +7,9 @@ import java.text.DecimalFormat;
 
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.join;
-
+/**
+ * Variant created in Simple mode. Must contains 36 total fields.
+ */
 public class SimpleOutputVariant extends OutputVariant {
     public int totalCoverage;
     public int variantCoverage;
@@ -27,9 +29,6 @@ public class SimpleOutputVariant extends OutputVariant {
     public double hifreq;
     public double extrafreq;
 
-    public int shift3;
-    public double msi;
-    public int msint;
     public double nm;
     public int hicnt;
     public int hicov;
@@ -84,8 +83,7 @@ public class SimpleOutputVariant extends OutputVariant {
     }
 
     @Override
-    public String outputString(String delimiter) {
-        this.delimiter = delimiter;
+    public String toString() {
         // 36 columns
         String outputVariant = join(delimiter,
                 sample,

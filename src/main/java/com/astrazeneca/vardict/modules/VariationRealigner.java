@@ -13,11 +13,11 @@ import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.data.scopedata.VariationData;
 import com.astrazeneca.vardict.printers.VariantPrinter;
 import com.astrazeneca.vardict.variations.Cluster;
+import com.astrazeneca.vardict.variations.Mate;
 import com.astrazeneca.vardict.variations.Sclip;
 import com.astrazeneca.vardict.variations.Variation;
 import htsjdk.samtools.SAMRecord;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -38,6 +38,9 @@ import static java.lang.String.format;
 import static java.util.Collections.singletonMap;
 import static java.util.Comparator.comparing;
 
+/**
+ * The step of pipeline which try to realign variations: softclips, indels, long insertions.
+ */
 public class VariationRealigner implements Module<VariationData, RealignedVariationData>  {
     /**
      * The current processing segment (chr, start, end)
@@ -52,8 +55,8 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     private Map<Integer, Integer> refCoverage;
     private Map<Integer, Sclip> softClips5End;
     private Map<Integer, Sclip> softClips3End;
-    private Reference reference;
     private ReferenceResource referenceResource;
+    private Reference reference;
     private Region region;
     private Set<String> splice;
     private String chr;
@@ -65,6 +68,12 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     private SVStructures svStructures;
     private VariantPrinter variantPrinter;
 
+    /**
+     * Starts the filtering of prepared SV structures, adjusting counts of MNPs and realining of indels and softclips.
+     * @param scope variation data from the CigarParser that can be realigned. Contains maps of insertion
+     *              and non-insertion variations.
+     * @return realigned variations maps
+     */
     @Override
     public Scope<RealignedVariationData> process(Scope<VariationData> scope) {
 
@@ -75,7 +84,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
             filterAllSVStructures();
         }
 
-        SAMFileParser.adjustMNP(nonInsertionVariants, mnp, refCoverage, reference.referenceSequences, softClips3End, softClips5End, region);
+        adjustMNP();
 
         if (instance().conf.y) {
             System.err.println("TIME: Start realign: " + LocalDateTime.now());
@@ -131,7 +140,8 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     };
 
     /**
-     * Filter all structural variants structures
+     * Filter all possible structural variants structures.
+     * All SVs clusters will be checked for forward and reverse direction.
      */
     public void filterAllSVStructures() {
         filterSV(svStructures.svfinv3);
@@ -158,7 +168,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     }
 
     /**
-     * Filter SV  by checking created clusters
+     * Filter possible SVs by checking created clusters, Updates data of possible SV from cluster data.
      * @param svList_sva contains list of SVs to filter
      */
     void filterSV(List<Sclip> svList_sva) {
@@ -208,6 +218,175 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         }
     }
 
+    /**
+     * Check cluster for start and end of SV mates
+     * @param mates list of mates for current SV
+     * @param rlen read length
+     * @return Cluster with updated starts and ends
+     */
+    Cluster checkCluster(List<Mate> mates, int rlen) {
+        mates.sort(comparing(mate -> mate.mateStart_ms, Integer::compareTo));
+
+        List<Cluster> clusters = new ArrayList<>();
+        Mate firstMate = mates.get(0);
+        clusters.add(new Cluster(0, firstMate.mateStart_ms, firstMate.mateEnd_me, firstMate.start_s, firstMate.end_e));
+
+        int cur = 0;
+        for (Mate mate_m : mates) {
+            Cluster currentCluster = clusters.get(cur);
+            if (mate_m.mateStart_ms - currentCluster.mateEnd_me > Configuration.MINSVCDIST * rlen) {
+                cur++;
+                clusters.add(cur, new Cluster(0, mate_m.mateStart_ms, mate_m.mateEnd_me, mate_m.start_s, mate_m.end_e));
+                currentCluster = clusters.get(cur);
+            }
+
+            currentCluster.cnt++;
+            currentCluster.mateLength_mlen += mate_m.mateLength_mlen;
+
+            if (mate_m.mateEnd_me > currentCluster.mateEnd_me) {
+                currentCluster.mateEnd_me = mate_m.mateEnd_me;
+            }
+            if (mate_m.start_s < currentCluster.start_s) {
+                currentCluster.start_s = mate_m.start_s;
+            }
+            if (mate_m.end_e > currentCluster.end_e) {
+                currentCluster.end_e = mate_m.end_e;
+            }
+            currentCluster.pmean_rp += mate_m.pmean_rp;
+            currentCluster.qmean_q += mate_m.qmean_q;
+            currentCluster.Qmean_Q += mate_m.Qmean_Q;
+            currentCluster.nm += mate_m.nm;
+        }
+        clusters.sort(comparing((Cluster cluster) -> cluster.cnt).reversed());
+
+        if (instance().conf.y) {
+            System.err.print("Clusters; ");
+            clusters.forEach(cluster -> System.err.print(join("; ", cluster.cnt, cluster.start_s, cluster.end_e,
+                    cluster.mateStart_ms, cluster.mateEnd_me)));
+            System.err.println(join("; ", "; out of", mates.size()));
+        }
+        Cluster firstCluster = clusters.get(0);
+        return firstCluster.cnt / (double) mates.size() >= 0.60
+                ? new Cluster(firstCluster.mateStart_ms, firstCluster.mateEnd_me, firstCluster.cnt,
+                firstCluster.mateLength_mlen/firstCluster.cnt, firstCluster.start_s, firstCluster.end_e,
+                firstCluster.pmean_rp, firstCluster.qmean_q, firstCluster.Qmean_Q, firstCluster.nm)
+                : new Cluster(0,0,0,0,0,0,0,0.0,0,0);
+    }
+
+    /**
+     * Adjust MNP when there're breakpoints within MNP (multi-nucleotide polymorphism)
+     */
+    public void adjustMNP() {
+
+        for (Map.Entry<Integer, Map<String, Integer>> entry : mnp.entrySet()) {
+            int lastPosition = 0;
+
+            try {
+                final Integer position = entry.getKey();
+                lastPosition = position;
+                Map<String, Integer> v = entry.getValue();
+
+                for (Map.Entry<String, Integer> en : v.entrySet()) {
+                    final String vn = en.getKey();
+                    final Map<String, Variation> varsOnPosition = nonInsertionVariants.get(position);
+                    if (varsOnPosition == null) {
+                        continue;
+                    }
+                    final Variation vref = varsOnPosition.get(vn);
+                    if (vref == null) { // The variant is likely already been used by indel realignment
+                        continue;
+                    }
+                    if (instance().conf.y) {
+                        System.err.printf("  AdjMnt: %d %s %d\n", position, vn, vref.varsCount);
+                    }
+
+                    final String mnt = vn.replaceFirst("&", "");
+                    for (int i = 0; i < mnt.length() - 1; i++) {
+                        String left = substr(mnt, 0, i + 1);
+                        if (left.length() > 1) {
+                            StringBuilder sb = new StringBuilder(left);
+                            sb.insert(1, "&");
+                            left = sb.toString();
+                        }
+
+                        String right = substr(mnt, -(mnt.length() - i - 1));
+                        if (right.length() > 1) {
+                            StringBuilder sb = new StringBuilder(right);
+                            sb.insert(1, "&");
+                            right = sb.toString();
+                        }
+                        {
+                            Variation tref = varsOnPosition.get(left);
+                            if (tref != null) {
+                                if (tref.varsCount <= 0) {
+                                    continue;
+                                }
+                                if (tref.varsCount < vref.varsCount && tref.meanPosition / tref.varsCount <= i + 1) {
+                                    if (instance().conf.y) {
+                                        System.err.printf("    AdjMnt Left: %s %s Left: %s Cnt: %s\n", position, vn, left, tref.varsCount);
+                                    }
+                                    adjCnt(vref, tref);
+                                    varsOnPosition.remove(left);
+                                }
+                            }
+                        }
+                        if (nonInsertionVariants.containsKey(position + i + 1)) {
+                            Variation tref = nonInsertionVariants.get(position + i + 1).get(right);
+                            if (tref != null) {
+                                if (tref.varsCount < 0) {
+                                    continue;
+                                }
+                                // #&& tref.pmean / tref.cnt <= mnt.length() - i - 1)
+                                if (tref.varsCount < vref.varsCount) {
+                                    if (instance().conf.y) {
+                                        System.err.printf("    AdjMnt Right: %s %s Right: %s Cnt: %s\n", position, vn, right, tref.varsCount);
+                                    }
+                                    adjCnt(vref, tref);
+                                    incCnt(refCoverage, position, tref.varsCount);
+                                    nonInsertionVariants.get(position + i + 1).remove(right);
+                                }
+                            }
+                        }
+                    }
+                    if (softClips3End.containsKey(position)) {
+                        final Sclip sc3v = softClips3End.get(position);
+                        if (!sc3v.used) {
+                            final String seq = findconseq(sc3v, 0);
+                            if (seq.startsWith(mnt)) {
+                                if (seq.length() == mnt.length()
+                                        || ismatchref(seq.substring(mnt.length()), reference.referenceSequences, position + mnt.length(), 1)) {
+                                    adjCnt(nonInsertionVariants.get(position).get(vn), sc3v);
+                                    incCnt(refCoverage, position, sc3v.varsCount);
+                                    sc3v.used = true;
+                                }
+                            }
+                        }
+                    }
+                    if (softClips5End.containsKey(position + mnt.length())) {
+                        final Sclip sc5v = softClips5End.get(position + mnt.length());
+                        if (!sc5v.used) {
+                            String seq = findconseq(sc5v, 0);
+                            if (!seq.isEmpty() && seq.length() >= mnt.length()) {
+                                seq = new StringBuffer(seq).reverse().toString();
+                                if (seq.endsWith(mnt)) {
+                                    if (seq.length() == mnt.length()
+                                            || ismatchref(seq.substring(0, seq.length() - mnt.length()), reference.referenceSequences, position - 1, -1)) {
+                                        adjCnt(nonInsertionVariants.get(position).get(vn), sc5v);
+                                        incCnt(refCoverage, position, sc5v.varsCount);
+                                        sc5v.used = true;
+                                    }
+                                }
+                            }
+
+                        }
+                    }
+                }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "MNP", String.valueOf(lastPosition), region);
+            }
+        }
+    }
+
     public void realignIndels()  {
         if (instance().conf.y)
             System.err.println("Start Realigndel");
@@ -224,313 +403,6 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         if (instance().conf.y)
             System.err.println("Start Realignlgins");
         realignlgins(svStructures.svfdup, svStructures.svrdup);
-    }
-
-    /**
-     * Realign insertions
-     * @param positionToInsertionCount insertion variants count on positions
-     * @return insertion sequence
-     */
-    public String realignins(Map<Integer, Map<String, Integer>> positionToInsertionCount) {
-        Map<Integer, Character> ref = reference.referenceSequences;
-        List<Tuple.Tuple3<Integer, String, Integer>> tmp = fillTmp(positionToInsertionCount);
-        String NEWINS = "";
-        int lastPosition = 0;
-        for (Tuple.Tuple3<Integer, String, Integer> tpl : tmp) {
-            try {
-                Integer p = tpl._1;
-                lastPosition = p;
-                String vn = tpl._2;
-                Integer icnt = tpl._3;
-                if (instance().conf.y) {
-                    System.err.println(format("  Realign Ins: %s %s %s", p, vn, icnt));
-                }
-                String insert;
-                Matcher mtch = BEGIN_PLUS_ATGC.matcher(vn);
-                if (mtch.find()) {
-                    insert = mtch.group(1);
-                } else {
-                    continue;
-                }
-                String ins3 = "";
-                int inslen = insert.length();
-
-                mtch = DUP_NUM_ATGC.matcher(vn);
-                if (mtch.find()) {
-                    ins3 = mtch.group(2);
-                    inslen += toInt(mtch.group(1)) + ins3.length();
-                }
-                String extra = "";
-                mtch = AMP_ATGC.matcher(vn);
-                if (mtch.find()) {
-                    extra = mtch.group(1);
-                }
-                String compm = ""; // the match part for a complex variant
-                mtch = HASH_ATGC.matcher(vn);
-                if (mtch.find()) {
-                    compm = mtch.group(1);
-                }
-
-                // In perl it doesn't commented, but not used
-                String newins = ""; // the adjacent insertion
-                mtch = CARET_ATGC_END.matcher(vn);
-                if (mtch.find()) {
-                    newins = mtch.group(1);
-                }
-
-                int newdel = 0; // the adjacent deletion
-                mtch = UP_NUMBER_END.matcher(vn);
-                if (mtch.find()) {
-                    newdel = toInt(mtch.group(1));
-                }
-                String tn = vn.replaceFirst("^\\+", "")
-                        .replaceFirst("&", "")
-                        .replaceFirst("#", "")
-                        .replaceFirst("\\^\\d+$", "")
-                        .replaceFirst("\\^", "");
-
-                int wustart = p - 150 > 1 ? (p - 150) : 1;
-                String wupseq = joinRef(ref, wustart, p) + tn; // 5prime flanking seq
-            /*
-            5' flanking region is a region of DNA that is adjacent to the 5' end of the gene.
-            The 5' flanking region contains the promoter, and may contain enhancers or other protein binding sites.
-            It is the region of DNA that is not transcribed into RNA.
-             */
-                Integer tend = instance().chrLengths.get(chr);
-                int sanend = p + vn.length() + 100;
-                if (tend != null && tend < sanend) {
-                    sanend = tend;
-                }
-                // 3prime flanking seq
-                String sanpseq = "";
-            /*
-            3' flanking region is a region of DNA which is NOT copied into the mature mRNA, but which is present adjacent
-            to 3' end of the gene. It was originally thought that the 3' flanking DNA was not transcribed at all,
-            but it was discovered to be transcribed into RNA, but quickly removed during processing of the primary
-            transcript to form the mature mRNA. The 3' flanking region often contains sequences which affect the
-            formation of the 3' end of the message. It may also contain enhancers or other sites to which proteins may bind.
-             */
-                MismatchResult findMM3;
-
-                if (!ins3.isEmpty()) {
-                    int p3 = p + inslen - ins3.length() + Configuration.SVFLANK;
-                    if (ins3.length() > Configuration.SVFLANK) {
-                        sanpseq = substr(ins3, Configuration.SVFLANK - ins3.length());
-                    }
-                    sanpseq += joinRef(ref, p + 1, p + 101);
-                    findMM3 = findMM3(ref, p3 + 1, sanpseq);
-                } else {
-                    sanpseq = tn + joinRef(ref, p + extra.length() + 1 + compm.length() + newdel, sanend);
-                    findMM3 = findMM3(ref, p + 1, sanpseq);
-                }
-
-                // mismatches, mismatch positions, 5 or 3 ends
-                MismatchResult findMM5 = findMM5(ref, p + extra.length() + compm.length() + newdel, wupseq);
-
-                List<Tuple.Tuple3<String, Integer, Integer>> mm3 = findMM3.getMm();
-                List<Integer> sc3p = findMM3.getScp();
-                int nm3 = findMM3.getNm();
-                int misp3 = findMM3.getMisp();
-                String misnt3 = findMM3.getMisnt();
-
-                List<Tuple.Tuple3<String, Integer, Integer>> mm5 = findMM5.getMm();
-                List<Integer> sc5p = findMM5.getScp();
-                int nm5 = findMM5.getNm();
-                int misp5 = findMM5.getMisp();
-                String misnt5 = findMM5.getMisnt();
-
-                List<Tuple.Tuple3<String, Integer, Integer>> mmm = new ArrayList<>(mm3);
-                mmm.addAll(mm5);
-                Variation vref = getVariation(insertionVariants, p, vn);
-                for (Tuple.Tuple3<String, Integer, Integer> tuple3 : mmm) {
-                    //mismatch nucleotide
-                    String mm = tuple3._1;
-                    //start position of clip that contains mm
-                    Integer mp = tuple3._2;
-                    //end (3 or 5)
-                    Integer me = tuple3._3;
-
-                    if (mm.length() > 1) {
-                        mm = mm.charAt(0) + "&" + mm.substring(1);
-                    }
-                    if (!nonInsertionVariants.containsKey(mp)) {
-                        continue;
-                    }
-
-                    Variation tv = nonInsertionVariants.get(mp).get(mm);
-                    if (tv == null) {
-                        continue;
-                    }
-                    if (tv.varsCount == 0) {
-                        continue;
-                    }
-                    if (tv.meanQuality / tv.varsCount < instance().conf.goodq) {
-                        continue;
-                    }
-                    if (tv.meanPosition / tv.varsCount > (me == 3 ? nm3 + 4 : nm5 + 4)) { // opt_k;
-                        continue;
-                    }
-                    if (tv.varsCount >= icnt + insert.length() || tv.varsCount / icnt >= 8) {
-                        continue;
-                    }
-                    if (instance().conf.y) {
-                        System.err.printf("    insMM: %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-                                mm, mp, me, nm3, nm5, vn, icnt, tv.varsCount, tv.meanQuality, tv.meanPosition, refCoverage.get(p));
-                    }
-                    // Adjust ref cnt so that AF won't > 1
-                    if (mp > p && me == 5) {
-                        incCnt(refCoverage, p, tv.varsCount);
-                    }
-
-                    Variation lref = null;
-                    if (mp > p && me == 3 &&
-                            nonInsertionVariants.containsKey(p) &&
-                            ref.containsKey(p) &&
-                            nonInsertionVariants.get(p).containsKey(ref.get(p).toString())) {
-
-                        lref = nonInsertionVariants.get(p).get(ref.get(p).toString());
-                    }
-                    adjCnt(vref, tv, lref);
-                    nonInsertionVariants.get(mp).remove(mm);
-                    if (nonInsertionVariants.get(mp).isEmpty()) {
-                        nonInsertionVariants.remove(mp);
-                    }
-                }
-                if (misp3 != 0 && mm3.size() == 1 && nonInsertionVariants.containsKey(misp3)
-                        && nonInsertionVariants.get(misp3).containsKey(misnt3)
-                        && nonInsertionVariants.get(misp3).get(misnt3).varsCount < icnt) {
-                    nonInsertionVariants.get(misp3).remove(misnt3);
-                }
-                if (misp5 != 0 && mm5.size() == 1 && nonInsertionVariants.containsKey(misp5)
-                        && nonInsertionVariants.get(misp5).containsKey(misnt5)
-                        && nonInsertionVariants.get(misp5).get(misnt5).varsCount < icnt) {
-                    nonInsertionVariants.get(misp5).remove(misnt5);
-                }
-                for (Integer sc5pp : sc5p) {
-                    Sclip tv = softClips5End.get(sc5pp);
-                    if (instance().conf.y) {
-                        System.err.printf("    55: %s %s VN: '%s'  5' seq: ^%s^\n", p, sc5pp, vn, wupseq);
-                    }
-                    if (tv != null && !tv.used) {
-                        String seq = findconseq(tv, 0);
-                        if (instance().conf.y) {
-                            System.err.printf("    ins5: %s %s %s %s VN: %s iCnt: %s vCnt: %s\n", p, sc5pp, seq, wupseq, vn, icnt, tv.varsCount);
-                        }
-                        if (!seq.isEmpty() && ismatch(seq, wupseq, -1)) {
-                            if (instance().conf.y) {
-                                System.err.printf("      ins5: %s %s %s %s VN: %s iCnt: %s cCnt: %s used\n", p, sc5pp, seq, wupseq, vn, icnt, tv.varsCount);
-                            }
-                            if (sc5pp > p) {
-                                incCnt(refCoverage, p, tv.varsCount);
-                            }
-                            adjCnt(vref, tv);
-                            tv.used = true;
-
-                            //To find a case and implement later
-                            if (insert.length() + 1 == vn.length() && sc5pp <= p) {
-                                // Not commented in perl, created for special case
-                                // System.err.printf(" %s %s\n", sc5pp, p);
-                            }
-                        }
-                    }
-                }
-                for (Integer sc3pp : sc3p) {
-                    Sclip tv = softClips3End.get(sc3pp);
-                    if (instance().conf.y) {
-                        System.err.printf("    33: %s %s VN: '%s'  3' seq: ^%s^\n", p, sc3pp, vn, sanpseq);
-                    }
-                    if (tv != null && !tv.used) {
-                        String seq = findconseq(tv, 0);
-                        if (instance().conf.y) {
-                            System.err.printf("    ins3: %s %s %s %s VN: %s iCnt: %s vCnt: %s\n", p, sc3pp, seq, sanpseq, vn, icnt, tv.varsCount);
-                        }
-                        String mseq = !ins3.isEmpty() ? sanpseq : substr(sanpseq, sc3pp - p - 1);
-                        if (!seq.isEmpty() && ismatch(seq, mseq, 1)) {
-                            if (instance().conf.y) {
-                                System.err.printf("      ins3: %s %s %s VN: %s iCnt: %s vCnt: %s used\n", p, sc3pp, seq, vn, icnt, tv.varsCount);
-                            }
-                            if (sc3pp <= p || insert.length() > tv.meanPosition / tv.varsCount) {
-                                incCnt(refCoverage, p, tv.varsCount);
-                            }
-                            Variation lref = null;
-                            if (sc3pp > p &&
-                                    nonInsertionVariants.containsKey(p) &&
-                                    ref.containsKey(p) &&
-                                    nonInsertionVariants.get(p).containsKey(ref.get(p).toString())) {
-
-                                lref = nonInsertionVariants.get(p).get(ref.get(p).toString());
-                            }
-                            if (insert.length() > tv.meanPosition / tv.varsCount) {
-                                lref = null;
-                            }
-                            adjCnt(vref, tv, lref);
-                            tv.used = true;
-                            if (insert.length() + 1 == vn.length() && insert.length() > maxReadLength
-                                    && sc3pp >= p + 1 + insert.length()) {
-                                int flag = 0;
-                                int offset = (sc3pp - p - 1) % insert.length();
-                                String tvn = vn;
-                                for (int seqi = 0; seqi < seq.length() && seqi + offset < insert.length(); seqi++) {
-                                    if (!substr(seq, seqi, 1).equals(substr(insert, seqi + offset, 1))) {
-                                        flag++;
-                                        tvn = tvn.replace(substr(tvn, seqi + offset + 1, 1), substr(seq, seqi, 1));
-                                    }
-                                }
-                                if (flag > 0) {
-                                    Variation variation = insertionVariants.get(p).get(vn);
-                                    insertionVariants.get(p).put(tvn, variation);
-                                    insertionVariants.get(p).remove(vn);
-                                    NEWINS = tvn;
-                                }
-                            }
-                        }
-                    }
-                }
-                int first3 = sc3p.get(0);
-                int first5 = sc5p.get(0);
-                if (!sc3p.isEmpty() && !sc5p.isEmpty()
-                        && first3 > first5 + 3
-                        && first3 - first5 < maxReadLength * 0.75) {
-                    if (ref.containsKey(p) && nonInsertionVariants.containsKey(p)
-                            && nonInsertionVariants.get(p).containsKey(ref.get(p).toString())) {
-                        adjRefFactor(nonInsertionVariants.get(p).get(ref.get(p).toString()), (first3 - first5 - 1) / (double) maxReadLength);
-                    }
-                    adjRefFactor(vref, -(first3 - first5 - 1) / (double) maxReadLength);
-                }
-            } catch (Exception exception) {
-                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
-            }
-        }
-
-        for (int i = tmp.size() - 1; i > 0; i--) {
-            try {
-                Tuple.Tuple3<Integer, String, Integer> tpl = tmp.get(i);
-                Integer p = tpl._1;
-                lastPosition = p;
-                String vn = tpl._2;
-                if (!insertionVariants.containsKey(p)) {
-                    continue;
-                }
-                Variation vref = insertionVariants.get(p).get(vn);
-                if (vref == null) {
-                    continue;
-                }
-                Matcher mtch = ATGSs_AMP_ATGSs_END.matcher(vn);
-                if (mtch.find()) {
-                    String tn = mtch.group(1);
-                    Variation tref = insertionVariants.get(p).get(tn);
-                    if (tref != null) {
-                        if (vref.varsCount < tref.varsCount) {
-                            adjCnt(tref, vref, getVariationMaybe(nonInsertionVariants, p, ref.get(p)));
-                            insertionVariants.get(p).remove(vn);
-                        }
-                    }
-                }
-            } catch (Exception exception) {
-                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
-            }
-        }
-        return NEWINS;
     }
 
     /**
@@ -787,6 +659,314 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     }
 
     /**
+     * Realign insertions
+     * @param positionToInsertionCount insertion variants count on positions
+     * @return insertion sequence
+     */
+    public String realignins(Map<Integer, Map<String, Integer>> positionToInsertionCount) {
+        Map<Integer, Character> ref = reference.referenceSequences;
+        List<Tuple.Tuple3<Integer, String, Integer>> tmp = fillTmp(positionToInsertionCount);
+        String NEWINS = "";
+        int lastPosition = 0;
+        for (Tuple.Tuple3<Integer, String, Integer> tpl : tmp) {
+            try {
+                Integer p = tpl._1;
+                lastPosition = p;
+                String vn = tpl._2;
+                Integer icnt = tpl._3;
+                if (instance().conf.y) {
+                    System.err.println(format("  Realign Ins: %s %s %s", p, vn, icnt));
+                }
+                String insert;
+                Matcher mtch = BEGIN_PLUS_ATGC.matcher(vn);
+                if (mtch.find()) {
+                    insert = mtch.group(1);
+                } else {
+                    continue;
+                }
+                String ins3 = "";
+                int inslen = insert.length();
+
+                mtch = DUP_NUM_ATGC.matcher(vn);
+                if (mtch.find()) {
+                    ins3 = mtch.group(2);
+                    inslen += toInt(mtch.group(1)) + ins3.length();
+                }
+                String extra = "";
+                mtch = AMP_ATGC.matcher(vn);
+                if (mtch.find()) {
+                    extra = mtch.group(1);
+                }
+                String compm = ""; // the match part for a complex variant
+                mtch = HASH_ATGC.matcher(vn);
+                if (mtch.find()) {
+                    compm = mtch.group(1);
+                }
+
+                // In perl it doesn't commented, but not used
+                String newins = ""; // the adjacent insertion
+                mtch = CARET_ATGC_END.matcher(vn);
+                if (mtch.find()) {
+                    newins = mtch.group(1);
+                }
+
+                int newdel = 0; // the adjacent deletion
+                mtch = UP_NUMBER_END.matcher(vn);
+                if (mtch.find()) {
+                    newdel = toInt(mtch.group(1));
+                }
+                String tn = vn.replaceFirst("^\\+", "")
+                        .replaceFirst("&", "")
+                        .replaceFirst("#", "")
+                        .replaceFirst("\\^\\d+$", "")
+                        .replaceFirst("\\^", "");
+
+                int wustart = p - 150 > 1 ? (p - 150) : 1;
+                String wupseq = joinRef(ref, wustart, p) + tn; // 5prime flanking seq
+            /*
+            5' flanking region is a region of DNA that is adjacent to the 5' end of the gene.
+            The 5' flanking region contains the promoter, and may contain enhancers or other protein binding sites.
+            It is the region of DNA that is not transcribed into RNA.
+             */
+                Integer tend = instance().chrLengths.get(chr);
+                int sanend = p + vn.length() + 100;
+                if (tend != null && tend < sanend) {
+                    sanend = tend;
+                }
+                // 3prime flanking seq
+                String sanpseq = "";
+            /*
+            3' flanking region is a region of DNA which is NOT copied into the mature mRNA, but which is present adjacent
+            to 3' end of the gene. It was originally thought that the 3' flanking DNA was not transcribed at all,
+            but it was discovered to be transcribed into RNA, but quickly removed during processing of the primary
+            transcript to form the mature mRNA. The 3' flanking region often contains sequences which affect the
+            formation of the 3' end of the message. It may also contain enhancers or other sites to which proteins may bind.
+             */
+                MismatchResult findMM3;
+
+                if (!ins3.isEmpty()) {
+                    int p3 = p + inslen - ins3.length() + Configuration.SVFLANK;
+                    if (ins3.length() > Configuration.SVFLANK) {
+                        sanpseq = substr(ins3, Configuration.SVFLANK - ins3.length());
+                    }
+                    sanpseq += joinRef(ref, p + 1, p + 101);
+                    findMM3 = findMM3(ref, p3 + 1, sanpseq);
+                } else {
+                    sanpseq = tn + joinRef(ref, p + extra.length() + 1 + compm.length() + newdel, sanend);
+                    findMM3 = findMM3(ref, p + 1, sanpseq);
+                }
+
+                // mismatches, mismatch positions, 5 or 3 ends
+                MismatchResult findMM5 = findMM5(ref, p + extra.length() + compm.length() + newdel, wupseq);
+
+                List<Tuple.Tuple3<String, Integer, Integer>> mm3 = findMM3.getMm();
+                List<Integer> sc3p = findMM3.getScp();
+                int nm3 = findMM3.getNm();
+                int misp3 = findMM3.getMisp();
+                String misnt3 = findMM3.getMisnt();
+
+                List<Tuple.Tuple3<String, Integer, Integer>> mm5 = findMM5.getMm();
+                List<Integer> sc5p = findMM5.getScp();
+                int nm5 = findMM5.getNm();
+                int misp5 = findMM5.getMisp();
+                String misnt5 = findMM5.getMisnt();
+
+                List<Tuple.Tuple3<String, Integer, Integer>> mmm = new ArrayList<>(mm3);
+                mmm.addAll(mm5);
+                Variation vref = getVariation(insertionVariants, p, vn);
+                for (Tuple.Tuple3<String, Integer, Integer> tuple3 : mmm) {
+                    // $mm mismatch nucleotide
+                    String mismatchBases = tuple3._1;
+                    // $mp start position of clip that contains mm
+                    Integer mismatchPosition = tuple3._2;
+                    // $me end (3 or 5)
+                    Integer mismatchEnd = tuple3._3;
+
+                    if (mismatchBases.length() > 1) {
+                        mismatchBases = mismatchBases.charAt(0) + "&" + mismatchBases.substring(1);
+                    }
+                    if (!nonInsertionVariants.containsKey(mismatchPosition)) {
+                        continue;
+                    }
+
+                    Variation variation = nonInsertionVariants.get(mismatchPosition).get(mismatchBases);
+                    if (variation == null) {
+                        continue;
+                    }
+                    if (variation.varsCount == 0) {
+                        continue;
+                    }
+                    if (variation.meanQuality / variation.varsCount < instance().conf.goodq) {
+                        continue;
+                    }
+                    if (variation.meanPosition / variation.varsCount > (mismatchEnd == 3 ? nm3 + 4 : nm5 + 4)) { // opt_k;
+                        continue;
+                    }
+                    if (variation.varsCount >= icnt + insert.length() || variation.varsCount / icnt >= 8) {
+                        continue;
+                    }
+                    if (instance().conf.y) {
+                        System.err.printf("    insMM: %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+                                mismatchBases, mismatchPosition, mismatchEnd, nm3, nm5, vn, icnt, variation.varsCount, variation.meanQuality, variation.meanPosition, refCoverage.get(p));
+                    }
+                    // Adjust ref cnt so that AF won't > 1
+                    if (mismatchPosition > p && mismatchEnd == 5) {
+                        incCnt(refCoverage, p, variation.varsCount);
+                    }
+
+                    Variation lref = null;
+                    if (mismatchPosition > p && mismatchEnd == 3 &&
+                            nonInsertionVariants.containsKey(p) &&
+                            ref.containsKey(p) &&
+                            nonInsertionVariants.get(p).containsKey(ref.get(p).toString())) {
+
+                        lref = nonInsertionVariants.get(p).get(ref.get(p).toString());
+                    }
+                    adjCnt(vref, variation, lref);
+                    nonInsertionVariants.get(mismatchPosition).remove(mismatchBases);
+                    if (nonInsertionVariants.get(mismatchPosition).isEmpty()) {
+                        nonInsertionVariants.remove(mismatchPosition);
+                    }
+                }
+                if (misp3 != 0 && mm3.size() == 1 && nonInsertionVariants.containsKey(misp3)
+                        && nonInsertionVariants.get(misp3).containsKey(misnt3)
+                        && nonInsertionVariants.get(misp3).get(misnt3).varsCount < icnt) {
+                    nonInsertionVariants.get(misp3).remove(misnt3);
+                }
+                if (misp5 != 0 && mm5.size() == 1 && nonInsertionVariants.containsKey(misp5)
+                        && nonInsertionVariants.get(misp5).containsKey(misnt5)
+                        && nonInsertionVariants.get(misp5).get(misnt5).varsCount < icnt) {
+                    nonInsertionVariants.get(misp5).remove(misnt5);
+                }
+                for (Integer sc5pp : sc5p) {
+                    Sclip tv = softClips5End.get(sc5pp);
+                    if (instance().conf.y) {
+                        System.err.printf("    55: %s %s VN: '%s'  5' seq: ^%s^\n", p, sc5pp, vn, wupseq);
+                    }
+                    if (tv != null && !tv.used) {
+                        String seq = findconseq(tv, 0);
+                        if (instance().conf.y) {
+                            System.err.printf("    ins5: %s %s %s %s VN: %s iCnt: %s vCnt: %s\n", p, sc5pp, seq, wupseq, vn, icnt, tv.varsCount);
+                        }
+                        if (!seq.isEmpty() && ismatch(seq, wupseq, -1)) {
+                            if (instance().conf.y) {
+                                System.err.printf("      ins5: %s %s %s %s VN: %s iCnt: %s cCnt: %s used\n", p, sc5pp, seq, wupseq, vn, icnt, tv.varsCount);
+                            }
+                            if (sc5pp > p) {
+                                incCnt(refCoverage, p, tv.varsCount);
+                            }
+                            adjCnt(vref, tv);
+                            tv.used = true;
+
+                            //To find a case and implement later
+                            if (insert.length() + 1 == vn.length() && sc5pp <= p) {
+                                // Not commented in perl, created for special case
+                                // System.err.printf(" %s %s\n", sc5pp, p);
+                            }
+                        }
+                    }
+                }
+                for (Integer sc3pp : sc3p) {
+                    Sclip tv = softClips3End.get(sc3pp);
+                    if (instance().conf.y) {
+                        System.err.printf("    33: %s %s VN: '%s'  3' seq: ^%s^\n", p, sc3pp, vn, sanpseq);
+                    }
+                    if (tv != null && !tv.used) {
+                        String seq = findconseq(tv, 0);
+                        if (instance().conf.y) {
+                            System.err.printf("    ins3: %s %s %s %s VN: %s iCnt: %s vCnt: %s\n", p, sc3pp, seq, sanpseq, vn, icnt, tv.varsCount);
+                        }
+                        String mseq = !ins3.isEmpty() ? sanpseq : substr(sanpseq, sc3pp - p - 1);
+                        if (!seq.isEmpty() && ismatch(seq, mseq, 1)) {
+                            if (instance().conf.y) {
+                                System.err.printf("      ins3: %s %s %s VN: %s iCnt: %s vCnt: %s used\n", p, sc3pp, seq, vn, icnt, tv.varsCount);
+                            }
+                            if (sc3pp <= p || insert.length() > tv.meanPosition / tv.varsCount) {
+                                incCnt(refCoverage, p, tv.varsCount);
+                            }
+                            Variation lref = null;
+                            if (sc3pp > p &&
+                                    nonInsertionVariants.containsKey(p) &&
+                                    ref.containsKey(p) &&
+                                    nonInsertionVariants.get(p).containsKey(ref.get(p).toString())) {
+
+                                lref = nonInsertionVariants.get(p).get(ref.get(p).toString());
+                            }
+                            if (insert.length() > tv.meanPosition / tv.varsCount) {
+                                lref = null;
+                            }
+                            adjCnt(vref, tv, lref);
+                            tv.used = true;
+                            if (insert.length() + 1 == vn.length() && insert.length() > maxReadLength
+                                    && sc3pp >= p + 1 + insert.length()) {
+                                int flag = 0;
+                                int offset = (sc3pp - p - 1) % insert.length();
+                                String tvn = vn;
+                                for (int seqi = 0; seqi < seq.length() && seqi + offset < insert.length(); seqi++) {
+                                    if (!substr(seq, seqi, 1).equals(substr(insert, seqi + offset, 1))) {
+                                        flag++;
+                                        tvn = tvn.replace(substr(tvn, seqi + offset + 1, 1), substr(seq, seqi, 1));
+                                    }
+                                }
+                                if (flag > 0) {
+                                    Variation variation = insertionVariants.get(p).get(vn);
+                                    insertionVariants.get(p).put(tvn, variation);
+                                    insertionVariants.get(p).remove(vn);
+                                    NEWINS = tvn;
+                                }
+                            }
+                        }
+                    }
+                }
+                int first3 = sc3p.get(0);
+                int first5 = sc5p.get(0);
+                if (!sc3p.isEmpty() && !sc5p.isEmpty()
+                        && first3 > first5 + 3
+                        && first3 - first5 < maxReadLength * 0.75) {
+                    if (ref.containsKey(p) && nonInsertionVariants.containsKey(p)
+                            && nonInsertionVariants.get(p).containsKey(ref.get(p).toString())) {
+                        adjRefFactor(nonInsertionVariants.get(p).get(ref.get(p).toString()), (first3 - first5 - 1) / (double) maxReadLength);
+                    }
+                    adjRefFactor(vref, -(first3 - first5 - 1) / (double) maxReadLength);
+                }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
+            }
+        }
+
+        for (int i = tmp.size() - 1; i > 0; i--) {
+            try {
+                Tuple.Tuple3<Integer, String, Integer> tpl = tmp.get(i);
+                Integer p = tpl._1;
+                lastPosition = p;
+                String vn = tpl._2;
+                if (!insertionVariants.containsKey(p)) {
+                    continue;
+                }
+                Variation vref = insertionVariants.get(p).get(vn);
+                if (vref == null) {
+                    continue;
+                }
+                Matcher mtch = ATGSs_AMP_ATGSs_END.matcher(vn);
+                if (mtch.find()) {
+                    String tn = mtch.group(1);
+                    Variation tref = insertionVariants.get(p).get(tn);
+                    if (tref != null) {
+                        if (vref.varsCount < tref.varsCount) {
+                            adjCnt(tref, vref, getVariationMaybe(nonInsertionVariants, p, ref.get(p)));
+                            insertionVariants.get(p).remove(vn);
+                        }
+                    }
+                }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
+            }
+        }
+        return NEWINS;
+    }
+
+
+    /**
      * Realign large deletions that are not present in alignment
      * @param svfdel list of DEL SVs in forward strand
      * @param svrdel list of DEL SVs in reverse strand
@@ -879,8 +1059,9 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         if (!isLoaded(chr, tts, tte, reference)) {
                             referenceResource.getReference(modifiedRegion, maxReadLength, reference);
                         }
-                        partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
-                                bam, modifiedRegion, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
+                        Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
+                                variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
+                        partialPipeline(currentScope, new DirectThreadExecutor());
                     }
                 }
                 int dellen = p - bp;
@@ -1090,8 +1271,9 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         if (!isLoaded(chr, tts, tte, reference)) {
                             referenceResource.getReference(modifiedRegion, maxReadLength, reference);
                         }
-                        partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
-                                bam, modifiedRegion, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
+                        Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
+                                variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
+                        partialPipeline(currentScope, new DirectThreadExecutor());
                     }
                 }
 
@@ -1185,353 +1367,9 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     }
 
     /**
-     * Realign large insertions that are not present in alignment
-     * @param svfdup list of DUP SVs in forward strand
-     * @param svrdup list of DUP SVs in reverse strand
-     */
-    public void realignlgins(List<Sclip> svfdup,
-                             List<Sclip> svrdup)  {
-        Map<Integer, Character> ref = reference.referenceSequences;
-
-        List<Tuple.Tuple2<Integer, Sclip>> tmp = new ArrayList<>();
-        for (Map.Entry<Integer, Sclip> ent5 : softClips5End.entrySet()) {
-            int p = ent5.getKey();
-            if (p < region.start - Configuration.EXTENSION
-                    || p > region.end + Configuration.EXTENSION) {
-                continue;
-            }
-            tmp.add(tuple(ent5.getKey(), ent5.getValue()));
-        }
-        //sort by descending cnt
-        Collections.sort(tmp, COMP2);
-        int lastPosition = 0;
-        for (Tuple.Tuple2<Integer, Sclip> t : tmp) {
-            try {
-                int p = t._1;
-                lastPosition = p;
-                Sclip sc5v = t._2;
-                int cnt = t._2.varsCount;
-                if (cnt < instance().conf.minr) {
-                    break;
-                }
-                //already been used in
-                if (sc5v.used) {
-                    continue;
-                }
-                String seq = findconseq(sc5v, 0);
-                if (seq.isEmpty()) {
-                    continue;
-                }
-                if (instance().conf.y) {
-                    System.err.println("  Working lgins: 5: " + p + " " + seq + " cnt: " + cnt);
-                }
-                if (seq.length() < 12) {
-                    continue;
-                }
-
-                Tuple.Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, -1, chr);
-                int bi = tpl._1;
-                String ins = tpl._2;
-                String EXTRA = "";
-
-                if (bi == 0) {
-                    //#next if ($SOFTP2SV{ $p } && $SOFTP2SV{ $p }->[0]->{ used });
-                    if (islowcomplexseq(seq)) {
-                        continue;
-                    }
-                    Tuple.Tuple2<Integer, String> tp = findMatch(seq, reference, p, -1, Configuration.SEED_1, 1);
-                    bi = tp._1;
-                    EXTRA = tp._2;
-                    if (!(bi != 0 && bi - p > 15 && bi - p < Configuration.SVMAXLEN)) {
-                        continue;
-                    }
-
-                    // For large insertions
-                    if (bi > region.end) {
-                        //my ($tts, $tte) = ($bi - $RLEN <= $END ? $END + 1 : $bi - $RLEN, $bi + $RLEN);
-                        int tts = bi - maxReadLength;
-                        int tte = bi + maxReadLength;
-                        if (bi - maxReadLength <= region.end) {
-                            tts = region.end + 1;
-                        }
-                        Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
-                        if (!isLoaded(chr, tts, tte, reference)) {
-                            referenceResource.getReference(modifiedRegion, maxReadLength, reference);
-                        }
-                        partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
-                                bam, modifiedRegion, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
-                    }
-                    if (bi - p > instance().conf.SVMINLEN + 2 * Configuration.SVFLANK) {
-                        ins = joinRef(ref, p, p + Configuration.SVFLANK - 1);
-                        ins += "<dup" + (bi - p - 2 * Configuration.SVFLANK + 1) + ">";
-                        ins += joinRefFor5Lgins(ref, bi - Configuration.SVFLANK + 1, bi, seq, EXTRA);
-                    } else {
-                        ins = joinRefFor5Lgins(ref, p, bi, seq, EXTRA);
-                    }
-                    ins += EXTRA;
-
-                    Tuple.Tuple2<Integer, Integer> tp2 = markDUPSV(p, bi, Arrays.asList(svfdup, svrdup), maxReadLength);
-                    int clusters = tp2._1;
-                    int pairs = tp2._2;
-                    if (!refCoverage.containsKey(p - 1) || (refCoverage.containsKey(bi) && refCoverage.containsKey(p - 1)
-                            && refCoverage.get(p - 1) < refCoverage.get(bi))) {
-                        if (refCoverage.containsKey(bi)) {
-                            refCoverage.put(p - 1, refCoverage.get(bi));
-                        } else {
-                            refCoverage.put(p - 1, sc5v.varsCount);
-                        }
-                    } else {
-                        if (sc5v.varsCount > refCoverage.get(p - 1)) {
-                            incCnt(refCoverage, p - 1, sc5v.varsCount);
-                        }
-                    }
-
-                    bi = p - 1;
-                    VariationMap.SV sv = getSV(nonInsertionVariants, bi);
-                    sv.type = "DUP";
-                    sv.pairs += pairs;
-                    sv.splits += cnt;
-                    sv.clusters += clusters;
-                }
-
-                if (instance().conf.y) {
-                    System.err.printf("  Found candidate lgins from 5: %s +%s %s %s\n", bi, ins, p, seq);
-                }
-                final Variation iref = getVariation(insertionVariants, bi, "+" + ins);
-                iref.pstd = true;
-                iref.qstd = true;
-                adjCnt(iref, sc5v);
-                boolean rpflag = true; // A flag to indicate whether an insertion is a repeat
-                for (int i = 0; i < ins.length(); i++) {
-                    if (!isEquals(ref.get(bi + 1 + i), ins.charAt(i))) {
-                        rpflag = false;
-                        break;
-                    }
-                }
-
-                if (nonInsertionVariants.containsKey(bi) && nonInsertionVariants.get(bi).sv == null) {
-                    incCnt(refCoverage, bi, sc5v.varsCount);
-                }
-                int len = ins.length();
-                if (ins.indexOf('&') != -1) {
-                    len--;
-                }
-                int seqLen = sc5v.seq.lastKey() + 1;
-                for (int ii = len + 1; ii < seqLen; ii++) {
-                    int pii = bi - ii + len;
-                    if (!sc5v.seq.containsKey(ii)) {
-                        continue;
-                    }
-                    for (Map.Entry<Character, Variation> ent : sc5v.seq.get(ii).entrySet()) {
-                        Character tnt = ent.getKey();
-                        Variation tv = ent.getValue();
-                        Variation tvr = getVariation(nonInsertionVariants, pii, tnt.toString());
-                        adjCnt(tvr, tv);
-                        tvr.pstd = true;
-                        tvr.qstd = true;
-                        incCnt(refCoverage, pii, tv.varsCount);
-                    }
-                }
-                sc5v.used = bi + len != 0;
-
-                Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.varsCount));
-                String newins = realignins(tins);
-                if (newins.isEmpty()) {
-                    newins = "+" + ins;
-                }
-                Variation mref = getVariationMaybe(nonInsertionVariants, bi, ref.get(bi));
-                Variation kref = getVariation(insertionVariants, bi, newins);
-
-                if (nonInsertionVariants.containsKey(bi) && nonInsertionVariants.get(bi).sv != null) {
-                    nonInsertionVariants.get(bi).sv.splits += kref.varsCount - tins.get(bi).get("+" + ins);
-                }
-                if (rpflag && bams.length > 0 && ins.length() >= 5
-                        && ins.length() < maxReadLength - 10
-                        && mref != null && mref.varsCount != 0
-                        && noPassingReads(chr, bi, bi + ins.length(), bams)
-                        && kref.varsCount > 2 * mref.varsCount) {
-                    adjCnt(kref, mref, mref);
-                }
-            } catch (Exception exception) {
-                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
-            }
-        }
-
-        tmp = new ArrayList<>();
-        for (Map.Entry<Integer, Sclip> ent3 : softClips3End.entrySet()) {
-            int p = ent3.getKey();
-            if (p < region.start - Configuration.EXTENSION
-                    || p > region.end + Configuration.EXTENSION) {
-                continue;
-            }
-            tmp.add(tuple(ent3.getKey(), ent3.getValue()));
-        }
-        Collections.sort(tmp, COMP2);
-
-        for (Tuple.Tuple2<Integer, Sclip> t : tmp) {
-            try {
-                int p = t._1;
-                lastPosition = p;
-                final Sclip sc3v = t._2;
-                final int cnt = t._2.varsCount;
-                if (cnt < instance().conf.minr) {
-                    break;
-                }
-                if (sc3v.used) {
-                    continue;
-                }
-                String seq = findconseq(sc3v, 0);
-                if (seq.isEmpty()) {
-                    continue;
-                }
-                if (instance().conf.y) {
-                    System.err.println("  Working lgins 3: " + p + " " + seq + " cnt: " + cnt);
-                }
-                if (seq.length() < 12) {
-                    continue;
-                }
-
-                Tuple.Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, 1, chr);
-                int bi = tpl._1;
-                String ins = tpl._2;
-                String EXTRA = "";
-
-                if (bi == 0) {
-                    // #next if ($SOFTP2SV{ $p } && $SOFTP2SV{ $p }->[0]->{ used });
-                    if (islowcomplexseq(seq)) {
-                        continue;
-                    }
-                    Tuple.Tuple2<Integer, String> tp = findMatch(seq, reference, p, 1, Configuration.SEED_1, 1);
-                    bi = tp._1;
-                    EXTRA = tp._2;
-                    if (!(bi != 0 && p - bi > 15 && p - bi < Configuration.SVMAXLEN)) {
-                        continue;
-                    }
-
-                    // For large insertions
-                    if (bi < region.start) {
-                        //my ($tts, $tte) = ($bi - $RLEN, $bi + $RLEN >= $START ? $START - 1 : $bi + $RLEN);
-                        //getREF($chr, $tts, $tte, $REF, $RLEN) unless( isLoaded( $chr, $tts, $tte, $REF ) );
-                        //parseSAM($chr, $bi - $RLEN, $bi + $RLEN >= $START ? $START - 1 : $bi + $RLEN, $bams, $REF, $hash, $cov, $sclip5, $sclip3, 1);
-                        int tts = bi - maxReadLength;
-                        int tte = bi + maxReadLength;
-                        if (bi + maxReadLength >= region.start) {
-                            tte = region.start - 1;
-                        }
-                        Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
-                        if (!isLoaded(chr, tts, tte, reference)) {
-                            referenceResource.getReference(modifiedRegion, maxReadLength, reference);
-                        }
-                        partialPipeline(new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End),
-                                bam, modifiedRegion, reference, referenceResource, maxReadLength, splice, variantPrinter, new DirectThreadExecutor());
-                    }
-                    int shift5 = 0;
-                    while (ref.containsKey(p - 1) && ref.containsKey(bi - 1)
-                            && ref.get(p - 1).equals(ref.get(bi - 1))) {
-                        p--;
-                        bi--;
-                        shift5++;
-                    }
-                    if (p - bi > instance().conf.SVMINLEN + 2 * Configuration.SVFLANK) {
-//                    join("", (map {$_-$bi >= $shift5 && $_-$bi-$shift5 < seq.length() - EXTRA.length()
-//                            ? substr(seq, $_-bi-shift5+EXTRA.length(), 1)
-//                            : $REF->{ $_ };} (bi .. (bi+Configuration.SVFLANK-1))));
-                        ins = joinRefFor3Lgins(ref, bi, bi + Configuration.SVFLANK - 1, shift5, seq, EXTRA);
-                        ins += "<dup" + (p - bi - 2 * Configuration.SVFLANK) + ">";
-                        ins += joinRef(ref, p - Configuration.SVFLANK, p - 1);
-                    } else {
-                        ins = joinRefFor3Lgins(ref, bi, p - 1, shift5, seq, EXTRA);
-                    }
-                    ins += EXTRA;
-                    Tuple.Tuple2<Integer, Integer> tp2 = markDUPSV(bi, p - 1, Arrays.asList(svfdup, svrdup), maxReadLength);
-                    int clusters = tp2._1;
-                    int pairs = tp2._2;
-                    bi = bi - 1;
-
-                    VariationMap.SV sv = getSV(nonInsertionVariants, bi);
-                    sv.type = "DUP";
-                    sv.pairs += pairs;
-                    sv.splits += cnt;
-                    sv.clusters += clusters;
-                    if (!refCoverage.containsKey(bi) || (refCoverage.containsKey(p) && refCoverage.containsKey(bi)
-                            && refCoverage.get(bi) < refCoverage.get(p))) {
-                        if (refCoverage.containsKey(p)) {
-                            refCoverage.put(bi, refCoverage.get(p));
-                        } else {
-                            refCoverage.put(bi, sc3v.varsCount);
-                        }
-                    } else {
-                        if (sc3v.varsCount > refCoverage.get(bi)) {
-                            incCnt(refCoverage, bi, sc3v.varsCount);
-                        }
-                    }
-                }
-
-                if (instance().conf.y) {
-                    System.err.printf("  Found candidate lgins from 3: %s +%s %s %s\n", bi, ins, p, seq);
-                }
-
-                final Variation iref = getVariation(insertionVariants, bi, "+" + ins);
-                iref.pstd = true;
-                iref.qstd = true;
-                Variation lref = getVariationMaybe(nonInsertionVariants, bi, ref.get(bi));
-                if (p - bi > sc3v.meanPosition / cnt) {
-                    lref = null;
-                }
-                adjCnt(iref, sc3v, lref);
-                boolean rpflag = true;
-                for (int i = 0; i < ins.length(); i++) {
-                    if (!isEquals(ref.get(bi + 1 + i), ins.charAt(i))) {
-                        rpflag = false;
-                        break;
-                    }
-                }
-                // In perl it doesn't commented, but doesn't used
-                // final int offset = bi == be ? (p - bi - 1) : -(p + be - bi);
-                int len = ins.length();
-                if (ins.indexOf('&') != -1) {
-                    len--;
-                }
-                int lenSeq = sc3v.seq.lastKey() + 1;
-                for (int ii = len; ii < lenSeq; ii++) {
-                    int pii = p + ii - len;
-                    Map<Character, Variation> map = sc3v.seq.get(ii);
-                    if (map == null) {
-                        continue;
-                    }
-                    for (Map.Entry<Character, Variation> ent : map.entrySet()) {
-                        Character tnt = ent.getKey();
-                        Variation tv = ent.getValue();
-                        Variation vref = getVariation(nonInsertionVariants, pii, tnt.toString());
-                        adjCnt(vref, tv);
-                        vref.pstd = true;
-                        vref.qstd = true;
-                        incCnt(refCoverage, pii, tv.varsCount);
-                    }
-                }
-                sc3v.used = true;
-                Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.varsCount));
-                realignins(tins);
-                if (nonInsertionVariants.containsKey(bi) && nonInsertionVariants.get(bi).sv != null) {
-                    nonInsertionVariants.get(bi).sv.splits += iref.varsCount - tins.get(bi).get("+" + ins);
-                }
-                Variation mref = getVariationMaybe(nonInsertionVariants, bi, ref.get(bi));
-                if (rpflag && bams.length > 0 && ins.length() >= 5 && ins.length() < maxReadLength - 10
-                        && mref != null && mref.varsCount != 0
-                        && noPassingReads(chr, bi, bi + ins.length(), bams)
-                        && iref.varsCount > 2 * mref.varsCount) {
-                    adjCnt(iref, mref, mref);
-                }
-            } catch (Exception exception) {
-                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
-            }
-        }
-    }
-
-    /**
      * This will try to realign large insertions (typically larger than 30bp)
      */
-     void realignlgins30() {
+    void realignlgins30() {
         Map<Integer, Character> ref = reference.referenceSequences;
 
         List<Tuple.Tuple3<Integer, Sclip, Integer>> tmp5 = new ArrayList<>();
@@ -1750,15 +1588,367 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         }
     }
 
-    static List<Tuple.Tuple3<Integer, String, Integer>> fillTmp(Map<Integer, Map<String, Integer>> changes) {
+    /**
+     * Realign large insertions that are not present in alignment
+     * @param svfdup list of DUP SVs in forward strand
+     * @param svrdup list of DUP SVs in reverse strand
+     */
+    public void realignlgins(List<Sclip> svfdup,
+                             List<Sclip> svrdup)  {
+        Map<Integer, Character> ref = reference.referenceSequences;
+
+        List<Tuple.Tuple2<Integer, Sclip>> tmp = new ArrayList<>();
+        for (Map.Entry<Integer, Sclip> ent5 : softClips5End.entrySet()) {
+            int p = ent5.getKey();
+            if (p < region.start - Configuration.EXTENSION
+                    || p > region.end + Configuration.EXTENSION) {
+                continue;
+            }
+            tmp.add(tuple(ent5.getKey(), ent5.getValue()));
+        }
+        //sort by descending cnt
+        Collections.sort(tmp, COMP2);
+        int lastPosition = 0;
+        for (Tuple.Tuple2<Integer, Sclip> t : tmp) {
+            try {
+                int p = t._1;
+                lastPosition = p;
+                Sclip sc5v = t._2;
+                int cnt = t._2.varsCount;
+                if (cnt < instance().conf.minr) {
+                    break;
+                }
+                //already been used in
+                if (sc5v.used) {
+                    continue;
+                }
+                String seq = findconseq(sc5v, 0);
+                if (seq.isEmpty()) {
+                    continue;
+                }
+                if (instance().conf.y) {
+                    System.err.println("  Working lgins: 5: " + p + " " + seq + " cnt: " + cnt);
+                }
+                if (seq.length() < 12) {
+                    continue;
+                }
+
+                Tuple.Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, -1, chr);
+                int bi = tpl._1;
+                String ins = tpl._2;
+                String EXTRA = "";
+
+                if (bi == 0) {
+                    //#next if ($SOFTP2SV{ $p } && $SOFTP2SV{ $p }->[0]->{ used });
+                    if (islowcomplexseq(seq)) {
+                        continue;
+                    }
+                    Tuple.Tuple2<Integer, String> tp = findMatch(seq, reference, p, -1, Configuration.SEED_1, 1);
+                    bi = tp._1;
+                    EXTRA = tp._2;
+                    if (!(bi != 0 && bi - p > 15 && bi - p < Configuration.SVMAXLEN)) {
+                        continue;
+                    }
+
+                    // For large insertions
+                    if (bi > region.end) {
+                        //my ($tts, $tte) = ($bi - $RLEN <= $END ? $END + 1 : $bi - $RLEN, $bi + $RLEN);
+                        int tts = bi - maxReadLength;
+                        int tte = bi + maxReadLength;
+                        if (bi - maxReadLength <= region.end) {
+                            tts = region.end + 1;
+                        }
+                        Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
+                        if (!isLoaded(chr, tts, tte, reference)) {
+                            referenceResource.getReference(modifiedRegion, maxReadLength, reference);
+                        }
+                        Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
+                                variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
+                        partialPipeline(currentScope, new DirectThreadExecutor());
+                    }
+                    if (bi - p > instance().conf.SVMINLEN + 2 * Configuration.SVFLANK) {
+                        ins = joinRef(ref, p, p + Configuration.SVFLANK - 1);
+                        ins += "<dup" + (bi - p - 2 * Configuration.SVFLANK + 1) + ">";
+                        ins += joinRefFor5Lgins(ref, bi - Configuration.SVFLANK + 1, bi, seq, EXTRA);
+                    } else {
+                        ins = joinRefFor5Lgins(ref, p, bi, seq, EXTRA);
+                    }
+                    ins += EXTRA;
+
+                    Tuple.Tuple2<Integer, Integer> tp2 = markDUPSV(p, bi, Arrays.asList(svfdup, svrdup), maxReadLength);
+                    int clusters = tp2._1;
+                    int pairs = tp2._2;
+                    if (!refCoverage.containsKey(p - 1) || (refCoverage.containsKey(bi) && refCoverage.containsKey(p - 1)
+                            && refCoverage.get(p - 1) < refCoverage.get(bi))) {
+                        if (refCoverage.containsKey(bi)) {
+                            refCoverage.put(p - 1, refCoverage.get(bi));
+                        } else {
+                            refCoverage.put(p - 1, sc5v.varsCount);
+                        }
+                    } else {
+                        if (sc5v.varsCount > refCoverage.get(p - 1)) {
+                            incCnt(refCoverage, p - 1, sc5v.varsCount);
+                        }
+                    }
+
+                    bi = p - 1;
+                    VariationMap.SV sv = getSV(nonInsertionVariants, bi);
+                    sv.type = "DUP";
+                    sv.pairs += pairs;
+                    sv.splits += cnt;
+                    sv.clusters += clusters;
+                }
+
+                if (instance().conf.y) {
+                    System.err.printf("  Found candidate lgins from 5: %s +%s %s %s\n", bi, ins, p, seq);
+                }
+                final Variation iref = getVariation(insertionVariants, bi, "+" + ins);
+                iref.pstd = true;
+                iref.qstd = true;
+                adjCnt(iref, sc5v);
+                boolean rpflag = true; // A flag to indicate whether an insertion is a repeat
+                for (int i = 0; i < ins.length(); i++) {
+                    if (!isEquals(ref.get(bi + 1 + i), ins.charAt(i))) {
+                        rpflag = false;
+                        break;
+                    }
+                }
+
+                if (nonInsertionVariants.containsKey(bi) && nonInsertionVariants.get(bi).sv == null) {
+                    incCnt(refCoverage, bi, sc5v.varsCount);
+                }
+                int len = ins.length();
+                if (ins.indexOf('&') != -1) {
+                    len--;
+                }
+                int seqLen = sc5v.seq.lastKey() + 1;
+                for (int ii = len + 1; ii < seqLen; ii++) {
+                    int pii = bi - ii + len;
+                    if (!sc5v.seq.containsKey(ii)) {
+                        continue;
+                    }
+                    for (Map.Entry<Character, Variation> ent : sc5v.seq.get(ii).entrySet()) {
+                        Character tnt = ent.getKey();
+                        Variation tv = ent.getValue();
+                        Variation tvr = getVariation(nonInsertionVariants, pii, tnt.toString());
+                        adjCnt(tvr, tv);
+                        tvr.pstd = true;
+                        tvr.qstd = true;
+                        incCnt(refCoverage, pii, tv.varsCount);
+                    }
+                }
+                sc5v.used = bi + len != 0;
+
+                Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.varsCount));
+                String newins = realignins(tins);
+                if (newins.isEmpty()) {
+                    newins = "+" + ins;
+                }
+                Variation mref = getVariationMaybe(nonInsertionVariants, bi, ref.get(bi));
+                Variation kref = getVariation(insertionVariants, bi, newins);
+
+                if (nonInsertionVariants.containsKey(bi) && nonInsertionVariants.get(bi).sv != null) {
+                    nonInsertionVariants.get(bi).sv.splits += kref.varsCount - tins.get(bi).get("+" + ins);
+                }
+                if (rpflag && bams.length > 0 && ins.length() >= 5
+                        && ins.length() < maxReadLength - 10
+                        && mref != null && mref.varsCount != 0
+                        && noPassingReads(chr, bi, bi + ins.length(), bams)
+                        && kref.varsCount > 2 * mref.varsCount) {
+                    adjCnt(kref, mref, mref);
+                }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
+            }
+        }
+
+        tmp = new ArrayList<>();
+        for (Map.Entry<Integer, Sclip> ent3 : softClips3End.entrySet()) {
+            int p = ent3.getKey();
+            if (p < region.start - Configuration.EXTENSION
+                    || p > region.end + Configuration.EXTENSION) {
+                continue;
+            }
+            tmp.add(tuple(ent3.getKey(), ent3.getValue()));
+        }
+        Collections.sort(tmp, COMP2);
+
+        for (Tuple.Tuple2<Integer, Sclip> t : tmp) {
+            try {
+                int p = t._1;
+                lastPosition = p;
+                final Sclip sc3v = t._2;
+                final int cnt = t._2.varsCount;
+                if (cnt < instance().conf.minr) {
+                    break;
+                }
+                if (sc3v.used) {
+                    continue;
+                }
+                String seq = findconseq(sc3v, 0);
+                if (seq.isEmpty()) {
+                    continue;
+                }
+                if (instance().conf.y) {
+                    System.err.println("  Working lgins 3: " + p + " " + seq + " cnt: " + cnt);
+                }
+                if (seq.length() < 12) {
+                    continue;
+                }
+
+                Tuple.Tuple3<Integer, String, Integer> tpl = findbi(seq, p, ref, 1, chr);
+                int bi = tpl._1;
+                String ins = tpl._2;
+                String EXTRA = "";
+
+                if (bi == 0) {
+                    // #next if ($SOFTP2SV{ $p } && $SOFTP2SV{ $p }->[0]->{ used });
+                    if (islowcomplexseq(seq)) {
+                        continue;
+                    }
+                    Tuple.Tuple2<Integer, String> tp = findMatch(seq, reference, p, 1, Configuration.SEED_1, 1);
+                    bi = tp._1;
+                    EXTRA = tp._2;
+                    if (!(bi != 0 && p - bi > 15 && p - bi < Configuration.SVMAXLEN)) {
+                        continue;
+                    }
+
+                    // For large insertions
+                    if (bi < region.start) {
+                        //my ($tts, $tte) = ($bi - $RLEN, $bi + $RLEN >= $START ? $START - 1 : $bi + $RLEN);
+                        //getREF($chr, $tts, $tte, $REF, $RLEN) unless( isLoaded( $chr, $tts, $tte, $REF ) );
+                        //parseSAM($chr, $bi - $RLEN, $bi + $RLEN >= $START ? $START - 1 : $bi + $RLEN, $bams, $REF, $hash, $cov, $sclip5, $sclip3, 1);
+                        int tts = bi - maxReadLength;
+                        int tte = bi + maxReadLength;
+                        if (bi + maxReadLength >= region.start) {
+                            tte = region.start - 1;
+                        }
+                        Region modifiedRegion = Region.newModifiedRegion(region, tts, tte);
+                        if (!isLoaded(chr, tts, tte, reference)) {
+                            referenceResource.getReference(modifiedRegion, maxReadLength, reference);
+                        }
+                        Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
+                                variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
+                        partialPipeline(currentScope, new DirectThreadExecutor());
+                    }
+                    int shift5 = 0;
+                    while (ref.containsKey(p - 1) && ref.containsKey(bi - 1)
+                            && ref.get(p - 1).equals(ref.get(bi - 1))) {
+                        p--;
+                        bi--;
+                        shift5++;
+                    }
+                    if (p - bi > instance().conf.SVMINLEN + 2 * Configuration.SVFLANK) {
+//                    join("", (map {$_-$bi >= $shift5 && $_-$bi-$shift5 < seq.length() - EXTRA.length()
+//                            ? substr(seq, $_-bi-shift5+EXTRA.length(), 1)
+//                            : $REF->{ $_ };} (bi .. (bi+Configuration.SVFLANK-1))));
+                        ins = joinRefFor3Lgins(ref, bi, bi + Configuration.SVFLANK - 1, shift5, seq, EXTRA);
+                        ins += "<dup" + (p - bi - 2 * Configuration.SVFLANK) + ">";
+                        ins += joinRef(ref, p - Configuration.SVFLANK, p - 1);
+                    } else {
+                        ins = joinRefFor3Lgins(ref, bi, p - 1, shift5, seq, EXTRA);
+                    }
+                    ins += EXTRA;
+                    Tuple.Tuple2<Integer, Integer> tp2 = markDUPSV(bi, p - 1, Arrays.asList(svfdup, svrdup), maxReadLength);
+                    int clusters = tp2._1;
+                    int pairs = tp2._2;
+                    bi = bi - 1;
+
+                    VariationMap.SV sv = getSV(nonInsertionVariants, bi);
+                    sv.type = "DUP";
+                    sv.pairs += pairs;
+                    sv.splits += cnt;
+                    sv.clusters += clusters;
+                    if (!refCoverage.containsKey(bi) || (refCoverage.containsKey(p) && refCoverage.containsKey(bi)
+                            && refCoverage.get(bi) < refCoverage.get(p))) {
+                        if (refCoverage.containsKey(p)) {
+                            refCoverage.put(bi, refCoverage.get(p));
+                        } else {
+                            refCoverage.put(bi, sc3v.varsCount);
+                        }
+                    } else {
+                        if (sc3v.varsCount > refCoverage.get(bi)) {
+                            incCnt(refCoverage, bi, sc3v.varsCount);
+                        }
+                    }
+                }
+
+                if (instance().conf.y) {
+                    System.err.printf("  Found candidate lgins from 3: %s +%s %s %s\n", bi, ins, p, seq);
+                }
+
+                final Variation iref = getVariation(insertionVariants, bi, "+" + ins);
+                iref.pstd = true;
+                iref.qstd = true;
+                Variation lref = getVariationMaybe(nonInsertionVariants, bi, ref.get(bi));
+                if (p - bi > sc3v.meanPosition / cnt) {
+                    lref = null;
+                }
+                adjCnt(iref, sc3v, lref);
+                boolean rpflag = true;
+                for (int i = 0; i < ins.length(); i++) {
+                    if (!isEquals(ref.get(bi + 1 + i), ins.charAt(i))) {
+                        rpflag = false;
+                        break;
+                    }
+                }
+                // In perl it doesn't commented, but doesn't used
+                // final int offset = bi == be ? (p - bi - 1) : -(p + be - bi);
+                int len = ins.length();
+                if (ins.indexOf('&') != -1) {
+                    len--;
+                }
+                int lenSeq = sc3v.seq.lastKey() + 1;
+                for (int ii = len; ii < lenSeq; ii++) {
+                    int pii = p + ii - len;
+                    Map<Character, Variation> map = sc3v.seq.get(ii);
+                    if (map == null) {
+                        continue;
+                    }
+                    for (Map.Entry<Character, Variation> ent : map.entrySet()) {
+                        Character tnt = ent.getKey();
+                        Variation tv = ent.getValue();
+                        Variation vref = getVariation(nonInsertionVariants, pii, tnt.toString());
+                        adjCnt(vref, tv);
+                        vref.pstd = true;
+                        vref.qstd = true;
+                        incCnt(refCoverage, pii, tv.varsCount);
+                    }
+                }
+                sc3v.used = true;
+                Map<Integer, Map<String, Integer>> tins = singletonMap(bi, singletonMap("+" + ins, iref.varsCount));
+                realignins(tins);
+                if (nonInsertionVariants.containsKey(bi) && nonInsertionVariants.get(bi).sv != null) {
+                    nonInsertionVariants.get(bi).sv.splits += iref.varsCount - tins.get(bi).get("+" + ins);
+                }
+                Variation mref = getVariationMaybe(nonInsertionVariants, bi, ref.get(bi));
+                if (rpflag && bams.length > 0 && ins.length() >= 5 && ins.length() < maxReadLength - 10
+                        && mref != null && mref.varsCount != 0
+                        && noPassingReads(chr, bi, bi + ins.length(), bams)
+                        && iref.varsCount > 2 * mref.varsCount) {
+                    adjCnt(iref, mref, mref);
+                }
+            } catch (Exception exception) {
+                printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
+            }
+        }
+    }
+
+    /**
+     * Fill the temp tuple structure from hash tables of insertion or deletions positions to description string
+     * and counts of variation.
+     * @param changes initial hash map
+     * @return tuple of (position, descriptions string and variation count).
+     */
+    List<Tuple.Tuple3<Integer, String, Integer>> fillTmp(Map<Integer, Map<String, Integer>> changes) {
         //TODO: perl here have non-deterministic results because of hash, maybe we need to
         // make the sort in Perl more stringent (except simple sort b[2]<=>a[2]
         List<Tuple.Tuple3<Integer, String, Integer>> tmp = new ArrayList<>();
-        for (Map.Entry<Integer, Map<String, Integer>> ent : changes.entrySet()) {
-            int p = ent.getKey();
-            Map<String, Integer> v = ent.getValue();
+        for (Map.Entry<Integer, Map<String, Integer>> entry : changes.entrySet()) {
+            int position = entry.getKey();
+            Map<String, Integer> v = entry.getValue();
             for (Map.Entry<String, Integer> entV : v.entrySet()) {
-                String vn = entV.getKey();
+                String descriptionString = entV.getKey();
                 int cnt = entV.getValue();
                 // In perl it doesn't commented. but ecnt isn't used
                 // int ecnt = 0;
@@ -1767,7 +1957,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 // ecnt = mtch.group(1).length();
                 // }
                 //, /* ecnt */
-                tmp.add(new Tuple.Tuple3<> (p, vn, cnt));
+                tmp.add(new Tuple.Tuple3<> (position, descriptionString, cnt));
             }
         }
         Collections.sort(tmp, (o1, o2) -> {
@@ -1795,78 +1985,74 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      * @param seq3 consensus sequence 3' strand
      * @return Tuple of (start position of 5' strand, start position of 3' strand, max match length)
      */
-    public static Tuple.Tuple3<Integer, Integer, Integer> find35match(String seq5,
-                                                               String seq3) {
-        final int longmm = 2;
-        int max = 0;
+    public Tuple.Tuple3<Integer, Integer, Integer> find35match(String seq5, String seq3) {
+        final int longMismatch = 2; //$longmm
+        int maxMatchedLength = 0; //$max
         int b3 = 0;
         int b5 = 0;
 
         for (int i = 0; i < seq5.length() - 8; i++) {
             for (int j = 1; j < seq3.length() - 8; j++) {
-                int nm = 0;
-                int n = 0;
-                while (n + j <= seq3.length() && i + n <= seq5.length()) {
-                    if (!substr(seq3, -j - n, 1).equals(substr(seq5, i + n, 1))) {
-                        nm++;
+                int numberOfMismatch = 0; //$nm
+                int totalLength = 0; //$n
+                while (totalLength + j <= seq3.length() && i + totalLength <= seq5.length()) {
+                    if (!substr(seq3, -j - totalLength, 1).equals(substr(seq5, i + totalLength, 1))) {
+                        numberOfMismatch++;
                     }
-                    if (nm > longmm) {
+                    if (numberOfMismatch > longMismatch) {
                         break;
                     }
-                    n++;
+                    totalLength++;
                 }
-                if (n - nm > max
-                        && n - nm > 8
-                        && nm / (double) n < 0.1d
-                        && (n + j >= seq3.length() || i + n >= seq5.length())) {
+                if (totalLength - numberOfMismatch > maxMatchedLength
+                        && totalLength - numberOfMismatch > 8
+                        && numberOfMismatch / (double) totalLength < 0.1d
+                        && (totalLength + j >= seq3.length() || i + totalLength >= seq5.length())) {
 
-                    max = n - nm;
+                    maxMatchedLength = totalLength - numberOfMismatch;
                     b3 = j;
                     b5 = i;
                     if (instance().conf.y) {
                         System.err.printf("      Found 35 Match, %s %s %s\n", seq5, seq3,
-                                join("\t", n + j, seq3.length(), i + n, seq5.length(), n, nm, i, j));
+                                join("\t", totalLength + j, seq3.length(), i + totalLength, seq5.length(), totalLength, numberOfMismatch, i, j));
                     }
-                    return tuple(b5, b3, max);
+                    return tuple(b5, b3, maxMatchedLength);
                 }
             }
         }
-        return tuple(b5, b3, max);
+        return tuple(b5, b3, maxMatchedLength);
     }
 
     /**
      * Check whether there're reads supporting wild type in deletions
      * Only for indels that have micro-homology
      * @param chr chromosome name
-     * @param s start position
-     * @param e end position
+     * @param start start position
+     * @param end end position
      * @param bams BAM file list
      * @return true if any read was found in chr:s-e
      */
-    static boolean noPassingReads(String chr,
-                                  int s,
-                                  int e,
-                                  String[] bams) {
+    boolean noPassingReads(String chr, int start, int end, String[] bams) {
         int cnt = 0;
         int midcnt = 0; // Reads end in the middle
-        int dlen = e - s;
+        int dlen = end - start;
         String dlenqr = dlen + "D";
-        Region region = new Region(chr, s, e, "");
+        Region region = new Region(chr, start, end, "");
         for (String bam : bams) {
-            try (SamView reader = new SamView(bam, "", region, instance().conf.validationStringency)) {
+            try (SamView reader = new SamView(bam, "0", region, instance().conf.validationStringency)) {
                 SAMRecord record;
                 while ((record = reader.read()) != null) {
                     if (record.getCigarString().contains(dlenqr)) {
                         continue;
                     }
-                    int rs = record.getAlignmentStart();
+                    int readStart = record.getAlignmentStart();
                     // The total aligned length, excluding soft-clipped bases and insertions
-                    int rlen = getAlignedLength(record.getCigar());
-                    int re = rs + rlen;
-                    if (re > e + 2 && rs < s - 2) {
+                    int readLengthIncludeMatchedAndDeleted = getAlignedLength(record.getCigar());
+                    int readEnd = readStart + readLengthIncludeMatchedAndDeleted;
+                    if (readEnd > end + 2 && readStart < start - 2) {
                         cnt++;
                     }
-                    if (rs < s - 2 && re > s && re < e) {
+                    if (readStart < start - 2 && readEnd > start && readEnd < end) {
                         midcnt++;
                     }
                 }
@@ -1874,13 +2060,13 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
             }
         }
         if (instance().conf.y) {
-            System.err.printf("    Passing Read CNT: %s %s %s %s %s\n", cnt, chr, s, e, midcnt);
+            System.err.printf("    Passing Read CNT: %s %s %s %s %s\n", cnt, chr, start, end, midcnt);
         }
         return cnt <= 0;
     }
 
     /**
-     * Find if sequences match
+     * Find if sequences match with no more than default number of mismatches (3).
      * @param seq1 first sequence
      * @param seq2 second sequence
      * @param dir direction of seq2 (1 or -1)
@@ -1895,14 +2081,15 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
 
     /**
      * $ismatch
-     * Find if sequences match
+     * Find if sequences match with no more than MM number of mismatches and total mismatches no more than 15% of
+     * length of sequence
      * @param seq1 first sequence
      * @param seq2 second sequence
      * @param dir direction of seq2 (1 or -1)
      * @param MM length of mismatches for SV
      * @return true if seq1 matches seq2 with no more than MM number of mismatches
      */
-    public  static boolean ismatch(String seq1,
+    public static boolean ismatch(String seq1,
                            String seq2,
                            int dir,
                            int MM) {
@@ -1956,6 +2143,12 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         return ntcnt < 3;
     }
 
+    /**
+     * Counts the total count of base presence in the string
+     * @param str string to count characters
+     * @param chr character to seek in the string
+     * @return number of characters in the string
+     */
     static int count(String str, char chr) {
         int cnt = 0;
         for (int i = 0; i < str.length(); i++) {
@@ -1973,9 +2166,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      * @param ref map of reference bases
      * @return Tuple of (int bi, String ins, int bi)
      */
-    public static Tuple.Tuple3<Integer, String, Integer> adjInsPos(int bi,
-                                                                   String ins,
-                                                                   Map<Integer, Character> ref) {
+    public static Tuple.Tuple3<Integer, String, Integer> adjInsPos(int bi, String ins, Map<Integer, Character> ref) {
         int n = 1;
         int len = ins.length();
         while (isEquals(ref.get(bi), ins.charAt(ins.length() - n))) {
@@ -1992,16 +2183,16 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     }
 
     /**
-     * Find the insertion
+     * Find the insertion position
      * @param seq sequence
-     * @param p position
+     * @param position start position of sequence
      * @param ref map of reference bases
      * @param dir direction
      * @param chr chromosome name
      * @return Tuple of (BI (insert starting position), INS (insert sequence), BI2 ( = BI))
      */
-    static Tuple.Tuple3<Integer, String, Integer> findbi(String seq,
-                                                         int p,
+     Tuple.Tuple3<Integer, String, Integer> findbi(String seq,
+                                                         int position,
                                                          Map<Integer, Character> ref,
                                                          final int dir,
                                                          String chr) {
@@ -2013,20 +2204,20 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         int bi2 = 0;
 
         for (int n = 6; n < seq.length(); n++) {
-            if (p + 6 >= instance().chrLengths.get(chr)) {
+            if (position + 6 >= instance().chrLengths.get(chr)) {
                 break;
             }
             int mm = 0;
             int i = 0;
             Set<Character> m = new HashSet<>();
             for (i = 0; i + n < seq.length(); i++) {
-                if (p + dir * i - dirExt < 1) {
+                if (position + dir * i - dirExt < 1) {
                     break;
                 }
-                if (p + dir * i - dirExt > instance().chrLengths.get(chr)) {
+                if (position + dir * i - dirExt > instance().chrLengths.get(chr)) {
                     break;
                 }
-                if (isNotEquals(seq.charAt(i + n), ref.get(p + dir * i - dirExt))) {
+                if (isNotEquals(seq.charAt(i + n), ref.get(position + dir * i - dirExt))) {
                     mm++;
                 } else {
                     m.add(seq.charAt(i + n));
@@ -2045,8 +2236,8 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 StringBuilder insert = new StringBuilder(substr(seq, 0, n));
                 StringBuilder extra = new StringBuilder();
                 int ept = 0;
-                while (n + ept + 1 < seq.length() && (!isEquals(seq.charAt(n + ept), ref.get(p + ept * dir - dirExt))
-                        || !isEquals(seq.charAt(n + ept + 1), ref.get(p + (ept + 1) * dir - dirExt)))) {
+                while (n + ept + 1 < seq.length() && (!isEquals(seq.charAt(n + ept), ref.get(position + ept * dir - dirExt))
+                        || !isEquals(seq.charAt(n + ept + 1), ref.get(position + (ept + 1) * dir - dirExt)))) {
                     extra.append(seq.charAt(n + ept));
                     ept++;
                 }
@@ -2057,9 +2248,9 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         insert.insert(insert.length() - extra.length(), "&");
                     }
                     if (mm == 0 && i + n == seq.length()) {
-                        bi = p - 1 - extra.length();
+                        bi = position - 1 - extra.length();
                         ins = insert.toString();
-                        bi2 = p - 1;
+                        bi2 = position - 1;
                         if (extra.length() == 0) {
                             Tuple.Tuple3<Integer, String, Integer> tpl = adjInsPos(bi, ins, ref);
                             bi = tpl._1;
@@ -2068,9 +2259,9 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         }
                         return tuple(bi, ins, bi2);
                     } else if (i - mm > score) {
-                        bi = p - 1 - extra.length();
+                        bi = position - 1 - extra.length();
                         ins = insert.toString();
-                        bi2 = p - 1;
+                        bi2 = position - 1;
                         score = i - mm;
                     }
                 } else {
@@ -2078,7 +2269,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                     if (extra.length() > 0) {
                         insert.append("&").append(extra);
                     } else {
-                        while (s >= -n && isEquals(charAt(insert, s), ref.get(p + s))) {
+                        while (s >= -n && isEquals(charAt(insert, s), ref.get(position + s))) {
                             s--;
                         }
                         if (s < -1) {
@@ -2089,9 +2280,9 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
 
                     }
                     if (mm == 0 && i + n == seq.length()) {
-                        bi = p + s;
+                        bi = position + s;
                         ins = insert.toString();
-                        bi2 = p + s + extra.length();
+                        bi2 = position + s + extra.length();
                         if (extra.length() == 0) {
                             Tuple.Tuple3<Integer, String, Integer> tpl = adjInsPos(bi, ins, ref);
                             bi = tpl._1;
@@ -2100,9 +2291,9 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         }
                         return tuple(bi, ins, bi2);
                     } else if (i - mm > score) {
-                        bi = p + s;
+                        bi = position + s;
                         ins = insert.toString();
-                        bi2 = p + s + extra.length();
+                        bi2 = position + s + extra.length();
                         score = i - mm;
                     }
                 }
@@ -2117,19 +2308,19 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     }
 
     /**
-     * Find breakpoint
-     * @param seq sequence
-     * @param sp start position of sequence
+     * Find breakpoint position in sequence
+     * @param sequence sequence
+     * @param startPosition $sp start position of sequence
      * @param ref map of reference bases
-     * @param dir direction
+     * @param direction direction, reverse is -1, forward is 1.
      * @param chr chromosome name
      * @return breakpoint position
      */
-    static int findbp(String seq,
-                      int sp,
-                      Map<Integer, Character> ref,
-                      int dir,
-                      String chr) {
+     int findbp(String sequence,
+                  int startPosition,
+                  Map<Integer, Character> ref,
+                  int direction,
+                  String chr) {
 
         final int maxmm = 3; // maximum mismatches allowed
         int bp = 0;
@@ -2139,15 +2330,15 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
             int mm = 0;
             int i = 0;
             Set<Character> m = new HashSet<>();
-            for (i = 0; i < seq.length(); i++) {
-                if (sp + dir * n + dir * i < 1) {
+            for (i = 0; i < sequence.length(); i++) {
+                if (startPosition + direction * n + direction * i < 1) {
                     break;
                 }
-                if (sp + dir * n + dir * i > idx) {
+                if (startPosition + direction * n + direction * i > idx) {
                     break;
                 }
-                if (isEquals(seq.charAt(i), ref.get(sp + dir * n + dir * i))) {
-                    m.add(seq.charAt(i));
+                if (isEquals(sequence.charAt(i), ref.get(startPosition + direction * n + direction * i))) {
+                    m.add(sequence.charAt(i));
                 } else {
                     mm++;
                 }
@@ -2158,11 +2349,11 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
             if (m.size() < 3) {
                 continue;
             }
-            if (mm <= maxmm - n / 100 && i >= seq.length() - 2 && i >= 8 + n / 10 && mm / (double)i < 0.12) {
-                int lbp = sp + dir * n - (dir < 0 ? dir : 0);
-                if (mm == 0 && i == seq.length()) {
+            if (mm <= maxmm - n / 100 && i >= sequence.length() - 2 && i >= 8 + n / 10 && mm / (double)i < 0.12) {
+                int lbp = startPosition + direction * n - (direction < 0 ? direction : 0);
+                if (mm == 0 && i == sequence.length()) {
                     if (instance().conf.y) {
-                        System.err.printf("  Findbp: %s %s %s %s %s\n", seq, sp, lbp, mm, i);
+                        System.err.printf("  Findbp: %s %s %s %s %s\n", sequence, startPosition, lbp, mm, i);
                     }
                     return lbp;
                 } else if (i - mm > score) {
@@ -2172,22 +2363,9 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
             }
         }
         if (instance().conf.y && bp != 0) {
-            System.err.printf("  Findbp with mismatches: %s %s %s %s %s\n", seq, sp, bp, dir, score);
+            System.err.printf("  Findbp with mismatches: %s %s %s %s %s\n", sequence, startPosition, bp, direction, score);
         }
         return bp;
-    }
-
-    static void rmCnt(Variation vref,
-                      Variation tv) {
-        vref.varsCount -= tv.varsCount;
-        vref.highQualityReadsCount -= tv.highQualityReadsCount;
-        vref.lowQualityReadsCount -= tv.lowQualityReadsCount;
-        vref.meanPosition -= tv.meanPosition;
-        vref.meanQuality -= tv.meanQuality;
-        vref.meanMappingQuality -= tv.meanMappingQuality;
-        vref.subDir(true, tv.getDir(true));
-        vref.subDir(false, tv.getDir(false));
-        correctCnt(vref);
     }
 
     /**
@@ -2196,7 +2374,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      * @param ref reference variant
      * @param len length for adhustment factor
      */
-    static void adjRefCnt(Variation tv,
+    void adjRefCnt(Variation tv,
                           Variation ref,
                           int len) {
         if (ref == null) {
@@ -2237,7 +2415,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      * @param ref reference variation
      * @param factor_f factor for adjustment counts of reference
      */
-    static void adjRefFactor(Variation ref, double factor_f) {
+    void adjRefFactor(Variation ref, double factor_f) {
         if (ref == null) {
             return;
         }
@@ -2271,7 +2449,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      * @param vref variation  $ref
      * @param factor_f factor for adjustment counts of variation
      */
-    static void addVarFactor(Variation vref, double factor_f) {
+    void addVarFactor(Variation vref, double factor_f) {
         if (vref == null) {
             return;
         }
@@ -2417,7 +2595,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         return new MismatchResult(mm, sc3p, mn, misp, misnt == null ? "" : misnt.toString());
     }
 
-    static class MismatchResult {
+    class MismatchResult {
         private final List<Tuple.Tuple3<String, Integer, Integer>> mm;
         private final List<Integer> scp;
         private final int nm;
@@ -2453,4 +2631,68 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         }
     }
 
+    /**
+     * Utility method for adjustMNP method with default number of mismatches = 3
+     * @param sequence subsequence consensus sequence in soft-clipped reads  $seq
+     * @param ref map of integer - characters (nucleotides) in reference sequence
+     * @param dir direction (forward or reverse)
+     * @param position key for MNP map     $p
+     * @return true if sequence is matched to reference
+     */
+    public static boolean ismatchref(String sequence,
+                                     Map<Integer, Character> ref,
+                                     int position,
+                                     int dir) {
+        int MM = 3;
+        return ismatchref(sequence, ref, position, dir, MM);
+    }
+
+    /**
+     * Utility method for adjustMNP method
+     * @param sequence subsequence consensus sequence in soft-clipped reads  $seq
+     * @param ref map of integer - characters (nucleotides) in reference sequence
+     * @param position key for MNP map     $p
+     * @param dir direction (forward or reverse)
+     * @param MM specific number of mismatches
+     * @return true if sequence is matched to reference
+     */
+    public static boolean ismatchref(String sequence,
+                                     Map<Integer, Character> ref,
+                                     int position,
+                                     int dir,
+                                     int MM) {
+        if (instance().conf.y) {
+            System.err.println(format("      Matching REF %s %s %s %s", sequence, position, dir, MM));
+        }
+
+        int mm = 0;
+        for (int n = 0; n < sequence.length(); n++) {
+            final Character refCh = ref.get(position + dir * n);
+            if (refCh == null) {
+                return false;
+            }
+            if (charAt(sequence, dir == 1 ? n : dir * n - 1) != refCh) {
+                mm++;
+            }
+        }
+        return mm <= MM && mm / (double)sequence.length() < 0.15;
+    }
+
+    /**
+     * Subtract counts of one variation from another
+     * @param vref variation where to subtract counts
+     * @param tv variation which counts will be subtracted from the vref
+     */
+    void rmCnt(Variation vref,
+               Variation tv) {
+        vref.varsCount -= tv.varsCount;
+        vref.highQualityReadsCount -= tv.highQualityReadsCount;
+        vref.lowQualityReadsCount -= tv.lowQualityReadsCount;
+        vref.meanPosition -= tv.meanPosition;
+        vref.meanQuality -= tv.meanQuality;
+        vref.meanMappingQuality -= tv.meanMappingQuality;
+        vref.subDir(true, tv.getDir(true));
+        vref.subDir(false, tv.getDir(false));
+        correctCnt(vref);
+    }
 }

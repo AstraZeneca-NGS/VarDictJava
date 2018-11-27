@@ -5,7 +5,6 @@ import com.astrazeneca.vardict.collection.VariationMap;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
@@ -418,26 +417,41 @@ public class VariationUtils {
         return variation;
     }
 
+    /**
+     * Get {@link Variation} from map. If map contains variation, return it. If not, add variation with description string
+     * at specific start position.
+     * @param hash map contain position and description string on variations.
+     * @param start start position of Variation
+     * @param descriptionString string contains information about variation (length and type of variation)
+     * @return variation
+     */
     public static Variation getVariation(Map<Integer, VariationMap<String, Variation>> hash,
                                          int start,
-                                         String ref) {
+                                         String descriptionString) {
         VariationMap<String, Variation> map = hash.get(start);
         if (map == null) {
             map = new VariationMap<>();
             hash.put(start, map);
         }
-        Variation variation = map.get(ref);
+        Variation variation = map.get(descriptionString);
         if (variation == null) {
             variation = new Variation();
-            map.put(ref, variation);
+            map.put(descriptionString, variation);
         }
         return variation;
     }
 
+    /**
+     * Get {@link Variation} from map. If map contains variation, return it. If not, return null.
+     * @param hash map contain position and description string on variations.
+     * @param start start position of Variation
+     * @param refBase contains nucleotide from the reference
+     * @return variation
+     */
     public static Variation getVariationMaybe(Map<Integer, VariationMap<String, Variation>> hash,
                                               int start,
-                                              Character ref) {
-        if (ref == null)
+                                              Character refBase) {
+        if (refBase == null)
             return null;
 
         Map<String, Variation> map = hash.get(start);
@@ -445,7 +459,7 @@ public class VariationUtils {
             return null;
         }
 
-        return map.get(ref.toString());
+        return map.get(refBase.toString());
     }
 
     public static boolean isHasAndEquals(char ch1, Map<Integer, Character> ref, int index) {

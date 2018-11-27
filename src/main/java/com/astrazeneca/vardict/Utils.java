@@ -10,9 +10,6 @@ import java.util.*;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 
 public final class Utils {
-
-    private Utils() {}
-
     /**
      * Method creates string from elements of specified collection (by appending them with space delimiter)
      * @param collection any collection
@@ -203,7 +200,6 @@ public final class Utils {
             result.add(matcher.group(1));
         }
         return result;
-
     }
 
     /**
@@ -247,6 +243,15 @@ public final class Utils {
         return htsjdk.samtools.util.StringUtil.byteToChar(base);
     }
 
+    /**
+     * Method calls on cycles where position and records are processing to skip number of Exceptions set in
+     * Configuration.MAX_EXCEPTION_COUNT to try continue work if not critical exception occurs and get partial results.
+     * Each Exception printed in STDERR. If limit of exceptions reaches, VarDict stops with last re-throwed Exception.
+     * @param exception exception to check on limit exceeded
+     * @param place characterizes designation of the place where Exception occurs (position, SAM record, etc)
+     * @param placeDef specific place (chromosome, name of record, etc)
+     * @param region region from BED file/-R option
+     */
     public static void printExceptionAndContinue(Exception exception, String place, String placeDef, Region region) {
         String firstPart = "There was Exception while processing " + place + " on " + placeDef;
         String secondPart = ". The processing will be continued from the next " + place + ".";

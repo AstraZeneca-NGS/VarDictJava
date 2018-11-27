@@ -1,21 +1,20 @@
 package com.astrazeneca.vardict.modes;
 
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.ReferenceResource;
 import com.astrazeneca.vardict.collection.DirectThreadExecutor;
 import com.astrazeneca.vardict.data.Reference;
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
+import com.astrazeneca.vardict.data.scopedata.InitialData;
 import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.postprocessmodules.SimplePostProcessModule;
 import com.astrazeneca.vardict.printers.VariantPrinter;
-import com.astrazeneca.vardict.variations.Vars;
 
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -34,6 +33,9 @@ public class SimpleMode extends AbstractMode {
         printHeader();
     }
 
+    /**
+     * In not parallel mode each region will be processed in sequence.
+     */
     @Override
     public void notParallel() {
         VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
@@ -45,6 +47,25 @@ public class SimpleMode extends AbstractMode {
         }
     }
 
+    /**
+     * For each segment and region starts the pipeline.
+     * @param region region from BED file/-R option to process.
+     * @param out variant printer used for output
+     */
+    private void simple(Region region, VariantPrinter out) {
+        Reference ref = referenceResource.getReference(region);
+        Scope<InitialData> initialScope = new Scope<>(instance().conf.bam.getBam1(), region,
+                ref, referenceResource, 0, new HashSet<>(),
+                out, new InitialData());
+
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = pipeline(initialScope, new DirectThreadExecutor());
+        CompletableFuture<Void> simpleProcessOutput = pipeline.thenAccept(new SimplePostProcessModule(out));
+        simpleProcessOutput.join();
+    }
+
+    /**
+     * In parallel mode workers are created for each region and are processed in parallel.
+     */
     @Override
     protected AbstractParallelMode createParallelMode() {
         return new AbstractParallelMode() {
@@ -61,25 +82,10 @@ public class SimpleMode extends AbstractMode {
         };
     }
 
-    private void simple(Region region, VariantPrinter out) {
-        Reference ref = referenceResource.getReference(region);
-        CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = pipeline(
-                instance().conf.bam.getBam1(),
-                region,
-                ref,
-                referenceResource,
-                0,
-                new HashSet<>(),
-                out,
-                new DirectThreadExecutor()
-        );
-        CompletableFuture<Void> simpleProcessOutput = pipeline.thenAccept(new SimplePostProcessModule(out));
-        simpleProcessOutput.join();
-
-    }
-
+    /**
+     * Class needed for simple parallel mode. Each worker will process pipeline for region.
+     */
     private class VardictWorker implements Callable<OutputStream> {
-
         private Region region;
 
         public VardictWorker(Region region) {
@@ -98,7 +104,6 @@ public class SimpleMode extends AbstractMode {
             out.close();
             return baos;
         }
-
     }
 
     @Override
@@ -111,5 +116,4 @@ public class SimpleMode extends AbstractMode {
                     "HiCnt", "HiCov", "5pFlankSeq", "3pFlankSeq", "Seg", "VarType", "Duprate", "SV_info"));
         }
     }
-
 }

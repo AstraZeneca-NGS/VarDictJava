@@ -1,5 +1,9 @@
 package com.astrazeneca.vardict.variations;
 
+/**
+ * Class to store data about mate in SV clusters. Mates are created while preparing possible SVs for the further
+ * processing.
+ */
 public class Mate {
     public int mateStart_ms;
     public int mateEnd_me;

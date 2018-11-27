@@ -16,6 +16,9 @@ import static com.astrazeneca.vardict.Utils.substr;
  * Utility class for access to reference sequences
  */
 public class ReferenceResource {
+    /**
+     * Fasta files store in thread local variables to avoid multithreading issues.
+     */
     private ThreadLocal<Map<String, IndexedFastaSequenceFile>> threadLocalFastaFiles = ThreadLocal.withInitial(HashMap::new);
 
     synchronized private IndexedFastaSequenceFile fetchFasta(String file) {

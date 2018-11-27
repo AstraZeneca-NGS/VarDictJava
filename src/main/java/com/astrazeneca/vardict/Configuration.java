@@ -5,8 +5,11 @@ import htsjdk.samtools.ValidationStringency;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-
 public class Configuration {
+    public static final String HG19 = "/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa";
+    public static final String HG38 = "/ngs/reference_data/genomes/Hsapiens/hg38/seq/hg38.fa";
+    public static final String MM10 = "/ngs/reference_data/genomes/Mmusculus/mm10/seq/mm10.fa";
+
     /**
      * Print a header row describing columns
      */
@@ -25,7 +28,7 @@ public class Configuration {
     public int numberNucleotideToExtend; // -x
     /**
      * Indicate whether is zero-based coordinates, as IGV does
-     * When use -R option, it is set to false TODO: is it so? In perl it doesn't changed
+     * When use -R option, it is set to false
      */
     public Boolean zeroBased; // -z
     /**

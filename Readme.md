@@ -338,7 +338,11 @@ Variant frequency is more than 10% for the non-monomer MSI and 25% for the monom
 - `-k 0/1`   
     Indicate whether to perform local realignment.  Default: `1` or yes.  Set to `0` to disable it.
 - `-G Genome fasta`  
-    The reference fasta.  Should be indexed (.fai).  Defaults to: `/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa`
+    The reference fasta.  Should be indexed (.fai).  Defaults to: `/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa`  
+    Also short commands can be used to set path to:  
+    **hg19** - /ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa  
+    **hg38** - /ngs/reference_data/genomes/Hsapiens/hg38/seq/hg38.fa  
+    **mm10** - /ngs/reference_data/genomes/Mmusculus/mm10/seq/mm10.fa  
 - `-R Region`  
     The region of interest.  In the format of chr:start-end.  If chr is not start-end but start (end is omitted), then it is a single position.  No BED is needed.
 - `-d delimiter`  

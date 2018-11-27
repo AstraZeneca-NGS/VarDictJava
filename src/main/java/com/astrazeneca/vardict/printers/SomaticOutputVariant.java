@@ -9,6 +9,9 @@ import java.text.DecimalFormat;
 import static com.astrazeneca.vardict.Utils.join;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 
+/**
+ * Variant created in Somatic mode. Must contains 55 total fields.
+ */
 public class SomaticOutputVariant extends OutputVariant {
     private int var1totalCoverage;
     private int var1variantCoverage;
@@ -52,84 +55,82 @@ public class SomaticOutputVariant extends OutputVariant {
     private double var2duprate;
     private String var2sv = "0";
 
-    private int shift3;
-    private double msi;
-    private int msint;
     private String varLabel = "";
 
-    public SomaticOutputVariant(Variant common, Variant variant1, Variant variant2, Region region, String sv1,
-                                String sv2, String varLabel) {
+    public SomaticOutputVariant(Variant beginVariant, Variant endVariant, Variant tumorVariant, Variant normalVariant,
+                                Region region, String sv1, String sv2, String varLabel) {
         this.sample = instance().sample;
         this.gene = region.gene;
         this.chr = region.chr;
 
-        if (common!= null) {
-            this.startPosition = common.startPosition;
-            this.endPosition = common.endPosition;
-            this.refAllele = common.refallele;
-            this.varAllele = common.varallele;
-
-            this.shift3 = common.shift3;
-            this.msi = common.msi;
-            this.msint = common.msint;
-            this.leftSequence = common.leftseq.isEmpty() ? "0" : common.leftseq;
-            this.rightSequence = common.rightseq.isEmpty() ? "0" : common.rightseq;
-            this.varType = common.vartype;
-            this.varLabel = varLabel;
-            this.region = region.chr + ":" + region.start + "-" + region.end;
-            this.DEBUG = common.DEBUG;
+        if (beginVariant != null) {
+            this.startPosition = beginVariant.startPosition;
+            this.endPosition = beginVariant.endPosition;
+            this.refAllele = beginVariant.refallele;
+            this.varAllele = beginVariant.varallele;
+            this.varType = beginVariant.vartype;
+            this.DEBUG = beginVariant.DEBUG;
+        }
+        if (endVariant != null) {
+            this.shift3 = endVariant.shift3;
+            this.msi = endVariant.msi;
+            this.msint = endVariant.msint;
+            this.leftSequence = endVariant.leftseq.isEmpty() ? "0" : endVariant.leftseq;
+            this.rightSequence = endVariant.rightseq.isEmpty() ? "0" : endVariant.rightseq;
         }
 
-        if (variant1 != null) {
-            this.var1totalCoverage = variant1.totalPosCoverage;
-            this.var1variantCoverage = variant1.positionCoverage;
-            this.var1refForwardCoverage = variant1.refForwardCoverage;
-            this.var1refReverseCoverage = variant1.refReverseCoverage;
-            this.var1variantForwardCount = variant1.varsCountOnForward;
-            this.var1variantReverseCount = variant1.varsCountOnReverse;
-            this.var1genotype = variant1.genotype == null ? "0" : variant1.genotype;
-            this.var1frequency = variant1.frequency;
-            this.var1strandBiasFlag = variant1.strandBiasFlag == null ? "0" : variant1.strandBiasFlag;
-            this.var1meanPosition = variant1.meanPosition;
-            this.var1isAtLeastAt2Position = variant1.isAtLeastAt2Positions ? 1 : 0;
-            this.var1meanQuality = variant1.meanQuality;
-            this.var1hasAtLeast2DiffQualities = variant1.hasAtLeast2DiffQualities ? 1 : 0;
-            this.var1meanMappingQuality = variant1.meanMappingQuality;
-            this.var1highQualityToLowQualityRatio = variant1.highQualityToLowQualityRatio;
-            this.var1highQualityReadsFrequency = variant1.highQualityReadsFrequency;
-            this.var1extraFrequency = variant1.extraFrequency;
-            this.var1nm = variant1.numberOfMismatches;
-            this.var1duprate = variant1.duprate;
+        if (tumorVariant != null) {
+            this.var1totalCoverage = tumorVariant.totalPosCoverage;
+            this.var1variantCoverage = tumorVariant.positionCoverage;
+            this.var1refForwardCoverage = tumorVariant.refForwardCoverage;
+            this.var1refReverseCoverage = tumorVariant.refReverseCoverage;
+            this.var1variantForwardCount = tumorVariant.varsCountOnForward;
+            this.var1variantReverseCount = tumorVariant.varsCountOnReverse;
+            this.var1genotype = tumorVariant.genotype == null ? "0" : tumorVariant.genotype;
+            this.var1frequency = tumorVariant.frequency;
+            this.var1strandBiasFlag = tumorVariant.strandBiasFlag == null ? "0" : tumorVariant.strandBiasFlag;
+            this.var1meanPosition = tumorVariant.meanPosition;
+            this.var1isAtLeastAt2Position = tumorVariant.isAtLeastAt2Positions ? 1 : 0;
+            this.var1meanQuality = tumorVariant.meanQuality;
+            this.var1hasAtLeast2DiffQualities = tumorVariant.hasAtLeast2DiffQualities ? 1 : 0;
+            this.var1meanMappingQuality = tumorVariant.meanMappingQuality;
+            this.var1highQualityToLowQualityRatio = tumorVariant.highQualityToLowQualityRatio;
+            this.var1highQualityReadsFrequency = tumorVariant.highQualityReadsFrequency;
+            this.var1extraFrequency = tumorVariant.extraFrequency;
+            this.var1nm = tumorVariant.numberOfMismatches;
+            this.var1duprate = tumorVariant.duprate;
         }
 
-        if (variant2 != null) {
-            this.var2totalCoverage = variant2.totalPosCoverage;
-            this.var2variantCoverage = variant2.positionCoverage;
-            this.var2refForwardCoverage = variant2.refForwardCoverage;
-            this.var2refReverseCoverage = variant2.refReverseCoverage;
-            this.var2variantForwardCount = variant2.varsCountOnForward;
-            this.var2variantReverseCount = variant2.varsCountOnReverse;
-            this.var2genotype = variant2.genotype == null ? "0" : variant2.genotype;
-            this.var2frequency = variant2.frequency;
-            this.var2strandBiasFlag = variant2.strandBiasFlag == null ? "0" : variant2.strandBiasFlag;
-            this.var2meanPosition = variant2.meanPosition;
-            this.var2isAtLeastAt2Position = variant2.isAtLeastAt2Positions ? 1 : 0;
-            this.var2meanQuality = variant2.meanQuality;
-            this.var2hasAtLeast2DiffQualities = variant2.hasAtLeast2DiffQualities ? 1 : 0;
-            this.var2meanMappingQuality = variant2.meanMappingQuality;
-            this.var2highQualityToLowQualityRatio = variant2.highQualityToLowQualityRatio;
-            this.var2highQualityReadsFrequency = variant2.highQualityReadsFrequency;
-            this.var2extraFrequency = variant2.extraFrequency;
-            this.var2nm = variant2.numberOfMismatches;
-            this.var2duprate = variant2.duprate;
+        if (normalVariant != null) {
+            this.var2totalCoverage = normalVariant.totalPosCoverage;
+            this.var2variantCoverage = normalVariant.positionCoverage;
+            this.var2refForwardCoverage = normalVariant.refForwardCoverage;
+            this.var2refReverseCoverage = normalVariant.refReverseCoverage;
+            this.var2variantForwardCount = normalVariant.varsCountOnForward;
+            this.var2variantReverseCount = normalVariant.varsCountOnReverse;
+            this.var2genotype = normalVariant.genotype == null ? "0" : normalVariant.genotype;
+            this.var2frequency = normalVariant.frequency;
+            this.var2strandBiasFlag = normalVariant.strandBiasFlag == null ? "0" : normalVariant.strandBiasFlag;
+            this.var2meanPosition = normalVariant.meanPosition;
+            this.var2isAtLeastAt2Position = normalVariant.isAtLeastAt2Positions ? 1 : 0;
+            this.var2meanQuality = normalVariant.meanQuality;
+            this.var2hasAtLeast2DiffQualities = normalVariant.hasAtLeast2DiffQualities ? 1 : 0;
+            this.var2meanMappingQuality = normalVariant.meanMappingQuality;
+            this.var2highQualityToLowQualityRatio = normalVariant.highQualityToLowQualityRatio;
+            this.var2highQualityReadsFrequency = normalVariant.highQualityReadsFrequency;
+            this.var2extraFrequency = normalVariant.extraFrequency;
+            this.var2nm = normalVariant.numberOfMismatches;
+            this.var2duprate = normalVariant.duprate;
         }
+
+        this.varLabel = varLabel;
+        this.region = region.chr + ":" + region.start + "-" + region.end;
         this.var1sv = sv1.equals("") ? "0" : sv1;
         this.var2sv = sv2.equals("") ? "0" : sv2;
     }
 
     @Override
-    public String outputString(String delimiter) {
-        this.delimiter = delimiter;
+    public String toString() {
         // 55 columns
         String outputVariant = join(delimiter,
                 sample,

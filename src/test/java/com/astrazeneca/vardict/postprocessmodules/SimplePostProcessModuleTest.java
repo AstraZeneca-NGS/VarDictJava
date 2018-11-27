@@ -1,8 +1,8 @@
 package com.astrazeneca.vardict.postprocessmodules;
 
 import com.astrazeneca.vardict.Configuration;
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
 import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
 import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.printers.SystemOutVariantPrinter;
@@ -98,8 +98,8 @@ public class SimplePostProcessModuleTest {
         Map<Integer, Vars> variantMap = new HashMap<>();
         variantMap.put(1, new Vars() {{
         }});
-        Tuple.Tuple2<Integer, Map <Integer, Vars>> tuple = new Tuple.Tuple2<>(1, variantMap);
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> newScope = new Scope<>(null, region, null,
+        AlignedVarsData tuple = new AlignedVarsData(1, variantMap);
+        Scope<AlignedVarsData> newScope = new Scope<>(null, region, null,
                 null, 0, null, null, tuple);
         SimplePostProcessModule module = runMethod();
         module.accept(newScope);
@@ -112,8 +112,8 @@ public class SimplePostProcessModuleTest {
         variantMap.put(1, new Vars() {{
             referenceVariant = refVariant;
         }});
-        Tuple.Tuple2<Integer, Map <Integer, Vars>> tuple = new Tuple.Tuple2<>(1, variantMap);
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> newScope = new Scope<>(null, region, null,
+        AlignedVarsData tuple = new AlignedVarsData(1, variantMap);
+        Scope<AlignedVarsData> newScope = new Scope<>(null, region, null,
                 null, 0, null, null, tuple);
 
         SimplePostProcessModule module = runMethod();
@@ -129,8 +129,8 @@ public class SimplePostProcessModuleTest {
         variantMap.put(1, new Vars() {{
             referenceVariant = refVariant;
         }});
-        Tuple.Tuple2<Integer, Map <Integer, Vars>> tuple = new Tuple.Tuple2<>(1, variantMap);
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> newScope = new Scope<>(null, region, null,
+        AlignedVarsData tuple = new AlignedVarsData(1, variantMap);
+        Scope<AlignedVarsData> newScope = new Scope<>(null, region, null,
                 null, 0, null, null, tuple);
 
         SimplePostProcessModule module = runMethod();
@@ -144,8 +144,8 @@ public class SimplePostProcessModuleTest {
         variantMap.put(1, new Vars() {{
             variants.add(badVariant); referenceVariant = refVariant;
         }});
-        Tuple.Tuple2<Integer, Map <Integer, Vars>> tuple = new Tuple.Tuple2<>(1, variantMap);
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> newScope = new Scope<>(null, region, null,
+        AlignedVarsData tuple = new AlignedVarsData(1, variantMap);
+        Scope<AlignedVarsData> newScope = new Scope<>(null, region, null,
                 null, 0, null, null, tuple);
 
         SimplePostProcessModule module = runMethod();
@@ -159,8 +159,8 @@ public class SimplePostProcessModuleTest {
         variantMap.put(1, new Vars() {{
             variants.add(goodVariant); referenceVariant = refVariant;
         }});
-        Tuple.Tuple2<Integer, Map <Integer, Vars>> tuple = new Tuple.Tuple2<>(1, variantMap);
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> newScope = new Scope<>(null, region, null,
+        AlignedVarsData tuple = new AlignedVarsData(1, variantMap);
+        Scope<AlignedVarsData> newScope = new Scope<>(null, region, null,
                 null, 0, null, null, tuple);
         SimplePostProcessModule module = runMethod();
         module.accept(newScope);
@@ -176,8 +176,8 @@ public class SimplePostProcessModuleTest {
             variants.add(goodVariant);
             referenceVariant = refVariant;
         }});
-        Tuple.Tuple2<Integer, Map <Integer, Vars>> tuple = new Tuple.Tuple2<>(1, variantMap);
-        Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> newScope = new Scope<>(null, region, null,
+        AlignedVarsData tuple = new AlignedVarsData(1, variantMap);
+        Scope<AlignedVarsData> newScope = new Scope<>(null, region, null,
                 null, 0, null, null, tuple);
         SimplePostProcessModule module = runMethod();
         module.accept(newScope);

@@ -4,6 +4,7 @@ import com.astrazeneca.vardict.Configuration;
 import com.astrazeneca.vardict.Utils;
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
 import com.astrazeneca.vardict.data.scopedata.RealignedVariationData;
 import com.astrazeneca.vardict.data.Region;
 import com.astrazeneca.vardict.data.scopedata.Scope;
@@ -22,7 +23,12 @@ import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.*;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
 
-public class ToVarsBuilder implements Module<RealignedVariationData, Tuple.Tuple2<Integer, Map<Integer, Vars>>> {
+/**
+ * This step of pipeline takes already realigned variations (as an intermediate structures) and create Aligned
+ * variants data contains information about reference variants, maps of vars on positions and list of description string
+ * and variants in region.
+ */
+public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVarsData> {
     private Region region;
     private Map<Integer, Integer> refCoverage;
     private Map<Integer, VariationMap<String, Variation>> insertionVariants;
@@ -47,8 +53,13 @@ public class ToVarsBuilder implements Module<RealignedVariationData, Tuple.Tuple
         this.duprate = scope.data.duprate;
     }
 
+    /**
+     * Collect variants from variations and fill map of aligned variants on position
+     * @param scope realigned variation data to process (contains filled insertionVariations and non-insertion variations maps)
+     * @return
+     */
     @Override
-    public Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> process(Scope<RealignedVariationData> scope) {
+    public Scope<AlignedVarsData> process(Scope<RealignedVariationData> scope) {
         initFromScope(scope);
         Configuration config = instance().conf;
 
@@ -82,7 +93,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, Tuple.Tuple
                     continue;
                 }
 
-                if (isTheSameVariationOnRef(config, position, varsAtCurPosition)) {
+                if (isTheSameVariationOnRef(position, varsAtCurPosition)) {
                     continue;
                 }
 
@@ -136,23 +147,405 @@ public class ToVarsBuilder implements Module<RealignedVariationData, Tuple.Tuple
 
         return new Scope<>(
                 scope,
-                tuple(scope.data.maxReadLength, alignedVariants));
+                new AlignedVarsData(scope.maxReadLength, alignedVariants));
     }
 
-    private boolean isTheSameVariationOnRef(Configuration config, int position, VariationMap<String, Variation> varsAtCurPosition) {
+    /**
+     * Checks if there is only reference variant on position and pileup/amplicon mode/somatic mode
+     * @param position start position of the variant
+     * @param varsAtCurPosition map of description strings on variations
+     * @return true if no pileup/amplicon mode/somatic mode enabled and only reference variant is on position
+     */
+    private boolean isTheSameVariationOnRef(int position, VariationMap<String, Variation> varsAtCurPosition) {
         Set<String> vk = new HashSet<>(varsAtCurPosition.keySet());
         if (getInsertionVariants().containsKey(position)) {
             vk.add("I");
         }
         if (vk.size() == 1 && ref.containsKey(position) && vk.contains(ref.get(position).toString())) {
             // ignore if only reference were seen and no pileup to avoid computation
-            if (!config.doPileup && !config.bam.hasBam2() && instance().ampliconBasedCalling == null) {
+            if (!instance().conf.doPileup && !instance().conf.bam.hasBam2() && instance().ampliconBasedCalling == null) {
                 return true;
             }
         }
         return false;
     }
 
+    /**
+     * For deletion variant calculates shift3 (number of bases to be shifted to 3' for deletions due to alternative alignment),
+     * msi (which indicates Microsatellite instability) and msint (MicroSattelite unit length in base pairs) fields.
+     * @param position position to seek in reference to get left sequence of variant
+     * @param dellen length of deletion part to get them from reference
+     * @return tuple of msi, shift3 and msint.
+     */
+    private Tuple.Tuple3<Double,Integer,String> proceedVrefIsDeletion(int position, int dellen) {
+        //left 70 bases in reference sequence
+        String leftseq = joinRef(ref, (position - 70 > 1 ? position - 70 : 1), position - 1); // left 10 nt
+        int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
+        //right 70 + dellen bases in reference sequence
+        String tseq = joinRef(ref, position, position + dellen + 70 > chr0 ? chr0 : position + dellen + 70);
+
+        //Try to adjust for microsatellite instability
+        Tuple.Tuple3<Double, Integer, String> tpl = findMSI(substr(tseq, 0, dellen),
+                substr(tseq, dellen), leftseq);
+        double msi = tpl._1;
+        int shift3 = tpl._2;
+        String msint = tpl._3;
+
+        tpl = findMSI(leftseq, substr(tseq, dellen), null);
+        double tmsi = tpl._1;
+        String tmsint = tpl._3;
+        if (msi < tmsi) {
+            msi = tmsi;
+            // Don't change shift3
+            msint = tmsint;
+        }
+        if (msi <= shift3 / (double) dellen) {
+            msi = shift3 / (double) dellen;
+        }
+        return tuple(msi, shift3, msint);
+    }
+
+    /**
+     * For insertion variant calculates shift3 (number of bases to be shifted to 3' for deletions due to alternative alignment),
+     * msi (which indicates Microsatellite instability) and msint (MicroSattelite unit length in base pairs) fields.
+     * @param position position to seek in reference to get left sequence of variant
+     * @param vn variant description string
+     * @return tuple of msi, shift3 and msint.
+     */
+    private Tuple.Tuple3<Double,Integer,String> proceedVrefIsInsertion(int position, String vn) {
+        //variant description string without first symbol '+'
+        String tseq1 = vn.substring(1);
+        //left 50 bases in reference sequence
+        String leftseq = joinRef(ref, position - 50 > 1 ? position - 50 : 1, position); // left 10 nt
+        int x = getOrElse(instance().chrLengths, region.chr, 0);
+        //right 70 bases in reference sequence
+        String tseq2 = joinRef(ref, position + 1, (position + 70 > x ? x : position + 70));
+
+        Tuple.Tuple3<Double, Integer, String> tpl = findMSI(tseq1, tseq2, leftseq);
+        double msi = tpl._1;
+        int shift3 = tpl._2;
+        String msint = tpl._3;
+
+        //Try to adjust for microsatellite instability
+        tpl = findMSI(leftseq, tseq2, null);
+        double tmsi = tpl._1;
+        String tmsint = tpl._3;
+        if (msi < tmsi) {
+            msi = tmsi;
+            // Don't change shift3
+            msint = tmsint;
+        }
+        if (msi <= shift3 / (double)tseq1.length()) {
+            msi = shift3 / (double)tseq1.length();
+        }
+        return tuple(msi, shift3, msint);
+    }
+
+    /**
+     * Collect variants to map of position to Vars and fill the data about reference variant and description
+     * strings on position
+     * @param alignedVariants map to be filled
+     * @param position position to be put in map
+     * @param var list of variants to be sorted in place
+     * @return maxfreq on position
+     */
+    private double collectVarsAtPosition(Map<Integer, Vars> alignedVariants, int position, List<Variant> var) {
+        double maxfreq = 0;
+        for (Variant tvar : var) {
+            //If variant description string is 1-char base and it matches reference base at this position
+            if (tvar.descriptionString.equals(String.valueOf(ref.get(position)))) {
+                //this is a reference variant
+                getOrPutVars(alignedVariants, position).referenceVariant = tvar;
+            } else {
+                //append variant to VAR and put it to VARN with key tvar.n (variant description string)
+                getOrPutVars(alignedVariants, position).variants.add(tvar);
+                getOrPutVars(alignedVariants, position).varDescriptionStringToVariants.put(tvar.descriptionString, tvar);
+                if (tvar.frequency > maxfreq) {
+                    maxfreq = tvar.frequency;
+                }
+            }
+        }
+        return maxfreq;
+    }
+
+    /**
+     * Sort the list of variants by meanQuality product positionCoverage in descending order
+     * @param var list of variants to be sorted in place
+     */
+    private void sortVariants(List<Variant> var) {
+        //sort variants by product of quality and coverage
+        Collections.sort(var, new Comparator<Variant>() {
+            @Override
+            public int compare(Variant o1, Variant o2) {
+                return Double.compare(o2.meanQuality * o2.positionCoverage, o1.meanQuality * o1.positionCoverage);
+            }
+        });
+    }
+
+    /**
+     * Creates insertion variant from each variation on this position and adds it to the list of aligned variants.
+     */
+    int createInsertion(double duprate, int position, int totalPosCoverage,
+                        List<Variant> var, List<String> debugLines, int hicov) {
+        //Handle insertions separately
+        Map<String, Variation> insertionVariations = getInsertionVariants().get(position);
+        if (insertionVariations != null) {
+            List<String> insertionDescriptionStrings = new ArrayList<>(insertionVariations.keySet());
+            Collections.sort(insertionDescriptionStrings);
+            //Loop over insertion variants
+            for (String descriptionStrin : insertionDescriptionStrings) {
+                // String n = entV.getKey();
+                Variation cnt = insertionVariations.get(descriptionStrin);
+                //count of variants in forward strand
+                int fwd = cnt.getDir(false);
+                //count of variants in reverse strand
+                int rev = cnt.getDir(true);
+                //strand bias flag (0, 1 or 2)
+                int bias = strandBias(fwd, rev);
+                //mean base quality for variant
+                double vqual = roundHalfEven("0.0", cnt.meanQuality / cnt.varsCount); // base quality
+                //mean mapping quality for variant
+                double mq = roundHalfEven("0.0", cnt.meanMappingQuality / (double)cnt.varsCount); // mapping quality
+                //number of high-quality reads for variant
+                int hicnt = cnt.highQualityReadsCount;
+                //number of low-quality reads for variant
+                int locnt = cnt.lowQualityReadsCount;
+
+                // Also commented in Perl
+                // hicov += hicnt;
+
+                //adjust position coverage if variant count is more than position coverage and no more than
+                // position coverage + extracnt
+                int ttcov = totalPosCoverage;
+                if (cnt.varsCount > totalPosCoverage && cnt.extracnt != 0 &&cnt.varsCount - totalPosCoverage < cnt.extracnt) {
+                    ttcov = cnt.varsCount;
+                }
+
+                if (ttcov < cnt.varsCount) {
+                    ttcov = cnt.varsCount;
+                    if (refCoverage.containsKey(position + 1) && ttcov < refCoverage.get(position + 1) - cnt.varsCount) {
+                        ttcov = refCoverage.get(position + 1);
+                        // Adjust the reference
+                        Variation variantNextPosition = getVariationMaybe(getNonInsertionVariants(), position + 1, ref.get(position + 1));
+                        if (variantNextPosition != null) {
+                            variantNextPosition.varsCountOnForward -= fwd;
+                            variantNextPosition.varsCountOnReverse -= rev;
+                        }
+                    }
+                    totalPosCoverage = ttcov;
+                }
+
+                Variant tvref = new Variant();
+                tvref.descriptionString = descriptionStrin;
+                tvref.positionCoverage = cnt.varsCount;
+                tvref.varsCountOnForward = fwd;
+                tvref.varsCountOnReverse = rev;
+                tvref.strandBiasFlag = String.valueOf(bias);
+                tvref.frequency = Utils.roundHalfEven("0.0000", cnt.varsCount / (double) ttcov);
+                tvref.meanPosition = Utils.roundHalfEven("0.0", cnt.meanPosition / (double) cnt.varsCount);
+                tvref.isAtLeastAt2Positions = cnt.pstd;
+                tvref.meanQuality = vqual;
+                tvref.hasAtLeast2DiffQualities = cnt.qstd;
+                tvref.meanMappingQuality = mq;
+                tvref.highQualityToLowQualityRatio = hicnt / (locnt != 0 ? locnt : 0.5d);
+                tvref.highQualityReadsFrequency = hicov > 0 ? hicnt / (double)hicov : 0;
+                tvref.extraFrequency = cnt.extracnt != 0 ? cnt.extracnt / (double)ttcov : 0;
+                tvref.shift3 = 0;
+                tvref.msi = 0;
+                tvref.numberOfMismatches = Utils.roundHalfEven("0.0", cnt.numberOfMismatches / (double)cnt.varsCount);
+                tvref.hicnt = hicnt;
+                tvref.hicov = hicov;
+                tvref.duprate = duprate;
+
+                var.add(tvref);
+                if (instance().conf.debug) {
+                    tvref.debugVariantsContentInsertion(debugLines, descriptionStrin);
+                }
+            }
+        }
+        return totalPosCoverage;
+    }
+
+    /**
+     * Creates non-insertion variant from each variation on this position and adds it to the list of aligned variants.
+     */
+    void createVariant(double duprate, Map<Integer, Vars> alignedVars, int position, VariationMap<String, Variation> nonInsertionVariations,
+                       int tcov, List<Variant> var, List<String> debugLines, List<String> keys, int hicov) {
+        //Loop over all variants found for the position except insertions
+        for (String descriptionString : keys) {
+            if (descriptionString.equals("SV")) {
+                VariationMap.SV sv = nonInsertionVariations.sv;
+                getOrPutVars(alignedVars, position).sv = sv.splits + "-" + sv.pairs + "-" + sv.clusters;
+                continue;
+            }
+            Variation cnt = nonInsertionVariations.get(descriptionString);
+            if (cnt.varsCount == 0) { //Skip variant if it does not have count
+                continue;
+            }
+            //count of variants in forward strand
+            int fwd = cnt.getDir(false);
+            //count of variants in reverse strand
+            int rev = cnt.getDir(true);
+            //strand bias flag (0, 1 or 2)
+            int bias = strandBias(fwd, rev);
+            //$vqual mean base quality for variant
+            double baseQuality = roundHalfEven("0.0", cnt.meanQuality / cnt.varsCount); // base quality
+            //$mq mean mapping quality for variant
+            double mappinqQuality = roundHalfEven("0.0", cnt.meanMappingQuality / (double) cnt.varsCount);
+            //number of high-quality reads for variant
+            int hicnt = cnt.highQualityReadsCount;
+            //number of low-quality reads for variant
+            int locnt = cnt.lowQualityReadsCount;
+            /**
+             * Condition:
+             # 1). cnt.cnt > tcov                         - variant count is more than position coverage
+             # 2). cnt.cnt - tcov < cnt.extracnt          - variant count is no more than position coverage + extracnt
+             */
+            int ttcov = tcov;
+            if (cnt.varsCount > tcov && cnt.extracnt > 0 && cnt.varsCount - tcov < cnt.extracnt) { //adjust position coverage if condition holds
+                ttcov = cnt.varsCount;
+            }
+
+            //create variant record
+            Variant tvref = new Variant();
+            tvref.descriptionString = descriptionString;
+            tvref.positionCoverage = cnt.varsCount;
+            tvref.varsCountOnForward = fwd;
+            tvref.varsCountOnReverse = rev;
+            tvref.strandBiasFlag = String.valueOf(bias);
+            tvref.frequency = Utils.roundHalfEven("0.0000", cnt.varsCount / (double) ttcov);
+            tvref.meanPosition = Utils.roundHalfEven("0.0", cnt.meanPosition / (double) cnt.varsCount);
+            tvref.isAtLeastAt2Positions = cnt.pstd;
+            tvref.meanQuality = baseQuality;
+            tvref.hasAtLeast2DiffQualities = cnt.qstd;
+            tvref.meanMappingQuality = mappinqQuality;
+            tvref.highQualityToLowQualityRatio = hicnt / (locnt != 0 ? locnt : 0.5d);
+            tvref.highQualityReadsFrequency = hicov > 0 ? hicnt / (double) hicov : 0;
+            tvref.extraFrequency = cnt.extracnt != 0 ? cnt.extracnt / (double) ttcov : 0;
+            tvref.shift3 = 0;
+            tvref.msi = 0;
+            tvref.numberOfMismatches = Utils.roundHalfEven("0.0", cnt.numberOfMismatches / (double) cnt.varsCount);
+            tvref.hicnt = hicnt;
+            tvref.hicov = hicov;
+            tvref.duprate = duprate;
+
+            //append variant record
+            var.add(tvref);
+            if (instance().conf.debug) {
+                tvref.debugVariantsContentSimple(debugLines, descriptionString);
+            }
+        }
+    }
+
+    /**
+     * Adjust variant negative counts of fields FWD, REV, RFC, RRC to zeros and print the information message to console
+     * @param p start position of variant
+     * @param vref variant to adjust
+     */
+    private void adjustVariantCounts(int p, Variant vref) {
+        String message = "column in variant on position: " + p + " " + vref.refallele + "->" +
+                vref.varallele + " was negative, adjusted to zero.";
+
+        if (vref.refForwardCoverage < 0 ) {
+            vref.refForwardCoverage = 0;
+            System.err.println("Reference forward count " + message);
+        }
+        if (vref.refReverseCoverage < 0) {
+            vref.refReverseCoverage = 0;
+            System.err.println("Reference reverse count " + message);
+        }
+        if (vref.varsCountOnForward < 0) {
+            vref.varsCountOnForward = 0;
+            System.err.println("Variant forward count " + message);
+        }
+        if (vref.varsCountOnReverse < 0 ) {
+            vref.varsCountOnReverse = 0;
+            System.err.println("Variant reverse count " + message);
+        }
+    }
+
+    /**
+     * Calculates coverage by high quality reads on position
+     * @param insertionVariations Map of description string on insertion cariation for this position
+     * @param nonInsertionVariations Map of description string on non-insertion variation for this position
+     * @return coverage for high quality reads
+     */
+    private int calcHicov(VariationMap<String, Variation> insertionVariations,
+                          VariationMap<String, Variation> nonInsertionVariations) {
+        int hicov = 0;
+        for (Map.Entry<String, Variation> descVariantEntry : nonInsertionVariations.entrySet()) {
+            if (descVariantEntry.getKey().equals("SV")) {
+                continue;
+            }
+            hicov += descVariantEntry.getValue().highQualityReadsCount;
+        }
+        if (insertionVariations != null) {
+            for (Variation variation : insertionVariations.values()) {
+                hicov += variation.highQualityReadsCount;
+            }
+        }
+        return hicov;
+    }
+
+    /**
+     * Find microsatellite instability
+     * Tandemly repeated short sequence motifs ranging from 1– 6(8 in our case) base pairs are called microsatellites.
+     * Other frequently used terms for these DNA regions are simple sequences or short tandem repeats (STRs)
+     * @param tseq1 variant description string
+     * @param tseq2 right 70 bases in reference sequence
+     * @param left left 50 bases in reference sequence
+     * @return Tuple of (MSI count, No. of bases to be shifted to 3 prime for deletions due to alternative alignment,
+     * MicroSattelite unit length in base pairs)
+     */
+    private Tuple.Tuple3<Double, Integer, String> findMSI(String tseq1, String tseq2, String left) {
+
+        //Number of nucleotides in microsattelite
+        int nmsi = 1;
+        //Number of bases to be shifted to 3 prime
+        int shift3 = 0;
+        String maxmsi = "";
+        double msicnt = 0;
+        while (nmsi <= tseq1.length() && nmsi <= 6) {
+            //Microsattelite nucleotide sequence; trim nucleotide(s) from the end
+            String msint = substr(tseq1, -nmsi, nmsi);
+            Pattern pattern = Pattern.compile("((" + msint + ")+)$");
+            Matcher mtch = pattern.matcher(tseq1);
+            String msimatch = "";
+            if (mtch.find()) {
+                msimatch = mtch.group(1);
+            }
+            if (left != null && !left.isEmpty()) {
+                mtch = pattern.matcher(left + tseq1);
+                if (mtch.find()) {
+                    msimatch = mtch.group(1);
+                }
+            }
+            double curmsi = msimatch.length() / (double)nmsi;
+            mtch = Pattern.compile("^((" + msint + ")+)").matcher(tseq2);
+            if (mtch.find()) {
+                curmsi += mtch.group(1).length() / (double)nmsi;
+            }
+            if (curmsi > msicnt) {
+                maxmsi = msint;
+                msicnt = curmsi;
+            }
+            nmsi++;
+        }
+
+        String tseq = tseq1 + tseq2;
+        while (shift3 < tseq2.length() && tseq.charAt(shift3) == tseq2.charAt(shift3)) {
+            shift3++;
+        }
+        return tuple(msicnt, shift3, maxmsi);
+    }
+
+    /**
+     * Fill the information about reference, genotype, refallele and varallele to the variant.
+     * @param position position to get data from reference
+     * @param totalPosCoverage total coverage on position
+     * @param variationsAtPos information about variant on position to fill reference variant data
+     * @param debugLines list of debug lines to fill DEBUG field in variant
+     */
     private void collectReferenceVariants(int position, int totalPosCoverage, Vars variationsAtPos, List<String> debugLines) {
         //reference forward strand coverage
         int rfc = 0;
@@ -269,7 +662,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, Tuple.Tuple
                         //remove '-' and number from beginning of variant string
                         varallele = vn.replaceFirst("^-\\d+", "");
 
-                        tupleRefVariant = proceedVrefIsDeletion(position, vn, dellen);
+                        tupleRefVariant = proceedVrefIsDeletion(position, dellen);
                         msi = tupleRefVariant._1;
                         shift3 = tupleRefVariant._2;
                         msint = tupleRefVariant._3;
@@ -497,337 +890,6 @@ public class ToVarsBuilder implements Module<RealignedVariationData, Tuple.Tuple
         } else {
             variationsAtPos.referenceVariant = new Variant();
         }
-    }
-
-    private Tuple.Tuple3<Double,Integer,String> proceedVrefIsDeletion(int position, String vn, int dellen) {
-        //left 70 bases in reference sequence
-        String leftseq = joinRef(ref, (position - 70 > 1 ? position - 70 : 1), position - 1); // left 10 nt
-        int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
-        //right 70 + dellen bases in reference sequence
-        String tseq = joinRef(ref, position, position + dellen + 70 > chr0 ? chr0 : position + dellen + 70);
-
-        //Try to adjust for microsatellite instability
-        Tuple.Tuple3<Double, Integer, String> tpl = findMSI(substr(tseq, 0, dellen),
-                substr(tseq, dellen), leftseq);
-        double msi = tpl._1;
-        int shift3 = tpl._2;
-        String msint = tpl._3;
-
-        tpl = findMSI(leftseq, substr(tseq, dellen), null);
-        double tmsi = tpl._1;
-        String tmsint = tpl._3;
-        if (msi < tmsi) {
-            msi = tmsi;
-            // Don't change shift3
-            msint = tmsint;
-        }
-        if (msi <= shift3 / (double) dellen) {
-            msi = shift3 / (double) dellen;
-        }
-        return tuple(msi, shift3, msint);
-    }
-
-    private Tuple.Tuple3<Double,Integer,String> proceedVrefIsInsertion(int position, String vn) {
-        //variant description string without first symbol '+'
-        String tseq1 = vn.substring(1);
-        //left 50 bases in reference sequence
-        String leftseq = joinRef(ref, position - 50 > 1 ? position - 50 : 1, position); // left 10 nt
-        int x = getOrElse(instance().chrLengths, region.chr, 0);
-        //right 70 bases in reference sequence
-        String tseq2 = joinRef(ref, position + 1, (position + 70 > x ? x : position + 70));
-
-        Tuple.Tuple3<Double, Integer, String> tpl = findMSI(tseq1, tseq2, leftseq);
-        double msi = tpl._1;
-        int shift3 = tpl._2;
-        String msint = tpl._3;
-
-        //Try to adjust for microsatellite instability
-        tpl = findMSI(leftseq, tseq2, null);
-        double tmsi = tpl._1;
-        String tmsint = tpl._3;
-        if (msi < tmsi) {
-            msi = tmsi;
-            // Don't change shift3
-            msint = tmsint;
-        }
-        if (msi <= shift3 / (double)tseq1.length()) {
-            msi = shift3 / (double)tseq1.length();
-        }
-        return tuple(msi, shift3, msint);
-    }
-
-    private double collectVarsAtPosition(Map<Integer, Vars> alignedVariants, int position, List<Variant> var) {
-        double maxfreq = 0;
-        for (Variant tvar : var) {
-            //If variant description string is 1-char base and it matches reference base at this position
-            if (tvar.descriptionString.equals(String.valueOf(ref.get(position)))) {
-                //this is a reference variant
-                getOrPutVars(alignedVariants, position).referenceVariant = tvar;
-            } else {
-                //append variant to VAR and put it to VARN with key tvar.n (variant description string)
-                getOrPutVars(alignedVariants, position).variants.add(tvar);
-                getOrPutVars(alignedVariants, position).varDescriptionStringToVariants.put(tvar.descriptionString, tvar);
-                if (tvar.frequency > maxfreq) {
-                    maxfreq = tvar.frequency;
-                }
-            }
-        }
-        return maxfreq;
-    }
-
-    private void sortVariants(List<Variant> var) {
-        //sort variants by product of quality and coverage
-        Collections.sort(var, new Comparator<Variant>() {
-            @Override
-            public int compare(Variant o1, Variant o2) {
-                return Double.compare(o2.meanQuality * o2.positionCoverage, o1.meanQuality * o1.positionCoverage);
-            }
-        });
-    }
-
-    int createInsertion(double duprate, int position, int totalPosCoverage,
-                        List<Variant> var, List<String> debugLines, int hicov) {
-        //Handle insertions separately
-        Map<String, Variation> iv = getInsertionVariants().get(position);
-        if (iv != null) {
-            List<String> ikeys = new ArrayList<>(iv.keySet());
-            Collections.sort(ikeys);
-            //Loop over insertion variants
-            for (String n : ikeys) {
-                // String n = entV.getKey();
-                Variation cnt = iv.get(n);
-                //count of variants in forward strand
-                int fwd = cnt.getDir(false);
-                //count of variants in reverse strand
-                int rev = cnt.getDir(true);
-                //strand bias flag (0, 1 or 2)
-                int bias = strandBias(fwd, rev);
-                //mean base quality for variant
-                double vqual = roundHalfEven("0.0", cnt.meanQuality / cnt.varsCount); // base quality
-                //mean mapping quality for variant
-                double mq = roundHalfEven("0.0", cnt.meanMappingQuality / (double)cnt.varsCount); // mapping quality
-                //number of high-quality reads for variant
-                int hicnt = cnt.highQualityReadsCount;
-                //number of low-quality reads for variant
-                int locnt = cnt.lowQualityReadsCount;
-
-                // Also commented in Perl
-                // hicov += hicnt;
-
-                //adjust position coverage if variant count is more than position coverage and no more than
-                // position coverage + extracnt
-                int ttcov = totalPosCoverage;
-                if (cnt.varsCount > totalPosCoverage && cnt.extracnt != 0 &&cnt.varsCount - totalPosCoverage < cnt.extracnt) {
-                    ttcov = cnt.varsCount;
-                }
-
-                if (ttcov < cnt.varsCount) {
-                    ttcov = cnt.varsCount;
-                    if (refCoverage.containsKey(position + 1) && ttcov < refCoverage.get(position + 1) - cnt.varsCount) {
-                        ttcov = refCoverage.get(position + 1);
-                        // Adjust the reference
-                        Variation variantNextPosition = getVariationMaybe(getNonInsertionVariants(), position + 1, ref.get(position + 1));
-                        if (variantNextPosition != null) {
-                            variantNextPosition.varsCountOnForward -= fwd;
-                            variantNextPosition.varsCountOnReverse -= rev;
-                        }
-                    }
-                    totalPosCoverage = ttcov;
-                }
-
-                Variant tvref = new Variant();
-                tvref.descriptionString = n;
-                tvref.positionCoverage = cnt.varsCount;
-                tvref.varsCountOnForward = fwd;
-                tvref.varsCountOnReverse = rev;
-                tvref.strandBiasFlag = String.valueOf(bias);
-                tvref.frequency = Utils.roundHalfEven("0.0000", cnt.varsCount / (double) ttcov);
-                tvref.meanPosition = Utils.roundHalfEven("0.0", cnt.meanPosition / (double) cnt.varsCount);
-                tvref.isAtLeastAt2Positions = cnt.pstd;
-                tvref.meanQuality = vqual;
-                tvref.hasAtLeast2DiffQualities = cnt.qstd;
-                tvref.meanMappingQuality = mq;
-                tvref.highQualityToLowQualityRatio = hicnt / (locnt != 0 ? locnt : 0.5d);
-                tvref.highQualityReadsFrequency = hicov > 0 ? hicnt / (double)hicov : 0;
-                tvref.extraFrequency = cnt.extracnt != 0 ? cnt.extracnt / (double)ttcov : 0;
-                tvref.shift3 = 0;
-                tvref.msi = 0;
-                tvref.numberOfMismatches = Utils.roundHalfEven("0.0", cnt.numberOfMismatches / (double)cnt.varsCount);
-                tvref.hicnt = hicnt;
-                tvref.hicov = hicov;
-                tvref.duprate = duprate;
-
-                var.add(tvref);
-                if (instance().conf.debug) {
-                    tvref.debugVariantsContentInsertion(debugLines, n);
-                }
-            }
-        }
-        return totalPosCoverage;
-    }
-
-    void createVariant(double duprate, Map<Integer, Vars> vars, int position, VariationMap<String, Variation> v,
-                                      int tcov, List<Variant> var, List<String> debugLines, List<String> keys, int hicov) {
-        //Loop over all variants found for the position except insertions
-        for (String n : keys) {
-            if (n.equals("SV")) {
-                VariationMap.SV sv = v.sv;
-                getOrPutVars(vars, position).sv = sv.splits + "-" + sv.pairs + "-" + sv.clusters;
-                continue;
-            }
-            Variation cnt = v.get(n);
-            if (cnt.varsCount == 0) { //Skip variant if it does not have count
-                continue;
-            }
-            //count of variants in forward strand
-            int fwd = cnt.getDir(false);
-            //count of variants in reverse strand
-            int rev = cnt.getDir(true);
-            //strand bias flag (0, 1 or 2)
-            int bias = strandBias(fwd, rev);
-            //mean base quality for variant
-            double vqual = roundHalfEven("0.0", cnt.meanQuality / cnt.varsCount); // base quality
-            //mean mapping quality for variant
-            double mq = roundHalfEven("0.0", cnt.meanMappingQuality / (double) cnt.varsCount);
-            //number of high-quality reads for variant
-            int hicnt = cnt.highQualityReadsCount;
-            //number of low-quality reads for variant
-            int locnt = cnt.lowQualityReadsCount;
-            /**
-             * Condition:
-             # 1). cnt.cnt > tcov                         - variant count is more than position coverage
-             # 2). cnt.cnt - tcov < cnt.extracnt          - variant count is no more than position coverage + extracnt
-             */
-            int ttcov = tcov;
-            if (cnt.varsCount > tcov && cnt.extracnt > 0 && cnt.varsCount - tcov < cnt.extracnt) { //adjust position coverage if condition holds
-                ttcov = cnt.varsCount;
-            }
-
-            //create variant record
-            Variant tvref = new Variant();
-            tvref.descriptionString = n;
-            tvref.positionCoverage = cnt.varsCount;
-            tvref.varsCountOnForward = fwd;
-            tvref.varsCountOnReverse = rev;
-            tvref.strandBiasFlag = String.valueOf(bias);
-            tvref.frequency = Utils.roundHalfEven("0.0000", cnt.varsCount / (double) ttcov);
-            tvref.meanPosition = Utils.roundHalfEven("0.0", cnt.meanPosition / (double) cnt.varsCount);
-            tvref.isAtLeastAt2Positions = cnt.pstd;
-            tvref.meanQuality = vqual;
-            tvref.hasAtLeast2DiffQualities = cnt.qstd;
-            tvref.meanMappingQuality = mq;
-            tvref.highQualityToLowQualityRatio = hicnt / (locnt != 0 ? locnt : 0.5d);
-            tvref.highQualityReadsFrequency = hicov > 0 ? hicnt / (double) hicov : 0;
-            tvref.extraFrequency = cnt.extracnt != 0 ? cnt.extracnt / (double) ttcov : 0;
-            tvref.shift3 = 0;
-            tvref.msi = 0;
-            tvref.numberOfMismatches = Utils.roundHalfEven("0.0", cnt.numberOfMismatches / (double) cnt.varsCount);
-            tvref.hicnt = hicnt;
-            tvref.hicov = hicov;
-            tvref.duprate = duprate;
-
-            //append variant record
-            var.add(tvref);
-            if (instance().conf.debug) {
-                tvref.debugVariantsContentSimple(debugLines, n);
-            }
-        }
-    }
-
-    /**
-     * Adjust variant negative counts of fields FWD, REV, RFC, RRC to zeros and print the information message to console
-     * @param p start position of variant
-     * @param vref variant to adjust
-     */
-    private void adjustVariantCounts(int p, Variant vref) {
-        String message = "column in variant on position: " + p + " " + vref.refallele + "->" +
-                vref.varallele + " was negative, adjusted to zero.";
-
-        if (vref.refForwardCoverage < 0 ) {
-            vref.refForwardCoverage = 0;
-            System.err.println("Reference forward count " + message);
-        }
-        if (vref.refReverseCoverage < 0) {
-            vref.refReverseCoverage = 0;
-            System.err.println("Reference reverse count " + message);
-        }
-        if (vref.varsCountOnForward < 0) {
-            vref.varsCountOnForward = 0;
-            System.err.println("Variant forward count " + message);
-        }
-        if (vref.varsCountOnReverse < 0 ) {
-            vref.varsCountOnReverse = 0;
-            System.err.println("Variant reverse count " + message);
-        }
-    }
-
-    private int calcHicov(VariationMap<String, Variation> iv,
-                                 VariationMap<String, Variation> v) {
-        int hicov = 0;
-        for (Map.Entry<String, Variation> vr : v.entrySet()) {
-            if (vr.getKey().equals("SV")) {
-                continue;
-            }
-            hicov += vr.getValue().highQualityReadsCount;
-        }
-        if (iv != null) {
-            for (Variation vr : iv.values()) {
-                hicov += vr.highQualityReadsCount;
-            }
-        }
-        return hicov;
-    }
-
-    /**
-     * Find microsatellite instability
-     * Tandemly repeated short sequence motifs ranging from 1– 6(8 in our case) base pairs are called microsatellites.
-     * Other frequently used terms for these DNA regions are simple sequences or short tandem repeats (STRs)
-     * @param tseq1 variant description string
-     * @param tseq2 right 70 bases in reference sequence
-     * @param left left 50 bases in reference sequence
-     * @return Tuple of (MSI count, No. of bases to be shifted to 3 prime for deletions due to alternative alignment,
-     * MicroSattelite unit length in base pairs)
-     */
-    private static Tuple.Tuple3<Double, Integer, String> findMSI(String tseq1, String tseq2, String left) {
-
-        //Number of nucleotides in microsattelite
-        int nmsi = 1;
-        //Number of bases to be shifted to 3 prime
-        int shift3 = 0;
-        String maxmsi = "";
-        double msicnt = 0;
-        while (nmsi <= tseq1.length() && nmsi <= 6) {
-            //Microsattelite nucleotide sequence; trim nucleotide(s) from the end
-            String msint = substr(tseq1, -nmsi, nmsi);
-            Pattern pattern = Pattern.compile("((" + msint + ")+)$");
-            Matcher mtch = pattern.matcher(tseq1);
-            String msimatch = "";
-            if (mtch.find()) {
-                msimatch = mtch.group(1);
-            }
-            if (left != null && !left.isEmpty()) {
-                mtch = pattern.matcher(left + tseq1);
-                if (mtch.find()) {
-                    msimatch = mtch.group(1);
-                }
-            }
-            double curmsi = msimatch.length() / (double)nmsi;
-            mtch = Pattern.compile("^((" + msint + ")+)").matcher(tseq2);
-            if (mtch.find()) {
-                curmsi += mtch.group(1).length() / (double)nmsi;
-            }
-            if (curmsi > msicnt) {
-                maxmsi = msint;
-                msicnt = curmsi;
-            }
-            nmsi++;
-        }
-
-        String tseq = tseq1 + tseq2;
-        while (shift3 < tseq2.length() && tseq.charAt(shift3) == tseq2.charAt(shift3)) {
-            shift3++;
-        }
-        return tuple(msicnt, shift3, maxmsi);
     }
 
 }

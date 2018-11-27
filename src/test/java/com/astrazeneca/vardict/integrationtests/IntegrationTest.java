@@ -146,8 +146,8 @@ public class IntegrationTest {
     }
 
 
-    private void runVarDict(String[] args) throws ParseException, IOException {
-        Configuration conf = CmdParser.parseParams(args);
+    private void runVarDict(String[] args) throws ParseException {
+        Configuration conf = new CmdParser().parseParams(args);
         vardictLauncher = new VarDictLauncher(referenceResource);
         vardictLauncher.start(conf);
     }

@@ -8,8 +8,6 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.astrazeneca.vardict.modules.VariationRealigner.find35match;
-
 public class VariationRealignerTest {
 
     @AfterMethod
@@ -54,7 +52,7 @@ public class VariationRealignerTest {
     @Test(dataProvider = "find35MatchTestDataProvider")
     public void find35MatchTest(String seq5, String seq3, ExpectedMatchInfo expected) {
         GlobalReadOnlyScope.init(new Configuration(), null, null, null, "");
-        Tuple.Tuple3<Integer, Integer, Integer> match = find35match(seq5, seq3);
+        Tuple.Tuple3<Integer, Integer, Integer> match = new VariationRealigner().find35match(seq5, seq3);
         Assert.assertEquals(match._1, expected.p3);
         Assert.assertEquals(match._2, expected.p5);
         Assert.assertEquals(match._3, expected.match);

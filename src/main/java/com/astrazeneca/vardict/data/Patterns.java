@@ -3,7 +3,7 @@ package com.astrazeneca.vardict.data;
 import java.util.regex.Pattern;
 
 /**
- * Regex Patterns from all classes of VarDict.
+ * Regex Patterns from all classes of VarDict stored in one place.
  */
 public class Patterns {
     // SAMRecord patterns

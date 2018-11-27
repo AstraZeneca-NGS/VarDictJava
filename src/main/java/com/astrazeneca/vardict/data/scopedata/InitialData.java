@@ -9,10 +9,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Initial data tp start VarDict pipelines. Create maps for variations and softclips.
+ * Initial data to start VarDict pipelines. Create maps for variations, reference coverage and softclips.
  */
 public class InitialData {
-
     public Map<Integer, VariationMap<String, Variation>> nonInsertionVariants;
     public Map<Integer, VariationMap<String, Variation>> insertionVariants;
     public Map<Integer, Integer> refCoverage;

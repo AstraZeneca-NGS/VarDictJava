@@ -5,6 +5,11 @@ import com.astrazeneca.vardict.variations.Variation;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * LinkedHashMap contains additional field to store information about found Structural variants
+ * @param <K> commonly String - description string of variant
+ * @param <V> commonly Variation
+ */
 public class VariationMap<K,V> extends LinkedHashMap<K,V> {
     public SV sv;
 
@@ -18,6 +23,12 @@ public class VariationMap<K,V> extends LinkedHashMap<K,V> {
         public int clusters;
     }
 
+    /**
+     * If map already contains SV, return is. Else it creates SV and put new Variation to description String "SV"
+     * @param hash map of description strings and variations on position
+     * @param start start position to search for structural variants
+     * @return structural variant data (pairs, clusters, splits).
+     */
     public static SV getSV(Map<Integer, VariationMap<String, Variation>> hash,
                            int start) {
         VariationMap<String, Variation> map = hash.get(start);
@@ -37,6 +48,11 @@ public class VariationMap<K,V> extends LinkedHashMap<K,V> {
         return sv;
     }
 
+    /**
+     * Removes SV description string from map and delete information about SV.
+     * @param hash map of description strings and variations on position
+     * @param start start position to search for structural variants
+     */
     public static void removeSV (Map<Integer, VariationMap<String, Variation>> hash, int start) {
         hash.get(start).sv = null;
         if (hash.get(start).containsKey("SV")) {

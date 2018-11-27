@@ -4,15 +4,22 @@ import com.astrazeneca.vardict.printers.PrinterType;
 import htsjdk.samtools.ValidationStringency;
 import org.apache.commons.cli.*;
 
-import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 
 import static com.astrazeneca.vardict.RegionBuilder.DEFAULT_BED_ROW_FORMAT;
 
+/**
+ * Class to parse the parameters from the command line
+ */
 public class CmdParser {
-
-    public static Configuration parseParams(String[] args) throws ParseException, IOException {
+    /**
+     * Parses the array of command line parameters and fills configuration parameters.
+     * @param args arguments from command line to be parsed
+     * @return configuration with parameters from command line
+     * @throws ParseException if parse can't be finished
+     */
+    public Configuration parseParams(String[] args) throws ParseException{
         Options options = buildOptions();
 
         CommandLineParser parser = new BasicParser();
@@ -42,7 +49,13 @@ public class CmdParser {
         return config;
     }
 
-    private Configuration parseCmd(CommandLine cmd) throws ParseException, IOException{
+    /**
+     * For each parameter in CMD set the Configuration variable
+     * @param cmd parsed CommandLine from apache CLI
+     * @return configuration with parameters from command line
+     * @throws ParseException
+     */
+    private Configuration parseCmd(CommandLine cmd) throws ParseException {
         Configuration config = new Configuration();
 
         String[] args = cmd.getArgs();
@@ -56,12 +69,14 @@ public class CmdParser {
         config.removeDuplicatedReads = cmd.hasOption("t");
         config.moveIndelsTo3 = cmd.hasOption("3");
         config.samfilter = cmd.getOptionValue("F", "0x504");
+
         if (cmd.hasOption("z")) {
             config.zeroBased = 1 == getIntValue(cmd, "z", 1);
         }
         config.ampliconBasedCalling = cmd.getOptionValue("a");
         config.performLocalRealignment = 1 == getIntValue(cmd, "k", 1);
-        config.fasta = cmd.getOptionValue("G", "/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa");
+
+        config.fasta = setFastaFile(cmd);
 
         config.regionOfInterest = cmd.getOptionValue("R");
         config.delimiter = cmd.getOptionValue("d", "\t");
@@ -156,8 +171,39 @@ public class CmdParser {
         return config;
     }
 
+    /**
+     * Reference can be set by using shorter command line option: hg19, hg38, mm10.
+     * This paths are used only for AZ needs.
+     * @param cmd parsed CommandLine from apache CLI
+     * @return string contains path to fasta file
+     */
+    private String setFastaFile(CommandLine cmd) {
+        String fasta = cmd.getOptionValue("G");
+        if (fasta == null) {
+            System.err.println("Reference file path wasn't set (option -G). Will be used the default fasta path.");
+            fasta = Configuration.HG19;
+        } else {
+            switch (fasta) {
+                case "hg19":
+                    fasta = Configuration.HG19;
+                    break;
+                case "hg38":
+                    fasta = Configuration.HG38;
+                    break;
+                case "mm10":
+                    fasta = Configuration.MM10;
+                    break;
+            }
+        }
+        return fasta;
+    }
+
+    /**
+     * Help information about options contains long and short option names and their descriptions
+     * @return options from apache CLI
+     */
     @SuppressWarnings("static-access")
-    private static Options buildOptions() {
+    private Options buildOptions() {
         Options options = new Options();
         options.addOption("H", "?", false, "Print this help page");
         options.addOption("h", "header", false, "Print a header row describing columns");
@@ -216,7 +262,11 @@ public class CmdParser {
         options.addOption(OptionBuilder.withArgName("Genome fasta")
                 .hasArg(true)
                 .withDescription("The reference fasta. Should be indexed (.fai).\n"
-                        + "Defaults to: /ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa")
+                        + "Defaults to: /ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa. " +
+                        " Also short commands can be used to set path to: \n " +
+                        "hg19 - /ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa\n" +
+                        "hg38 - /ngs/reference_data/genomes/Hsapiens/hg38/seq/hg38.fa\n" +
+                        "mm10 - /ngs/reference_data/genomes/Mmusculus/mm10/seq/mm10.fa" )
                 .withType(String.class)
                 .isRequired(false)
                 .create('G'));
@@ -502,6 +552,13 @@ public class CmdParser {
         return  value == null ? defaultValue : ((Number)value).doubleValue();
     }
 
+    /**
+     * Calculates possible count of threads to use. If -th set without value, it will be set to number of
+     * available processors.
+     * @param cmd parsed CommandLine from apache CLI
+     * @return number of threads
+     * @throws ParseException if option -th can't be read
+     */
     private int readThreadsCount(CommandLine cmd) throws ParseException {
         int threads = 0;
         if (cmd.hasOption("th")) {
@@ -515,7 +572,7 @@ public class CmdParser {
         return threads;
     }
 
-    private static void help(Options options) {
+    private void help(Options options) {
         HelpFormatter formater = new HelpFormatter();
         formater.setOptionComparator(null);
         formater.printHelp(142, "vardict [-n name_reg] [-b bam] [-c chr] [-S start] [-E end] [-s seg_starts] [-e seg_ends] "
