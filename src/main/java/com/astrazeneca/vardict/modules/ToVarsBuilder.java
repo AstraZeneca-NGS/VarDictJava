@@ -56,7 +56,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
     /**
      * Collect variants from variations and fill map of aligned variants on position
      * @param scope realigned variation data to process (contains filled insertionVariations and non-insertion variations maps)
-     * @return
+     * @return object contains max read lengths and map of positions-Vars
      */
     @Override
     public Scope<AlignedVarsData> process(Scope<RealignedVariationData> scope) {
@@ -76,6 +76,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 lastPosition = position;
                 VariationMap<String, Variation> varsAtCurPosition = entH.getValue();
 
+                // skip position if there are no variants on position (both insertion and non-insertion)
                 if (varsAtCurPosition.isEmpty() && !getInsertionVariants().containsKey(position)) {
                     continue;
                 }
@@ -175,9 +176,9 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
      * msi (which indicates Microsatellite instability) and msint (MicroSattelite unit length in base pairs) fields.
      * @param position position to seek in reference to get left sequence of variant
      * @param dellen length of deletion part to get them from reference
-     * @return tuple of msi, shift3 and msint.
+     * @return MSI object.
      */
-    private Tuple.Tuple3<Double,Integer,String> proceedVrefIsDeletion(int position, int dellen) {
+    private MSI proceedVrefIsDeletion(int position, int dellen) {
         //left 70 bases in reference sequence
         String leftseq = joinRef(ref, (position - 70 > 1 ? position - 70 : 1), position - 1); // left 10 nt
         int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
@@ -185,15 +186,14 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         String tseq = joinRef(ref, position, position + dellen + 70 > chr0 ? chr0 : position + dellen + 70);
 
         //Try to adjust for microsatellite instability
-        Tuple.Tuple3<Double, Integer, String> tpl = findMSI(substr(tseq, 0, dellen),
-                substr(tseq, dellen), leftseq);
-        double msi = tpl._1;
-        int shift3 = tpl._2;
-        String msint = tpl._3;
+        MSI msiData = findMSI(substr(tseq, 0, dellen), substr(tseq, dellen), leftseq);
+        double msi = msiData.msi;
+        int shift3 = msiData.shift3;
+        String msint = msiData.msint;
 
-        tpl = findMSI(leftseq, substr(tseq, dellen), null);
-        double tmsi = tpl._1;
-        String tmsint = tpl._3;
+        MSI msiDataWIthoutLeft = findMSI(leftseq, substr(tseq, dellen), null);
+        double tmsi = msiDataWIthoutLeft.msi;
+        String tmsint = msiDataWIthoutLeft.msint;
         if (msi < tmsi) {
             msi = tmsi;
             // Don't change shift3
@@ -202,7 +202,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         if (msi <= shift3 / (double) dellen) {
             msi = shift3 / (double) dellen;
         }
-        return tuple(msi, shift3, msint);
+        return new MSI(msi, shift3, msint);
     }
 
     /**
@@ -212,7 +212,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
      * @param vn variant description string
      * @return tuple of msi, shift3 and msint.
      */
-    private Tuple.Tuple3<Double,Integer,String> proceedVrefIsInsertion(int position, String vn) {
+    private MSI proceedVrefIsInsertion(int position, String vn) {
         //variant description string without first symbol '+'
         String tseq1 = vn.substring(1);
         //left 50 bases in reference sequence
@@ -221,15 +221,15 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         //right 70 bases in reference sequence
         String tseq2 = joinRef(ref, position + 1, (position + 70 > x ? x : position + 70));
 
-        Tuple.Tuple3<Double, Integer, String> tpl = findMSI(tseq1, tseq2, leftseq);
-        double msi = tpl._1;
-        int shift3 = tpl._2;
-        String msint = tpl._3;
+        MSI msiData = findMSI(tseq1, tseq2, leftseq);
+        double msi = msiData.msi;
+        int shift3 = msiData.shift3;
+        String msint = msiData.msint;
 
         //Try to adjust for microsatellite instability
-        tpl = findMSI(leftseq, tseq2, null);
-        double tmsi = tpl._1;
-        String tmsint = tpl._3;
+        MSI msiDataWithoutLeft = findMSI(leftseq, tseq2, null);
+        double tmsi = msiDataWithoutLeft.msi;
+        String tmsint = msiDataWithoutLeft.msint;
         if (msi < tmsi) {
             msi = tmsi;
             // Don't change shift3
@@ -238,7 +238,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         if (msi <= shift3 / (double)tseq1.length()) {
             msi = shift3 / (double)tseq1.length();
         }
-        return tuple(msi, shift3, msint);
+        return new MSI(msi, shift3, msint);
     }
 
     /**
@@ -494,10 +494,9 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
      * @param tseq1 variant description string
      * @param tseq2 right 70 bases in reference sequence
      * @param left left 50 bases in reference sequence
-     * @return Tuple of (MSI count, No. of bases to be shifted to 3 prime for deletions due to alternative alignment,
-     * MicroSattelite unit length in base pairs)
+     * @return MSI
      */
-    private Tuple.Tuple3<Double, Integer, String> findMSI(String tseq1, String tseq2, String left) {
+    private MSI findMSI(String tseq1, String tseq2, String left) {
 
         //Number of nucleotides in microsattelite
         int nmsi = 1;
@@ -536,7 +535,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         while (shift3 < tseq2.length() && tseq.charAt(shift3) == tseq2.charAt(shift3)) {
             shift3++;
         }
-        return tuple(msicnt, shift3, maxmsi);
+        return new MSI(msicnt, shift3, maxmsi);
     }
 
     /**
@@ -547,10 +546,8 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
      * @param debugLines list of debug lines to fill DEBUG field in variant
      */
     private void collectReferenceVariants(int position, int totalPosCoverage, Vars variationsAtPos, List<String> debugLines) {
-        //reference forward strand coverage
-        int rfc = 0;
-        //reference reverse strand coverage
-        int rrc = 0;
+        int referenceForwardCoverage = 0; // $rfc
+        int referenceReverseCoverage = 0; // $rrc
         //description string for reference or best non-reference variant
         String genotype1 = "";
 
@@ -562,8 +559,8 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             genotype1 = variationsAtPos.referenceVariant.descriptionString;
         }
         if (variationsAtPos.referenceVariant != null) {
-            rfc = variationsAtPos.referenceVariant.varsCountOnForward;
-            rrc = variationsAtPos.referenceVariant.varsCountOnReverse;
+            referenceForwardCoverage = variationsAtPos.referenceVariant.varsCountOnForward;
+            referenceReverseCoverage = variationsAtPos.referenceVariant.varsCountOnReverse;
         }
 
         if (genotype1.startsWith("+")) {
@@ -582,8 +579,8 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 && ref.containsKey(position + 1)
                 && getNonInsertionVariants().get(position + 1).containsKey(ref.get(position + 1).toString())) {
             Variation tpref = getVariationMaybe(getNonInsertionVariants(), position + 1, ref.get(position + 1));
-            rfc = tpref.varsCountOnForward;
-            rrc = tpref.varsCountOnReverse;
+            referenceForwardCoverage = tpref.varsCountOnForward;
+            referenceReverseCoverage = tpref.varsCountOnReverse;
         }
 
         // only reference reads are observed.
@@ -597,17 +594,17 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     genotype2 = "+" + (genotype2.length() - 1);
                 }
                 //variant description string
-                final String vn = vref.descriptionString;
+                final String descriptionString = vref.descriptionString; //$vn
                 //length of deletion in variant (0 if no deletion)
-                int dellen = 0;
-                Matcher matcher = BEGIN_MINUS_NUMBER.matcher(vn);
+                int deletionLength = 0; //$dellen
+                Matcher matcher = BEGIN_MINUS_NUMBER.matcher(descriptionString);
                 if (matcher.find()) {
-                    dellen = toInt(matcher.group(1));
+                    deletionLength = toInt(matcher.group(1));
                 }
                 //effective position (??): p + dellen - 1 for deletion, p otherwise
-                int ep = position;
-                if (vn.startsWith("-")) {
-                    ep = position + dellen - 1;
+                int endPosition = position;
+                if (descriptionString.startsWith("-")) {
+                    endPosition = position + deletionLength - 1;
                 }
                 //reference sequence for variation (to be written to .vcf file)
                 String refallele = "";
@@ -620,68 +617,68 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 double msi = 0;
                 String msint = "";
 
-                int sp = position;
+                int startPosition = position;
 
-                Tuple.Tuple3<Double, Integer, String> tupleRefVariant = Tuple.tuple(msi, shift3, msint);
+                MSI refVariantMsi;
                 //if variant is an insertion
-                if (vn.startsWith("+")) {
+                if (descriptionString.startsWith("+")) {
                     //If no '&' and '#' symbols are found in variant string
                     //These symbols are in variant if a matched sequence follows insertion
-                    if (!vn.contains("&") && !vn.contains("#") && !vn.contains("<dup")) {
-                        tupleRefVariant = proceedVrefIsInsertion(position, vn);
-                        msi = tupleRefVariant._1;
-                        shift3 = tupleRefVariant._2;
-                        msint = tupleRefVariant._3;
+                    if (!descriptionString.contains("&") && !descriptionString.contains("#") && !descriptionString.contains("<dup")) {
+                        refVariantMsi = proceedVrefIsInsertion(position, descriptionString);
+                        msi = refVariantMsi.msi;
+                        shift3 = refVariantMsi.shift3;
+                        msint = refVariantMsi.msint;
                     }
                     //Shift position to 3' if -3 option is set
                     if (instance().conf.moveIndelsTo3) {
-                        sp += shift3;
-                        ep += shift3;
+                        startPosition += shift3;
+                        endPosition += shift3;
                     }
                     //reference allele is 1 base
                     refallele = ref.containsKey(position) ? ref.get(position).toString() : "";
                     //variant allele is reference base concatenated with insertion
-                    varallele = refallele + vn.substring(1);
+                    varallele = refallele + descriptionString.substring(1);
                     if (varallele.length() > instance().conf.SVMINLEN) {
-                        ep += varallele.length();
+                        endPosition += varallele.length();
                         varallele = "<DUP>";
                     }
                     Matcher mm = DUP_NUM.matcher(varallele);
                     if (mm.find()) {
                         int dupCount = toInt(mm.group(1));
-                        ep = sp + (2 * Configuration.SVFLANK + dupCount) - 1;
+                        endPosition = startPosition + (2 * Configuration.SVFLANK + dupCount) - 1;
                         genotype2 = "+" + (2 * Configuration.SVFLANK + dupCount);
                         varallele = "<DUP>";
                     }
-                } else if (vn.startsWith("-")) { //deletion variant
-                    Matcher matcherINV = INV_NUM.matcher(vn);
-                    Matcher matcherStartMinusNum = BEGIN_MINUS_NUMBER_CARET.matcher(vn);
+                } else if (descriptionString.startsWith("-")) { //deletion variant
+                    Matcher matcherINV = INV_NUM.matcher(descriptionString);
+                    Matcher matcherStartMinusNum = BEGIN_MINUS_NUMBER_CARET.matcher(descriptionString);
 
-                    if (dellen < instance().conf.SVMINLEN) {
+                    if (deletionLength < instance().conf.SVMINLEN) {
                         //variant allele is in the record
                         //remove '-' and number from beginning of variant string
-                        varallele = vn.replaceFirst("^-\\d+", "");
+                        varallele = descriptionString.replaceFirst("^-\\d+", "");
 
-                        tupleRefVariant = proceedVrefIsDeletion(position, dellen);
-                        msi = tupleRefVariant._1;
-                        shift3 = tupleRefVariant._2;
-                        msint = tupleRefVariant._3;
+                        refVariantMsi = proceedVrefIsDeletion(position, deletionLength);
+                        msi = refVariantMsi.msi;
+                        shift3 = refVariantMsi.shift3;
+                        msint = refVariantMsi.msint;
 
                         if (matcherINV.find()) {
                             varallele = "<INV>";
-                            genotype2 = "<INV" + dellen + ">";
+                            genotype2 = "<INV" + deletionLength + ">";
                         }
                     } else if (matcherStartMinusNum.find()) {
                         varallele = "<INV>";
-                        genotype2 = "<INV" + dellen + ">";
+                        genotype2 = "<INV" + deletionLength + ">";
                     } else {
                         varallele = "<DEL>";
                     }
                     //If no matched sequence or indel follows the variant
-                    if (!vn.contains("&") && !vn.contains("#") && !vn.contains("^")) {
+                    if (!descriptionString.contains("&") && !descriptionString.contains("#") && !descriptionString.contains("^")) {
                         //Shift position to 3' if -3 option is set
                         if (instance().conf.moveIndelsTo3) {
-                            sp += shift3;
+                            startPosition += shift3;
                         }
                         //variant allele is 1 base from reference string preceding p
                         if (!varallele.equals("<DEL>")) {
@@ -689,15 +686,15 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                         }
                         //prepend same base to reference allele
                         refallele = ref.containsKey(position - 1) ? ref.get(position - 1).toString() : "";
-                        sp--;
+                        startPosition--;
                     }
-                    Matcher mm = SOME_SV_NUMBERS.matcher(vn);
+                    Matcher mm = SOME_SV_NUMBERS.matcher(descriptionString);
                     if (mm.find()) {
                         refallele = ref.containsKey(position) ? ref.get(position).toString() : "";
                     }
-                    else if (dellen < instance().conf.SVMINLEN) {
+                    else if (deletionLength < instance().conf.SVMINLEN) {
                         //append dellen bases from reference string to reference allele
-                        refallele += joinRef(ref, position, position + dellen - 1);
+                        refallele += joinRef(ref, position, position + deletionLength - 1);
                     }
                 } else { //Not insertion/deletion variant. SNP or MNP
                     //Find MSI adjustment
@@ -705,51 +702,51 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
                     String tseq2 = joinRef(ref, position + 2, position + 70 > chr0 ? chr0 : position + 70);
 
-                    Tuple.Tuple3<Double, Integer, String> tpl = findMSI(tseq1, tseq2, null);
-                    msi = tpl._1;
-                    shift3 = tpl._2;
-                    msint = tpl._3;
+                    MSI msiData = findMSI(tseq1, tseq2, null);
+                    msi = msiData.msi;
+                    shift3 = msiData.shift3;
+                    msint = msiData.msint;
                     //reference allele is 1 base from reference sequence
                     refallele = ref.containsKey(position) ? ref.get(position).toString() : "";
                     //variant allele is same as description string
-                    varallele = vn;
+                    varallele = descriptionString;
                 }
 
-                Matcher mtch = AMP_ATGC.matcher(vn);
+                Matcher mtch = AMP_ATGC.matcher(descriptionString);
                 if (mtch.find()) { //If variant is followed by matched sequence
                     //following matching sequence
                     String extra = mtch.group(1);
                     //remove '&' symbol from variant allele
                     varallele = varallele.replaceFirst("&", "");
                     //append length(extra) bases from reference sequence to reference allele and genotype1
-                    String tch = joinRef(ref, ep + 1, ep + extra.length());
+                    String tch = joinRef(ref, endPosition + 1, endPosition + extra.length());
                     refallele += tch;
                     genotype1 += tch;
 
                     //Adjust position
-                    ep += extra.length();
+                    endPosition += extra.length();
 
                     mtch = AMP_ATGC.matcher(varallele);
                     if (mtch.find()) {
                         String vextra = mtch.group(1);
                         varallele = varallele.replaceFirst("&", "");
-                        tch = joinRef(ref, ep + 1, ep + vextra.length());
+                        tch = joinRef(ref, endPosition + 1, endPosition + vextra.length());
                         refallele += tch;
                         genotype1 += tch;
-                        ep += vextra.length();
+                        endPosition += vextra.length();
                     }
 
                     //If description string starts with '+' sign, remove it from reference and variant alleles
-                    if (vn.startsWith("+")) {
+                    if (descriptionString.startsWith("+")) {
                         refallele = refallele.substring(1);
                         varallele = varallele.substring(1);
-                        sp++;
+                        startPosition++;
                     }
 
                     if (varallele.equals("<DEL>") && refallele.length() > 1) {
-                        refallele = ref.containsKey(sp) ? ref.get(sp).toString() : "";
-                        if (refCoverage.containsKey(sp - 1)) {
-                            totalPosCoverage = refCoverage.get(sp - 1);
+                        refallele = ref.containsKey(startPosition) ? ref.get(startPosition).toString() : "";
+                        if (refCoverage.containsKey(startPosition - 1)) {
+                            totalPosCoverage = refCoverage.get(startPosition - 1);
                         }
                         if (vref.positionCoverage > totalPosCoverage ){
                             totalPosCoverage = vref.positionCoverage;
@@ -758,30 +755,28 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 }
 
                 //If variant is followed by short matched sequence and insertion/deletion
-                mtch = HASH_GROUP_CARET_GROUP.matcher(vn);
+                mtch = HASH_GROUP_CARET_GROUP.matcher(descriptionString);
                 if (mtch.find()) {
-                    //matched sequence
-                    String mseq = mtch.group(1);
+                    String matchedSequence = mtch.group(1); //$mseq
                     //insertion/deletion tail
                     String tail = mtch.group(2);
 
                     //adjust position by length of matched sequence
-                    ep += mseq.length();
+                    endPosition += matchedSequence.length();
 
                     //append bases from reference sequence to reference allele
-                    refallele += joinRef(ref, ep - mseq.length() + 1, ep);
+                    refallele += joinRef(ref, endPosition - matchedSequence.length() + 1, endPosition);
 
                     //If tail is a deletion
                     mtch = BEGIN_DIGITS.matcher(tail);
                     if (mtch.find()) {
                         //append (deletion length) bases from reference sequence to reference allele
-                        int d = toInt(mtch.group(1));
-                        refallele += joinRef(ref, ep + 1, ep + d);
+                        int deletion = toInt(mtch.group(1)); //$d
+                        refallele += joinRef(ref, endPosition + 1, endPosition + deletion);
 
                         //shift position by deletion length
-                        ep += d;
+                        endPosition += deletion;
                     }
-
                     //clean special symbols from alleles
                     varallele = varallele.replaceFirst("#", "").replaceFirst("\\^(\\d+)?", "");
 
@@ -789,7 +784,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     genotype1 = genotype1.replaceFirst("#", "m").replaceFirst("\\^", "i");
                     genotype2 = genotype2.replaceFirst("#", "m").replaceFirst("\\^", "i");
                 }
-                mtch = CARET_ATGNC.matcher(vn); // for deletion followed directly by insertion in novolign
+                mtch = CARET_ATGNC.matcher(descriptionString); // for deletion followed directly by insertion in novolign
                 if (mtch.find()) {
                     //remove '^' sign from varallele
                     varallele = varallele.replaceFirst("\\^", "");
@@ -800,10 +795,10 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 }
 
                 //preceding reference sequence
-                vref.leftseq = joinRef(ref, sp - 20 < 1 ? 1 : sp - 20, sp - 1); // left 20 nt
+                vref.leftseq = joinRef(ref, startPosition - 20 < 1 ? 1 : startPosition - 20, startPosition - 1); // left 20 nt
                 int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
                 //following reference sequence
-                vref.rightseq = joinRef(ref, ep + 1, ep + 20 > chr0 ? chr0 : ep + 20); // right 20 nt
+                vref.rightseq = joinRef(ref, endPosition + 1, endPosition + 20 > chr0 ? chr0 : endPosition + 20); // right 20 nt
                 //genotype description string
                 String genotype = genotype1 + "/" + genotype2;
                 //remove '&' and '#' symbols from genotype string
@@ -819,14 +814,14 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 vref.msi = roundHalfEven("0.000", msi);
                 vref.msint = msint.length();
                 vref.shift3 = shift3;
-                vref.startPosition = sp;
-                vref.endPosition = ep;
+                vref.startPosition = startPosition;
+                vref.endPosition = endPosition;
                 vref.refallele = refallele;
                 vref.varallele = varallele;
                 vref.genotype = genotype;
                 vref.totalPosCoverage = totalPosCoverage;
-                vref.refForwardCoverage = rfc;
-                vref.refReverseCoverage = rrc;
+                vref.refForwardCoverage = referenceForwardCoverage;
+                vref.refReverseCoverage = referenceReverseCoverage;
 
                 //bias is [0-2];[0-2] where first flag is for reference, second for variant
                 //if reference variant is not found, first flag is 0
@@ -838,6 +833,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
 
                 adjustVariantCounts(position, vref);
 
+                //Construct debug lines
                 if (instance().conf.debug) {
                     StringBuilder sb = new StringBuilder();
                     for (String str : debugLines) {
@@ -858,8 +854,8 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             vref.totalPosCoverage = totalPosCoverage;
             vref.positionCoverage = 0;
             vref.frequency = 0;
-            vref.refForwardCoverage = rfc;
-            vref.refReverseCoverage = rrc;
+            vref.refForwardCoverage = referenceForwardCoverage;
+            vref.refReverseCoverage = referenceReverseCoverage;
             vref.varsCountOnForward = 0;
             vref.varsCountOnReverse = 0;
             vref.msi = 0;
@@ -869,14 +865,15 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             vref.startPosition = position;
             vref.endPosition = position;
             vref.highQualityReadsFrequency = roundHalfEven("0.0000", vref.highQualityReadsFrequency);
-            String r = ref.containsKey(position) ? ref.get(position).toString() : "";
+            String referenceBase = ref.containsKey(position) ? ref.get(position).toString() : ""; // $r
             //both refallele and varallele are 1 base from reference string
-            vref.refallele = r;
-            vref.varallele = r;
-            vref.genotype = r + "/" + r;
+            vref.refallele = referenceBase;
+            vref.varallele = referenceBase;
+            vref.genotype = referenceBase + "/" + referenceBase;
             vref.leftseq = "";
             vref.rightseq = "";
             vref.duprate = duprate;
+            //Construct debug lines
             if (instance().conf.debug) {
                 StringBuilder sb = new StringBuilder();
                 for (String str : debugLines) {
@@ -892,4 +889,29 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         }
     }
 
+    /**
+     * Microsatellite instability
+     * Tandemly repeated short sequence motifs ranging from 1– 6(8 in our case) base pairs are called microsatellites.
+     */
+    class MSI {
+        /**
+         * MSI count
+         */
+        double msi;
+
+        /**
+         * No. of bases to be shifted to 3 prime for deletions due to alternative alignment
+         */
+        int shift3;
+        /**
+         * MicroSattelite unit length in base pairs
+         */
+        String msint;
+
+        public MSI(double msi, int shift3, String msint) {
+            this.msi = msi;
+            this.shift3 = shift3;
+            this.msint = msint;
+        }
+    }
 }

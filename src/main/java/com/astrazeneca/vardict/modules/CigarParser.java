@@ -20,7 +20,6 @@ import static com.astrazeneca.vardict.Utils.*;
 import static com.astrazeneca.vardict.modules.RecordPreprocessor.getChrName;
 import static com.astrazeneca.vardict.modules.VariationRealigner.adjInsPos;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
-import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.*;
 import static java.lang.Math.abs;
 
@@ -526,15 +525,15 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     }
                     if (cigar.numCigarElements() > ci + 1
                             && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
-                        Tuple.Tuple4<Integer, String, String, Integer> tpl = findOffset(start + ddlen + 1,
+                        Offset tpl = findOffset(start + ddlen + 1,
                                 readPositionIncludingSoftClipped + 1, cigar.getCigarElement(ci + 1).getLength(), querySequence,
                                 queryQuality, ref, refCoverage);
-                        int toffset = tpl._1;
+                        int toffset = tpl.offset;
                         if (toffset != 0) {
                             moffset = toffset;
-                            nmoff += tpl._4;
-                            s += "&" + tpl._2;
-                            String tq = tpl._3;
+                            nmoff += tpl.offsetNumberOfMismatches;
+                            s += "&" + tpl.sequence;
+                            String tq = tpl.qualitySequence;
                             for (int qi = 0; qi < tq.length(); qi++) {
                                 q += tq.charAt(qi) - 33;
                                 qibases++;
@@ -853,11 +852,12 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
             int ci6 = cigar.numCigarElements() > ci + 3 ? cigar.getCigarElement(ci + 3).getLength() : 0;
             if (ci6 != 0 && cigar.getCigarElement(ci + 3).getOperator()  == CigarOperator.M) {
-                Tuple.Tuple4<Integer, String, String, Integer> tpl = findOffset(start + multoffs,
-                        readPositionIncludingSoftClipped + cigarElementLength + multoffp, ci6, querySequence, queryQuality, ref, refCoverage);
-                offset = tpl._1;
-                ss = tpl._2;
-                qualityString.append(tpl._3);
+                Offset tpl = findOffset(start + multoffs,
+                        readPositionIncludingSoftClipped + cigarElementLength + multoffp,
+                        ci6, querySequence, queryQuality, ref, refCoverage);
+                offset = tpl.offset;
+                ss = tpl.sequence;
+                qualityString.append(tpl.qualitySequence);
             }
             //skip 2 CIGAR segments
             ci += 2;
@@ -915,9 +915,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             int insertionPosition = start - 1;
             Matcher mm = BEGIN_ATGC_END.matcher(descStringOfInsertionSegment);
             if (mm.find()) {
-                Tuple.Tuple3<Integer, String, Integer> tpl = adjInsPos(start - 1, descStringOfInsertionSegment.toString(), ref);
-                insertionPosition = tpl._1;
-                descStringOfInsertionSegment = new StringBuilder(tpl._2);
+                BaseInsertion tpl = adjInsPos(start - 1, descStringOfInsertionSegment.toString(), ref);
+                insertionPosition = tpl.baseInsert;
+                descStringOfInsertionSegment = new StringBuilder(tpl.insertionSequence);
             }
             //add '+' + s to insertions at inspos
             incCnt(getOrElse(positionToInsertionCount, insertionPosition, new HashMap<>()), "+" + descStringOfInsertionSegment, 1);
@@ -1385,15 +1385,15 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * @param queryQuality base quality sequence    $qstr
      * @param reference reference bases by position     $ref
      * @param refCoverage reference coverage    $cov
-     * @return Tuple of (offset, querySequence's substring, queryQuality substring, number of mismatches)
+     * @return Offset object of (offset, querySequence's substring, queryQuality substring, number of mismatches)
      */
-    Tuple.Tuple4<Integer, String, String, Integer> findOffset(int referencePosition,
-                                                                            int readPosition,
-                                                                            int cigarLength,
-                                                                            String querySequence,
-                                                                            String queryQuality,
-                                                                            Map<Integer, Character> reference,
-                                                                            Map<Integer, Integer> refCoverage) {
+    Offset findOffset(int referencePosition,
+                      int readPosition,
+                      int cigarLength,
+                      String querySequence,
+                      String queryQuality,
+                      Map<Integer, Character> reference,
+                      Map<Integer, Integer> refCoverage) {
         int offset = 0;
         String ss = "";
         String q = "";
@@ -1425,7 +1425,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 incCnt(refCoverage, referencePosition + osi, 1);
             }
         }
-        return tuple(offset, ss, q, tnm);
+        return new Offset(offset, ss, q, tnm);
     }
 
     /**
@@ -2260,4 +2260,17 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         }
     }
 
+    class Offset {
+        int offset; //$offset
+        String sequence; //$ss
+        String qualitySequence; //$q
+        Integer offsetNumberOfMismatches; //$tnm
+
+        public Offset(int offset, String sequence, String qualitySequence, Integer offsetNumberOfMismatches) {
+            this.offset = offset;
+            this.sequence = sequence;
+            this.qualitySequence = qualitySequence;
+            this.offsetNumberOfMismatches = offsetNumberOfMismatches;
+        }
+    }
 }

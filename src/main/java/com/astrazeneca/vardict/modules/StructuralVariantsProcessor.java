@@ -25,7 +25,6 @@ import static com.astrazeneca.vardict.collection.VariationMap.SV;
 import static com.astrazeneca.vardict.modes.AbstractMode.partialPipeline;
 import static com.astrazeneca.vardict.modules.VariationRealigner.ismatchref;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
-import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.Utils.*;
 
 import static java.lang.Math.abs;
@@ -53,7 +52,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
     private String bam;
     private SVStructures svStructures;
     private double duprate;
-    private Tuple.Tuple3<String, Integer, Integer> CURSEG;
+    private CurrentSegment CURSEG;
     private Scope<VariationData> previousScope;
     private VariantPrinter variantPrinter;
 
@@ -173,13 +172,13 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
                         partialPipeline(currentScope, new DirectThreadExecutor());
                     }
-                    Tuple.Tuple2<Integer, String> match = findMatch(seq, reference, softp, 1);
-                    int bp = match._1;
-                    String extra = match._2;
+                    Match match = findMatch(seq, reference, softp, 1);
+                    int bp = match.basePosition;
+                    String extra = match.matchedSequence;
                     if (bp == 0) {
                         continue;
                     }
-                    if (!(bp - softp > 30 && isOverlap(softp, bp, Tuple.tuple(del.end, del.mstart), maxReadLength))) {
+                    if (!(bp - softp > 30 && isOverlap(softp, bp, del.end, del.mstart, maxReadLength))) {
                         continue;
                     }
                     bp--;
@@ -251,18 +250,18 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                             continue;
                         }
                         softp = i;
-                        Tuple.Tuple2<Integer, String> match = findMatch(seq, reference, softp, 1);
-                        int bp = match._1;
-                        String EXTRA = match._2;
+                        Match match = findMatch(seq, reference, softp, 1);
+                        int bp = match.basePosition;
+                        String EXTRA = match.matchedSequence;
                         if (bp == 0) {
                             match = findMatch(seq, reference, softp, 1, Configuration.SEED_2, 0);
-                            bp = match._1;
-                            EXTRA = match._2;
+                            bp = match.basePosition;
+                            EXTRA = match.matchedSequence;
                         }
                         if (bp == 0) {
                             continue;
                         }
-                        if (!(bp - softp > 30 && isOverlap(softp, bp, Tuple.tuple(del.end, del.mstart), maxReadLength)))
+                        if (!(bp - softp > 30 && isOverlap(softp, bp, del.end, del.mstart, maxReadLength)))
                             continue;
                         bp--;
                         int dellen = bp - softp + 1;
@@ -343,18 +342,18 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
                         partialPipeline(currentScope, new DirectThreadExecutor());
                     }
-                    Tuple.Tuple2<Integer, String> match = findMatch(seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
-                    int bp = match._1;
-                    String EXTRA = match._2;
+                    Match match = findMatch(seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
+                    int bp = match.basePosition;
+                    String EXTRA = match.matchedSequence;
                     if (bp == 0) {
                         match = findMatch(seq, reference, softp, -1, Configuration.SEED_2, 0);
-                        bp = match._1;
-                        EXTRA = match._2;
+                        bp = match.basePosition;
+                        EXTRA = match.matchedSequence;
                     }
                     if (bp == 0) {
                         continue;
                     }
-                    if (!(softp - bp > 30 && isOverlap(bp, softp, Tuple.tuple(del.mend, del.start), maxReadLength)))
+                    if (!(softp - bp > 30 && isOverlap(bp, softp, del.mend, del.start, maxReadLength)))
                         continue;
                     bp++;
                     softp--;
@@ -412,18 +411,18 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                             continue;
                         }
                         softp = i;
-                        Tuple.Tuple2<Integer, String> match = findMatch(seq, reference, softp, -1);
-                        int bp = match._1;
-                        String EXTRA = match._2;
+                        Match match = findMatch(seq, reference, softp, -1);
+                        int bp = match.basePosition;
+                        String EXTRA = match.matchedSequence;
                         if (bp == 0) {
                             match = findMatch(seq, reference, softp, -1, Configuration.SEED_2, 0);
-                            bp = match._1;
-                            EXTRA = match._2;
+                            bp = match.basePosition;
+                            EXTRA = match.matchedSequence;
                         }
                         if (bp == 0) {
                             continue;
                         }
-                        if (!(softp - bp > 30 && isOverlap(bp, softp, Tuple.tuple(del.mend, del.start), maxReadLength))) {
+                        if (!(softp - bp > 30 && isOverlap(bp, softp, del.mend, del.start, maxReadLength))) {
                             continue;
                         }
                         bp++;
@@ -537,13 +536,13 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     if (seq.isEmpty()) {
                         continue;
                     }
-                    Tuple.Tuple2<Integer, String> matchRev = findMatchRev(seq, reference, softp, dir);
-                    bp = matchRev._1;
-                    extra = matchRev._2;
+                    Match matchRev = findMatchRev(seq, reference, softp, dir);
+                    bp = matchRev.basePosition;
+                    extra = matchRev.matchedSequence;
                     if (bp == 0) {
                         matchRev = findMatchRev(seq, reference, softp, dir, Configuration.SEED_2, 0);
-                        bp = matchRev._1;
-                        extra = matchRev._2;
+                        bp = matchRev.basePosition;
+                        extra = matchRev.matchedSequence;
                     }
                     if (bp == 0) {
                         continue;
@@ -564,13 +563,13 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         if (seq.isEmpty()) {
                             continue;
                         }
-                        Tuple.Tuple2<Integer, String> matchRev = findMatchRev(seq, reference, cp, dir);
-                        bp = matchRev._1;
-                        extra = matchRev._2;
+                        Match matchRev = findMatchRev(seq, reference, cp, dir);
+                        bp = matchRev.basePosition;
+                        extra = matchRev.matchedSequence;
                         if (bp == 0) {
                             matchRev = findMatchRev(seq, reference, cp, dir, Configuration.SEED_2, 0);
-                            bp = matchRev._1;
-                            extra = matchRev._2;
+                            bp = matchRev.basePosition;
+                            extra = matchRev.matchedSequence;
                         }
                         if (bp == 0) {
                             continue;
@@ -685,41 +684,41 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      */
     void findsv() {
         Map<Integer, Character> ref = reference.referenceSequences;
-        List<Tuple.Tuple3<Integer, Sclip, Integer>> tmp5 = new ArrayList<>();
+        List<SortPositionSclip> tmp5 = new ArrayList<>();
         for(Map.Entry<Integer, Sclip> entry : softClips5End.entrySet()) {
             int p = entry.getKey();
             Sclip sc5v = entry.getValue();
             if (sc5v.used) {
                 continue;
             }
-            if (p < CURSEG._2 || p > CURSEG._3) {
+            if (p < CURSEG.start || p > CURSEG.end) {
                 continue;
             }
-            tmp5.add(new Tuple.Tuple3<>(p, sc5v, sc5v.varsCount));
+            tmp5.add(new SortPositionSclip(p, sc5v, sc5v.varsCount));
         }
-        tmp5.sort(comparing((Tuple.Tuple3<Integer, Sclip, Integer> tuple) -> tuple._3).reversed());
+        tmp5.sort(comparing((SortPositionSclip sortPositionSclip) -> sortPositionSclip.count).reversed());
 
-        List<Tuple.Tuple3<Integer, Sclip, Integer>> tmp3 = new ArrayList<>();
+        List<SortPositionSclip> tmp3 = new ArrayList<>();
         for(Map.Entry<Integer, Sclip> entry : softClips3End.entrySet()) {
             int p = entry.getKey();
             Sclip sc3v = entry.getValue();
             if (sc3v.used) {
                 continue;
             }
-            if (p < CURSEG._2 || p > CURSEG._3) {
+            if (p < CURSEG.start || p > CURSEG.end) {
                 continue;
             }
-            tmp3.add(new Tuple.Tuple3<>(p, sc3v, sc3v.varsCount));
+            tmp3.add(new SortPositionSclip(p, sc3v, sc3v.varsCount));
         }
-        tmp3.sort(comparing((Tuple.Tuple3<Integer, Sclip, Integer> tuple) -> tuple._3).reversed());
+        tmp3.sort(comparing((SortPositionSclip sortPositionSclip) -> sortPositionSclip.count).reversed());
 
         int lastPosition = 0;
-        for (Tuple.Tuple3<Integer, Sclip, Integer> tuple5 : tmp5) {
+        for (SortPositionSclip tuple5 : tmp5) {
             try {
-                int p5 = tuple5._1;
+                int p5 = tuple5.position;
                 lastPosition = p5;
-                Sclip sc5v = tuple5._2;
-                int cnt5 = tuple5._3;
+                Sclip sc5v = tuple5.softClip;
+                int cnt5 = tuple5.count;
                 if (cnt5 < instance().conf.minr) {
                     break;
                 }
@@ -736,20 +735,20 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 if (instance().conf.y) {
                     System.err.printf("  Finding SV 5': %s %s cnt: %s\n", seq, p5, cnt5);
                 }
-                Tuple.Tuple2<Integer, String> tuple2 = findMatch(seq, reference, p5, -1);
-                int bp = tuple2._1;
-                String EXTRA = tuple2._2;
+                Match match = findMatch(seq, reference, p5, -1);
+                int bp = match.basePosition;
+                String EXTRA = match.matchedSequence;
 
                 if (bp != 0) {
                     // candidate deletion
                     if (bp < p5) {
-                        Tuple.Tuple5<Integer, Double, Double, Double, Double> tuplePairs =
+                        PairsData pairsData =
                                 checkPairs(region.chr, bp, p5, Arrays.asList(svStructures.svfdel, svStructures.svrdel), maxReadLength);
-                        int pairs = tuplePairs._1;
-                        double pmean = tuplePairs._2;
-                        double qmean = tuplePairs._3;
-                        double Qmean = tuplePairs._4;
-                        double nm = tuplePairs._5;
+                        int pairs = pairsData.pairs;
+                        double pmean = pairsData.pmean;
+                        double qmean = pairsData.qmean;
+                        double Qmean = pairsData.Qmean;
+                        double nm = pairsData.nm;
                         if (pairs == 0) {
                             continue;
                         }
@@ -789,9 +788,9 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     } else { // candidate duplication
                     }
                 } else { // candidate inversion
-                    Tuple.Tuple2<Integer, String> tuple2Rev = findMatchRev(seq, reference, p5, -1);
-                    bp = tuple2Rev._1;
-                    EXTRA = tuple2Rev._2;
+                    Match matchRev = findMatchRev(seq, reference, p5, -1);
+                    bp = matchRev.basePosition;
+                    EXTRA = matchRev.matchedSequence;
                     if (bp == 0) {
                         continue;
                     }
@@ -844,12 +843,12 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
             }
         }
-        for (Tuple.Tuple3<Integer, Sclip, Integer> tuple3 : tmp3) {
+        for (SortPositionSclip tuple3 : tmp3) {
             try {
-                int p3 = tuple3._1;
+                int p3 = tuple3.position;
                 lastPosition = p3;
-                Sclip sc3v = tuple3._2;
-                int cnt3 = tuple3._3;
+                Sclip sc3v = tuple3.softClip;
+                int cnt3 = tuple3.count;
                 if (cnt3 < instance().conf.minr) {
                     break;
                 }
@@ -867,18 +866,18 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     System.err.printf("  Finding SV 3': %s %s cnt: %s\n", seq, p3, cnt3);
                 }
 
-                Tuple.Tuple2<Integer, String> tuple2 = findMatch(seq, reference, p3, 1);
-                int bp = tuple2._1;
-                String EXTRA = tuple2._2;
+                Match match = findMatch(seq, reference, p3, 1);
+                int bp = match.basePosition;
+                String EXTRA = match.matchedSequence;
                 if (bp != 0) {
                     if (bp > p3) { // candidate deletion
-                        Tuple.Tuple5<Integer, Double, Double, Double, Double> tuplePairs =
+                        PairsData pairsData =
                                 checkPairs(region.chr, p3, bp, Arrays.asList(svStructures.svfdel, svStructures.svrdel), maxReadLength);
-                        int pairs = tuplePairs._1;
-                        double pmean = tuplePairs._2;
-                        double qmean = tuplePairs._3;
-                        double Qmean = tuplePairs._4;
-                        double nm = tuplePairs._5;
+                        int pairs = pairsData.pairs;
+                        double pmean = pairsData.pmean;
+                        double qmean = pairsData.qmean;
+                        double Qmean = pairsData.Qmean;
+                        double nm = pairsData.nm;
                         if (pairs == 0) {
                             continue;
                         }
@@ -925,9 +924,9 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     } else { // candidate duplication
                     }
                 } else { // candidate inversion
-                    Tuple.Tuple2<Integer, String> tuple2Rev = findMatchRev(seq, reference, p3, 1);
-                    bp = tuple2Rev._1;
-                    EXTRA = tuple2Rev._2;
+                    Match matchRev = findMatchRev(seq, reference, p3, 1);
+                    bp = matchRev.basePosition;
+                    EXTRA = matchRev.matchedSequence;
 
                     if (bp == 0) {
                         continue;
@@ -1168,7 +1167,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         if (!(cnt + rcnt > instance().conf.minr + 5)) {
                             continue;
                         }
-                        if (isOverlap(end, me, new Tuple.Tuple2<>(rstart, rms), maxReadLength)) {
+                        if (isOverlap(end, me, rstart, rms, maxReadLength)) {
                             int bp = abs((end + rstart) / 2);
                             int pe = abs((me + rms) / 2);
                             if (!ref.containsKey(pe)) {
@@ -1258,7 +1257,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         if (!(cnt + rcnt > instance().conf.minr + 5)) {
                             continue;
                         }
-                        if (isOverlap(me, end, new Tuple.Tuple2<>(rms, rstart), maxReadLength)) {
+                        if (isOverlap(me, end, rms, rstart, maxReadLength)) {
                             int pe = abs((end + rstart) / 2);
                             int bp = abs((me + rms) / 2);
                             if (!ref.containsKey(bp)) {
@@ -1394,9 +1393,9 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     nmf = currentSclip3.numberOfMismatches;
 
                     String seq = findconseq(currentSclip3, 0);
-                    Tuple.Tuple2<Integer, String> tuple = findMatch(seq, reference, bp, 1);
-                    int tbp = tuple._1;
-                    String EXTRA = tuple._2;
+                    Match match = findMatch(seq, reference, bp, 1);
+                    int tbp = match.basePosition;
+                    String EXTRA = match.matchedSequence;
 
                     if (tbp != 0 && tbp < pe) {
                         currentSclip3.used = true;
@@ -1534,9 +1533,9 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     pmeanr = currentSclip5.meanPosition;
                     nmr = currentSclip5.numberOfMismatches;
                     String seq = findconseq(currentSclip5, 0);
-                    Tuple.Tuple2<Integer, String> tuple = findMatch(seq, reference, pe, -1);
-                    int tbp = tuple._1;
-                    String EXTRA = tuple._2;
+                    Match match = findMatch(seq, reference, pe, -1);
+                    int tbp = match.basePosition;
+                    String EXTRA = match.matchedSequence;
                     if (tbp != 0 && tbp > bp) {
                         currentSclip5.used = true;
                         pe = tbp;
@@ -1621,15 +1620,21 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
 
         for (List<Sclip> currentSclips_sr : structuralVariants_sv) {
             for (Sclip sv_r : currentSclips_sr) {
-                Tuple.Tuple2<Integer, Integer> tuple = sv_r.start < sv_r.mstart
-                        ? new Tuple.Tuple2<>(sv_r.end, sv_r.mstart)
-                        : new Tuple.Tuple2<>(sv_r.mend, sv_r.start);
-                if (instance().conf.y) {
-                    System.err.printf("   Marking SV %s %s %s %s cnt: %s\n", start, end, tuple._1, tuple._2, sv_r.varsCount);
+                int start2;
+                int end2;
+                if (sv_r.start < sv_r.mstart) {
+                    start2 = sv_r.end;
+                    end2 = sv_r.mstart;
+                } else {
+                    start2 = sv_r.mend;
+                    end2 = sv_r.start;
                 }
-                if (isOverlap(start, end, tuple, rlen) ) {
+                if (instance().conf.y) {
+                    System.err.printf("   Marking SV %s %s %s %s cnt: %s\n", start, end, start2, end2, sv_r.varsCount);
+                }
+                if (isOverlap(start, end, start2, end2, rlen) ) {
                     if (instance().conf.y) {
-                        System.err.printf("       SV %s %s %s %s cnt: %s marked\n", start, end, tuple._1, tuple._2, sv_r.varsCount);
+                        System.err.printf("       SV %s %s %s %s cnt: %s marked\n", start, end, start2, end2, sv_r.varsCount);
                     }
                     sv_r.used = true;
                     cnt++;
@@ -1647,7 +1652,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      * @param end end of the region $e
      * @param structuralVariants_sv contains list of list of Structural variants $sv
      * @param rlen read length
-     * @return tuple of count of SVs overlaping with mates, number of pairs
+     * @return tuple of count of SVs overlapping with mates, number of pairs
      */
     static Tuple.Tuple2<Integer, Integer> markDUPSV(int start,
                                                     int end,
@@ -1659,15 +1664,21 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
 
         for (List<Sclip> currentSclips_sr : structuralVariants_sv) {
             for (Sclip sv_r : currentSclips_sr) {
-                Tuple.Tuple2<Integer, Integer> tuple = sv_r.start < sv_r.mstart
-                        ? new Tuple.Tuple2<>(sv_r.start, sv_r.mend)
-                        : new Tuple.Tuple2<>(sv_r.mstart, sv_r.end);
-                if (instance().conf.y) {
-                    System.err.printf("   Marking DUP SV %s %s %s %s cnt: %s\n", start, end, tuple._1, tuple._2, sv_r.varsCount);
+                int start2;
+                int end2;
+                if (sv_r.start < sv_r.mstart) {
+                    start2 = sv_r.start;
+                    end2 = sv_r.mend;
+                } else {
+                    start2 = sv_r.mstart;
+                    end2 = sv_r.end;
                 }
-                if (isOverlap(start, end, tuple, rlen)) {
+                if (instance().conf.y) {
+                    System.err.printf("   Marking DUP SV %s %s %s %s cnt: %s\n", start, end, start2, end2, sv_r.varsCount);
+                }
+                if (isOverlap(start, end, start2, end2, rlen)) {
                     if (instance().conf.y) {
-                        System.err.printf("       DUP SV %s %s %s %s cnt: %s marked\n", start, end, tuple._1, tuple._2, sv_r.varsCount);
+                        System.err.printf("       DUP SV %s %s %s %s cnt: %s marked\n", start, end, start2, end2, sv_r.varsCount);
                     }
                     sv_r.used = true;
                     cnt++;
@@ -1683,16 +1694,16 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      * Determine overlapping of the SVs
      * @param start1 start of the first SV $s1
      * @param end1 end of the first SV $e1
-     * @param tuple2 contains start and end of second SV
+     * @param start2 start of second SV
+     * @param end2 end of second SV
      * @param rlen read length
      * @return true if SV overlaps with mate
      */
     static boolean isOverlap(int start1,
-                      int end1,
-                      Tuple.Tuple2<Integer, Integer> tuple2,
-                      int rlen){
-        int start2 = tuple2._1;
-        int end2 = tuple2._2;
+                          int end1,
+                          int start2,
+                          int end2,
+                          int rlen){
         if (start1 >= end2 || start2 >= end1) {
             return false;
         }
@@ -1715,21 +1726,17 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      * @param start start of the region
      * @param end end of the region
      * @param sv list of SVs in list of clusters
-     * @param RLEN max read length
-     * @return tuple if pairs, mean position, mean base quality, mean mapping quality and number of mismatches
+     * @param maxReadLength max read length $RLEN
+     * @return PairsData of pairs, mean position, mean base quality, mean mapping quality and number of mismatches
      */
-    Tuple.Tuple5<Integer, Double, Double, Double, Double> checkPairs(String chr,
-                                                                               int start,
-                                                                               int end,
-                                                                               List<List<Sclip>> sv,
-                                                                               int RLEN) {
+    PairsData checkPairs(String chr, int start, int end, List<List<Sclip>> sv, int maxReadLength) {
         int pairs = 0;
         double pmean = 0;
         double qmean = 0;
         double Qmean = 0;
         double nm = 0;
 
-        Tuple.Tuple5<Integer, Double, Double, Double, Double> tuple5 = tuple(pairs, pmean, qmean, Qmean, nm);
+        PairsData pairsData = new PairsData(pairs, pmean, qmean, Qmean, nm);
 
         for (List<Sclip> svcluster: sv) {
             for(Sclip svr : svcluster) {
@@ -1743,11 +1750,11 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     s = e;
                     e = temp;
                 }
-                if (!isOverlap(start, end, new Tuple.Tuple2<>(s, e), RLEN)) {
+                if (!isOverlap(start, end, s, e, maxReadLength)) {
                     continue;
                 }
                 if (svr.varsCount > pairs) {
-                    tuple5 = tuple(svr.varsCount, svr.meanPosition, svr.meanQuality, svr.meanMappingQuality, svr.numberOfMismatches);
+                    pairsData = new PairsData(svr.varsCount, svr.meanPosition, svr.meanQuality, svr.meanMappingQuality, svr.numberOfMismatches);
                     pairs = svr.varsCount;
                 }
                 svr.used = true;
@@ -1756,7 +1763,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 }
             }
         }
-        return tuple5;
+        return pairsData;
     }
 
 
@@ -1769,7 +1776,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
      * returns zero and empty string
      */
-    Tuple.Tuple2<Integer, String> findMatchRev(String seq, Reference REF, int position, int dir) {
+    Match findMatchRev(String seq, Reference REF, int position, int dir) {
         int MM = 3;
         return findMatchRev(seq, REF, position, dir, Configuration.SEED_1, MM);
     }
@@ -1785,7 +1792,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
      * returns zero and empty string
      */
-    Tuple.Tuple2<Integer, String> findMatchRev(String seq, Reference REF, int position, int dir, int SEED, int MM) {
+    Match findMatchRev(String seq, Reference REF, int position, int dir, int SEED, int MM) {
         // dir = 1 means from 3' soft clip
         if (dir == 1) {
             seq = reverse(seq);
@@ -1809,7 +1816,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                                     dir, bp, firstSeed, position, seed, i, seq
                             );
                         }
-                        return Tuple.tuple(bp, extra);
+                        return new Match(bp, extra);
                     } else {
                         // for complex indels, allowing some mismatches at the end up to 15bp or 20% length
                         String sseq = seq;
@@ -1845,14 +1852,14 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                                         dir, bp, firstSeed, position, seed, i, seq, extra);
                             }
                             if (ismatchref(sseq, REF.referenceSequences, bp, -1 * dir, 1)) {
-                                return Tuple.tuple(bp, extra);
+                                return new Match(bp, extra);
                             }
                         }
                     }
                 }
             }
         }
-        return Tuple.tuple(0, "");
+        return new Match(0, "");
     }
 
     /**
@@ -1864,7 +1871,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
      * returns zero and empty string
      */
-    public Tuple.Tuple2<Integer, String> findMatch(String seq, Reference REF, int position, int dir) {
+    public Match findMatch(String seq, Reference REF, int position, int dir) {
         int MM = 3;
         return findMatch(seq, REF, position, dir, Configuration.SEED_1, MM);
     }
@@ -1880,7 +1887,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      * @return tuple of base position with extra sequence that doesn't match. If there is no mismatch,
      * returns zero and empty string
      */
-     static Tuple.Tuple2<Integer, String> findMatch(String seq, Reference REF, int position, int dir, int SEED, int MM) {
+     static Match findMatch(String seq, Reference REF, int position, int dir, int SEED, int MM) {
         if (dir == -1) {
             seq = reverse(seq); // dir==-1 means 5' clip
         }
@@ -1910,7 +1917,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                             System.err.printf("      Found SV BP: %d BP: %d SEEDpos %s %d %s %d %s extra: %s\n",
                                     dir, bp, firstSeed, position, seed, i, seq, extra);
                         }
-                        return Tuple.tuple(bp, extra);
+                        return new Match(bp, extra);
                     } else { // for complex indels, allowing some mismatches at the end up to 15bp or 20% length
                         String sseq = seq;
                         int eqcnt = 0;
@@ -1944,14 +1951,14 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                                         dir, bp, firstSeed, position, seed, i, seq, extra);
                             }
                             if (ismatchref(sseq, REF.referenceSequences, bp, dir, 1) ) {
-                                return Tuple.tuple(bp, extra);
+                                return new Match(bp, extra);
                             }
                         }
                     }
                 }
             }
         }
-        return Tuple.tuple(0, "");
+        return new Match(0, "");
     }
 
     /**
@@ -1989,6 +1996,37 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
             if (!seq.isEmpty() && seq.length() > Configuration.SEED_2) {
                 System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.varsCount, seq);
             }
+        }
+    }
+
+    class PairsData {
+        /**
+         * Number of pairs
+         */
+        int pairs;
+        /**
+         * Mean position
+         */
+        double pmean;
+        /**
+         * Mean base quality
+         */
+        double qmean;
+        /**
+         * Mean mapping quality
+         */
+        double Qmean;
+        /**
+         * number of mismatches
+         */
+        double nm;
+
+        public PairsData(int pairs, double pmean, double qmean, double Qmean, double nm) {
+            this.pairs = pairs;
+            this.pmean = pmean;
+            this.qmean = qmean;
+            this.Qmean = Qmean;
+            this.nm = nm;
         }
     }
 }

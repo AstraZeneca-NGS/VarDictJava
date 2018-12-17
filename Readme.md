@@ -127,7 +127,7 @@ The following is an example command to run in paired mode:
 
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -z -F -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/testsomatic.R | VarDict/var2vcf_paired.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N tumor_sample_name -b "/path/to/tumor.bam|/path/to/normal.bam" -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/testsomatic.R | VarDict/var2vcf_paired.pl -N "tumor_sample_name|normal_sample_name" -f $AF_THR
 ```
 
 ### Amplicon based calling 
@@ -176,7 +176,7 @@ The file contains testcase input (of format described in [Test cases file format
 Each input file represents one test case input description. In the input file the first line consists of the following fields separated by `,` symbol:
 
 *Required fields:*
-- test case name
+- test case name (Amplicon/Somatic/Simple mode)
 - reference name
 - bam file name
 - chromosome name
@@ -188,7 +188,7 @@ Each input file represents one test case input description. In the input file th
 - end of region with amplicon case
 
 *Parameters field:*
-- the last filed can be any other command line parameters string
+- the last field can be any other command line parameters string
 
 Example of first line of input file:
 
@@ -308,6 +308,25 @@ Variant frequency is more than 10% for the non-monomer MSI and 25% for the monom
 11. Variant has not "2;1" bias.
 11. Variant is not SNV and variants refallele or varallele lengths are more then 3 nucleotides when variant frequency less then 20%.
 
+#### Variant classification in paired(somatic) analysis
+In paired analysis, VarDict will classify each variant into the following types that are propagated 
+into STATUS info tag after `var2vcf_paired.pl` script.
+
+When both samples have coverage for the variant:
+
+* Germline: detected in germline sample (pass all quality parameters)
+* StrongSomatic: detected in tumor sample only
+* LikelySomatic: the variant has at least one read support OR allele frequency < 5% (defined by –V option with default 0.05)
+* StrongLOH: detected in germline sample only, opposite of StrongSomaitc
+* LikelyLOH: detected in germline but either lost in tumor OR 20-80% in germline, but increased to 1-opt_V (95%).
+* AFDiff: detected in tumor (pass quality parameters) and present in germline but didn’t pass quality parameters.
+
+When only one sample has coverage for the variant:
+
+* SampleSpecific: detected in tumor sample, but no coverage in germline sample (it’s more technical than biological, as it’s unlikely a tumor sample can gain a piece of sequence in reference that germline sample lacks).
+* Deletion: detected in germline sample, but no coverage in tumor sample
+
+These are only rough classification. You need to examine the p-value (after testsomatic.R script) to determine whether or not it's significant.
 ## Program Options
 - `-H|-?`  
     Print help page
@@ -330,7 +349,7 @@ Variant frequency is more than 10% for the non-monomer MSI and 25% for the monom
 - `-K`
      Include Ns in the total depth calculation.
 - `-F bit`  
-     The hexical to filter reads. Default: `0x500` (filter 2nd alignments and duplicates).  Use `-F 0` to turn it off.
+     The hexical to filter reads. Default: `0x504` (filter unmapped reads, 2nd alignments and duplicates).  Use `-F 0` to turn it off.
 - `-z 0/1`       
     Indicate whether the BED file contains zero-based coordinates, the same way as the Genome browser IGV does.  -z 1 indicates that coordinates in a BED file start from 0. -z 0 indicates that the coordinates start from 1. Default: `1` for a BED file or amplicon BED file.  Use `0` to turn it off. When using `-R` option, it is set to `0`
 - `-a|--amplicon int:float`    
@@ -441,7 +460,7 @@ Variant frequency is more than 10% for the non-monomer MSI and 25% for the monom
 - `-DP|--default-printer`   
     The printer type used for different outputs. Default: OUT (i.e. System.out).
 ## Output columns
-Simple mode:
+### Simple mode:
 1. Sample - sample name
 2. Gene - gene name from a BED file
 3. Chr - chromosome name
@@ -480,12 +499,14 @@ Simple mode:
 36. SV splits-pairs-clusters: Splits - No. of split reads supporting SV, Pairs - No. of pairs supporting SV, 
 Clusters - No. of clusters supporting SV 
 
+### Amplicon mode
 In amplicon mode columns from #35 are changed to:  
 (35) GoodVarCount - number of good variants on amplicon  
 (36) TotalVarCount - number of good and bad variants on amplicon   
 (37) Nocov - number of variants on amplicon that has depth less than 1/50 of the max depth (they will be considered not working and thus not used).  
 (38) Ampflag - if there are different good variants on different amplicons, it will be 1.
 
+### Somatic mode
 In somatic mode we have information from both samples:
 1. Sample - sample name
 2. Gene - gene name from a BED file
@@ -576,17 +597,19 @@ The 4-column file format involves the following data:
 
 #### FASTA File - Reference Genome
 The reference genome in FASTA format is read using HTSJDK library. 
-For every invocation of the toVars function (usually 1 for a region in a BED file) 
-and for every BAM file, a part of the reference genome is extracted from the FASTA file. 
+For every invocation of the VarDict pipelinen (usually 1 for a region in a BED file) 
+and for every BAM file, a part of the reference genome is extracted from the FASTA file. In some cases of Structural Variants finding
+the reference can be reread in other regions. 
 
 Region of FASTA extends and this extension can be regulate by REFEXT variable (option `-Y INT`, default 1200 bp).
 
-# License
+# Errors and warnings
+Information about some of the errors and their causes is located in [wiki](https://github.com/AstraZeneca-NGS/VarDictJava/wiki)
 
+# License
 The code is freely available under the [MIT license](http://www.opensource.org/licenses/mit-license.html).
 
 # Contributors
-
 Java port of [VarDict](https://github.com/AstraZeneca-NGS/VarDict) implemented based on the original Perl version ([Zhongwu Lai](https://github.com/zhongwulai)) by:
 
 - [Viktor Kirst](https://github.com/vkirst)

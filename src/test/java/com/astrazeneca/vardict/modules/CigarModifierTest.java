@@ -41,7 +41,8 @@ public class CigarModifierTest {
             put(1, 'A');
             put(2, 'A');
         }};
-        Tuple.Tuple4<Integer, String, String, Integer> result = new CigarParser(false).findOffset(
+        CigarParser cigarParser = new CigarParser(false);
+        CigarParser.Offset result = cigarParser.findOffset(
                 referencePosition,
                 readPosition,
                 cigarLength,
@@ -49,11 +50,11 @@ public class CigarModifierTest {
                 queryQuality,
                 reference,
                 refCoverage);
-        Tuple.Tuple4<Integer, String, String, Integer> expectedResult = tuple(2, "GT", "<<", 2);
-        Assert.assertEquals(result._1, expectedResult._1);
-        Assert.assertEquals(result._2, expectedResult._2);
-        Assert.assertEquals(result._3, expectedResult._3);
-        Assert.assertEquals(result._4, expectedResult._4);
+        CigarParser.Offset expectedResult = cigarParser.new Offset(2, "GT", "<<", 2);
+        Assert.assertEquals(result.offset, expectedResult.offset);
+        Assert.assertEquals(result.sequence, expectedResult.sequence);
+        Assert.assertEquals(result.qualitySequence, expectedResult.qualitySequence);
+        Assert.assertEquals(result.offsetNumberOfMismatches, expectedResult.offsetNumberOfMismatches);
     }
 
     @DataProvider(name = "variationsForSub")
