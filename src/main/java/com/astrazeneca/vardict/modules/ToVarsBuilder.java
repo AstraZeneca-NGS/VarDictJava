@@ -76,7 +76,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 lastPosition = position;
                 VariationMap<String, Variation> varsAtCurPosition = entH.getValue();
 
-                if (varsAtCurPosition.isEmpty()) {
+                if (varsAtCurPosition.isEmpty() && !getInsertionVariants().containsKey(position)) {
                     continue;
                 }
 
