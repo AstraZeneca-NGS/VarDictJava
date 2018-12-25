@@ -7,6 +7,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 
+import static com.astrazeneca.vardict.Utils.reverse;
+import static com.astrazeneca.vardict.Utils.substr;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.charAt;
 import static com.astrazeneca.vardict.data.Patterns.B_A7;
@@ -131,6 +133,19 @@ public class VariationUtils {
                 softClip.used = true;
             }
         }
+
+        if (!SEQ.isEmpty() && SEQ.length() >= Configuration.ADSEED) {
+            if ( dir == 3 ) { // 3'
+                if (instance().adaptorForward.containsKey(substr(SEQ, 0, Configuration.ADSEED))) {
+                    SEQ = "";
+                }
+            } else if ( dir == 5 ) { // 5'
+                if (instance().adaptorReverse.containsKey(reverse(substr(SEQ, 0, Configuration.ADSEED)))) {
+                    SEQ = "";
+                }
+            }
+        }
+
         softClip.sequence = SEQ;
 
         if (instance().conf.y) {
@@ -138,24 +153,6 @@ public class VariationUtils {
         }
         return SEQ;
     }
-
-    // TODO: Need to implement in adaptor task
-//    static String findconseq(Sclip scv, Configuration conf, int dir) {
-//        String sequence = findconseq(scv, conf);
-//
-//        if (!sequence.isEmpty() && sequence.length() >= conf.adseed) {
-//            if ( dir == 3 ) { // 3'
-//                if (adaptor.containsKey(substr(sequence, 0, conf.adseed))) {
-//                    scv.sequence = "";
-//                }
-//            } else if ( dir == 5 ) { // 5'
-//                if (adaptor_rev.containsKey(new StringBuilder(substr(sequence, 0, conf.adseed)).reverse().toString())) {
-//                    scv.sequence = "";
-//                }
-//            }
-//        }
-//        return scv.sequence;
-//    }
 
     /**
      * Construct reference sequence

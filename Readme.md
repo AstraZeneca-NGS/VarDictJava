@@ -459,6 +459,10 @@ These are only rough classification. You need to examine the p-value (after test
   considered and outputted only if start position of variant is inside the region interest.
 - `-DP|--default-printer`   
     The printer type used for different outputs. Default: OUT (i.e. System.out).
+- `--adaptor`  
+    Filter adaptor sequences so that they are not used in realignment. Multiple adaptors can be supplied by setting them
+     with comma, like:   
+     --adaptor ACGTTGCTC,ACGGGGTCTC,ACGCGGCTAG .
 ## Output columns
 ### Simple mode:
 1. Sample - sample name

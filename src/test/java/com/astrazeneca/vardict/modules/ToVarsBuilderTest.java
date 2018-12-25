@@ -36,7 +36,7 @@ public class ToVarsBuilderTest {
     public void createInsertion() {
         Configuration config = new Configuration();
         config.goodq = 23;
-        GlobalReadOnlyScope.init(config, null, null, null, "");
+        GlobalReadOnlyScope.init(config, null, null, null, "", new HashMap<>(), new HashMap<>());
 
         Map<Integer, VariationMap<String, Variation>> variants = new HashMap<>();
         VariationMap<String, Variation> variantsMap = new VariationMap<>();
@@ -84,7 +84,7 @@ public class ToVarsBuilderTest {
     public void createVariant() {
         Configuration config = new Configuration();
         config.goodq = 23;
-        GlobalReadOnlyScope.init(config, null, null, null, "");
+        GlobalReadOnlyScope.init(config, null, null, null, "", new HashMap<>(), new HashMap<>());
 
         Map<Integer, VariationMap<String, Variation>> variants = new HashMap<>();
         VariationMap<String, Variation> variantsMap = new VariationMap<>();

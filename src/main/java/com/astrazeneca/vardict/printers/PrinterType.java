@@ -5,7 +5,8 @@ package com.astrazeneca.vardict.printers;
  * will be created for each type of PrinterType.
  */
 public enum PrinterType {
-    OUT("OUT");
+    OUT("OUT"),
+    ERR("ERR");
 
     private final String out;
 

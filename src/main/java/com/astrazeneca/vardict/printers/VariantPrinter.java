@@ -48,6 +48,7 @@ public abstract class VariantPrinter {
     public static VariantPrinter createPrinter(PrinterType type) {
         switch(type) {
             case OUT: return new SystemOutVariantPrinter();
+            case ERR: return new SystemErrVariantPrinter();
             default:  return new SystemOutVariantPrinter();
             }
     }

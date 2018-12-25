@@ -24,10 +24,10 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.astrazeneca.vardict.Utils.*;
 import static com.astrazeneca.vardict.data.Patterns.SAMPLE_PATTERN;
 import static com.astrazeneca.vardict.data.Patterns.SAMPLE_PATTERN2;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
-import static com.astrazeneca.vardict.Utils.toInt;
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.INTEGER_ONLY;
 
@@ -98,8 +98,20 @@ public class VarDictLauncher {
                     segments = builder.buildRegions(segraw, zeroBased);
                 }
             }
-
-            GlobalReadOnlyScope.init(conf, chrLengths, samples._1, samples._2, ampliconBasedCalling);
+            //Fill adaptor maps
+            Map<String, Integer> adaptorForward = new HashMap<>();
+            Map<String, Integer> adaptorReverse = new HashMap<>();
+            if (!conf.adaptor.isEmpty()) {
+                for(String sequence : conf.adaptor) {
+                    for (int i = 0; i <= 6 && i + Configuration.ADSEED < sequence.length(); i++) {
+                        String forwardSeed = substr(sequence, i, Configuration.ADSEED);
+                        String reverseSeed = complement(reverse(forwardSeed));
+                        adaptorForward.put(forwardSeed, i + 1);
+                        adaptorReverse.put(reverseSeed, i + 1);
+                    }
+                }
+            }
+            GlobalReadOnlyScope.init(conf, chrLengths, samples._1, samples._2, ampliconBasedCalling, adaptorForward, adaptorReverse);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -249,4 +261,12 @@ public class VarDictLauncher {
         }
         return tuple(sample, samplem);
     }
+
+    /**
+     *
+     */
+    public void fillAdaptorMaps() {
+
+    }
+
 }

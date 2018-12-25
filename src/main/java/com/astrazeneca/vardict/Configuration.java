@@ -3,6 +3,8 @@ package com.astrazeneca.vardict;
 import com.astrazeneca.vardict.printers.PrinterType;
 import htsjdk.samtools.ValidationStringency;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Configuration {
@@ -208,7 +210,7 @@ public class Configuration {
     /**
      * The adaptor size
      */
-    public static final int adseed = 6;
+    public static final int ADSEED = 6;
     /**
      *
      * Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction,
@@ -283,6 +285,11 @@ public class Configuration {
      * Maximum of exception to continue work
      */
     public static int MAX_EXCEPTION_COUNT = 10;
+
+    /**
+     * List of adaptor sequences
+     */
+    public List<String> adaptor = new ArrayList<>();
 
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;

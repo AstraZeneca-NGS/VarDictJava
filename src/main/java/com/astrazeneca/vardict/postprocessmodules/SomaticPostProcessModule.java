@@ -352,7 +352,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
      * @param variant2 variant 2
      * @param chrName chromosome
      * @param position position
-     * @param nucleotide nucleotide
+     * @param descriptionString description string of variant
      *
      * @param splice set of strings representing introns in splice
      * @param maxReadLength max read length
@@ -360,12 +360,17 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
      */
       CombineAnalysisData combineAnalysis(Variant variant1, Variant variant2,
                                           String chrName, int position,
-                                          String nucleotide, Set<String> splice,
+                                          String descriptionString, Set<String> splice,
                                           int maxReadLength)  {
         Configuration config = instance().conf;
         if (config.y) {
-            System.err.printf("Start Combine %s %s\n", position, nucleotide);
+            System.err.printf("Start Combine %s %s\n", position, descriptionString);
         }
+        // Don't do it for structural variants
+        if (variant1.endPosition - variant1.startPosition > instance().conf.SVMINLEN) {
+            return new CombineAnalysisData(maxReadLength, EMPTY_STRING);
+        }
+
         Region region = new Region(chrName, variant1.startPosition - maxReadLength, variant1.endPosition + maxReadLength, "");
         Reference ref = referenceResource.getReference(region);
 
@@ -376,7 +381,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
 
         maxReadLength = tpl.maxReadLength;
         Map<Integer, Vars> vars = tpl.alignedVariants;
-        Variant vref = getVarMaybe(vars, position, varn, nucleotide);
+        Variant vref = getVarMaybe(vars, position, varn, descriptionString);
         if (vref != null) {
             if (config.y) {
                 System.err.printf("Combine: 1: %s comb: %s\n", variant1.positionCoverage, vref.positionCoverage);
@@ -436,13 +441,12 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
                 return new CombineAnalysisData(maxReadLength, GERMLINE);
             } else if (vref.positionCoverage < variant1.positionCoverage - 2) {
                 if (config.y) {
-                    System.err.printf("Combine produce less: %s %s %s %s %s\n", chrName, position, nucleotide, vref.positionCoverage, variant1.positionCoverage);
+                    System.err.printf("Combine produce less: %s %s %s %s %s\n", chrName, position, descriptionString, vref.positionCoverage, variant1.positionCoverage);
                 }
                 return new CombineAnalysisData(maxReadLength, FALSE);
             } else {
                 return new CombineAnalysisData(maxReadLength, EMPTY_STRING);
             }
-
         }
         return new CombineAnalysisData(maxReadLength, FALSE);
     }

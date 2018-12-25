@@ -68,7 +68,7 @@ public class PipelineModesTest {
     public void setUpStreams() throws IOException {
         bam = IntegrationTest.class.getResource("L861Q.bam").getPath();
         chrLengths = readChr(bam);
-        GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, null);
+        GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, null, new HashMap<>(), new HashMap<>());
         instance().conf.bam = new Configuration.BamNames(bam);
         instance().conf.freq = 0.001;
         regions.add(region);
@@ -155,7 +155,7 @@ public class PipelineModesTest {
     @Test
     public void testAmpliconModePipelineNormal() throws ExecutionException, InterruptedException {
         GlobalReadOnlyScope.clear();
-        GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, "100:0.95");
+        GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, "100:0.95", new HashMap<>(), new HashMap<>());
         instance().conf.bam = new Configuration.BamNames(bam);
         instance().conf.freq = 0.001;
 
@@ -175,7 +175,7 @@ public class PipelineModesTest {
     @Test(expectedExceptions = RuntimeException.class)
     public void testAmpliconModePipelineException()  {
         GlobalReadOnlyScope.clear();
-        GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, "100:0.95");
+        GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, "100:0.95", new HashMap<>(), new HashMap<>());
         Configuration.MAX_EXCEPTION_COUNT = 5;
 
         mockReferenceResource("hg19.fa");

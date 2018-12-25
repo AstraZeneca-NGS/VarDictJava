@@ -29,7 +29,7 @@ public class CigarModifierTest {
         Configuration config = new Configuration();
         config.goodq = 23;
         config.vext = 3;
-        GlobalReadOnlyScope.init(config, null, null, null, "");
+        GlobalReadOnlyScope.init(config, null, null, null, "", new HashMap<>(), new HashMap<>());
 
         int referencePosition = 1;
         int readPosition = 2;
@@ -112,7 +112,7 @@ public class CigarModifierTest {
     public void subCntTest(Object expectedVariationObject, boolean direction, double goodQuality) {
         Configuration config = new Configuration();
         config.goodq = goodQuality;
-        GlobalReadOnlyScope.init(config, null, null, null, "");
+        GlobalReadOnlyScope.init(config, null, null, null, "", new HashMap<>(), new HashMap<>());
 
         Variation variation = new Variation() {{
             varsCount = 5;
@@ -193,7 +193,7 @@ public class CigarModifierTest {
     public void addCntTest(Object expectedVariationObject, boolean direction, double goodQuality) {
         Configuration config = new Configuration();
         config.goodq = goodQuality;
-        GlobalReadOnlyScope.init(config, null, null, null, "");
+        GlobalReadOnlyScope.init(config, null, null, null, "", new HashMap<>(), new HashMap<>());
 
         Variation variation = new Variation() {{
             varsCount = 5;

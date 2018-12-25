@@ -8,6 +8,8 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import java.util.HashMap;
+
 public class VariationRealignerTest {
 
     @AfterMethod
@@ -26,7 +28,7 @@ public class VariationRealignerTest {
 
     @Test
     public void testIsMatch() {
-        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "");
+        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "", new HashMap<>(), new HashMap<>());
 
         Assert.assertTrue(new VariationRealigner().ismatch("AAAAAAAAA","AAAAAAAAA", 1));
         Assert.assertTrue(new VariationRealigner().ismatch("AAAAAAAAA","AAAAAAAAA", -1));
@@ -51,7 +53,7 @@ public class VariationRealignerTest {
 
     @Test(dataProvider = "find35MatchTestDataProvider")
     public void find35MatchTest(String seq5, String seq3, Match35 expected) {
-        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "");
+        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "", new HashMap<>(), new HashMap<>());
         Match35 match35 = new VariationRealigner().find35match(seq5, seq3);
         Assert.assertEquals(match35.matched5end, expected.matched5end);
         Assert.assertEquals(match35.matched3End, expected.matched3End);

@@ -79,7 +79,7 @@ public class ExceptionCounterTest {
         SimplePostProcessModule simplePostProcessModule = new SimplePostProcessModule(variantPrinter);
         Configuration config = new Configuration();
         config.goodq = 23;
-        GlobalReadOnlyScope.init(config, null, null, null, "");
+        GlobalReadOnlyScope.init(config, null, null, null, "", new HashMap<>(), new HashMap<>());
         return Mockito.spy(simplePostProcessModule);
     }
 }

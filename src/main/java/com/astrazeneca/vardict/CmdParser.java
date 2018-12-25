@@ -4,6 +4,7 @@ import com.astrazeneca.vardict.printers.PrinterType;
 import htsjdk.samtools.ValidationStringency;
 import org.apache.commons.cli.*;
 
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
@@ -87,7 +88,7 @@ public class CmdParser {
             if (regexp.startsWith("/"))
                 regexp = regexp.substring(1);
             if (regexp.endsWith("/"))
-                regexp = regexp.substring(0, regexp.length() -1);
+                regexp = regexp.substring(0, regexp.length() - 1);
             config.sampleNameRegexp = regexp;
         }
         config.bam = new Configuration.BamNames(cmd.getOptionValue("b"));
@@ -114,10 +115,10 @@ public class CmdParser {
         config.minr = getIntValue(cmd, "r", 2);
         config.minBiasReads = getIntValue(cmd, "B", 2);
         if (cmd.hasOption("Q")) {
-            config.mappingQuality = ((Number)cmd.getParsedOptionValue("Q")).intValue();
+            config.mappingQuality = ((Number) cmd.getParsedOptionValue("Q")).intValue();
         }
         config.goodq = getDoubleValue(cmd, "q", 22.5);
-        config.mismatch =  getIntValue(cmd, "m", 8);
+        config.mismatch = getIntValue(cmd, "m", 8);
         config.trimBasesAfter = getIntValue(cmd, "T", 0);
         config.vext = getIntValue(cmd, "X", 2);
         config.readPosFilter = getIntValue(cmd, "P", 5);
@@ -139,7 +140,7 @@ public class CmdParser {
         config.outputSplicing = cmd.hasOption('i');
 
         if (cmd.hasOption('M')) {
-            config.minmatch = ((Number)cmd.getParsedOptionValue("M")).intValue();
+            config.minmatch = ((Number) cmd.getParsedOptionValue("M")).intValue();
         }
 
         if (cmd.hasOption("VS")) {
@@ -161,11 +162,17 @@ public class CmdParser {
         config.threads = Math.max(readThreadsCount(cmd), 1);
         config.referenceExtension = getIntValue(cmd, "Y", 1200);
 
-        String defaultPrinter = cmd.getOptionValue("--defaultPrinter", PrinterType.OUT.name());
+        if (cmd.hasOption("adaptor")) {
+            config.adaptor.addAll(Arrays.asList(cmd.getOptionValue("adaptor").split(",")));
+        }
 
-        switch(defaultPrinter) {
-            case "OUT": config.printerType = PrinterType.OUT; break;
-            default: config.printerType = PrinterType.OUT;
+        if (cmd.hasOption("DP")) {
+            String defaultPrinter = cmd.getOptionValue("DP", PrinterType.OUT.name());
+            switch(defaultPrinter) {
+                case "OUT": config.printerType = PrinterType.OUT; break;
+                case "ERR": config.printerType = PrinterType.ERR; break;
+                default: config.printerType = PrinterType.OUT;
+            }
         }
 
         return config;
@@ -533,6 +540,14 @@ public class CmdParser {
                 .isRequired(false)
                 .withLongOpt("ref-extension")
                 .create('Y'));
+
+        options.addOption(OptionBuilder.withArgName("string")
+                .hasArg(true)
+                .withDescription("Filter adaptor sequences so that they are not used in realignment. Multiple adaptors can be supplied " +
+                        "by setting them with comma, like: --adaptor ACGTTGCTC,ACGGGGTCTC,ACGCGGCTAG .")
+                .withType(String.class)
+                .isRequired(false)
+                .create("adaptor"));
 
         return options;
     }

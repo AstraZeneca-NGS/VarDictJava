@@ -232,7 +232,7 @@ public class AmpliconPostProcessModuleTest {
 
         Configuration config = new Configuration();
         config.goodq = 23;
-        GlobalReadOnlyScope.init(config, null, sample, null, "");
+        GlobalReadOnlyScope.init(config, null, sample, null, "", new HashMap<>(), new HashMap<>());
         return Mockito.spy(ampliconPostProcessModule);
     }
 }

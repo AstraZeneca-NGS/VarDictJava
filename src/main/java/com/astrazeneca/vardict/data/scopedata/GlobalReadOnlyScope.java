@@ -17,11 +17,12 @@ public class GlobalReadOnlyScope {
         return instance;
     }
 
-    public static synchronized void init(Configuration conf, Map<String, Integer> chrLengths, String sample, String samplem, String ampliconBasedCalling) {
+    public static synchronized void init(Configuration conf, Map<String, Integer> chrLengths, String sample, String samplem,
+                                         String ampliconBasedCalling, Map<String, Integer> adaptorForward, Map<String, Integer> adaptorReverse) {
         if (instance != null) {
             throw new IllegalStateException("GlobalReadOnlyScope was already initialized. Must be initialized only once.");
         }
-        instance = new GlobalReadOnlyScope(conf, chrLengths, sample, samplem, ampliconBasedCalling);
+        instance = new GlobalReadOnlyScope(conf, chrLengths, sample, samplem, ampliconBasedCalling, adaptorForward, adaptorReverse);
     }
 
     /**
@@ -37,13 +38,18 @@ public class GlobalReadOnlyScope {
     public final String samplem;
     public final String ampliconBasedCalling;
     public final PrinterType printerTypeOut;
+    public final Map<String, Integer> adaptorForward;
+    public final Map<String, Integer> adaptorReverse;
 
-    public GlobalReadOnlyScope(Configuration conf, Map<String, Integer> chrLengths, String sample, String samplem, String ampliconBasedCalling) {
+    public GlobalReadOnlyScope(Configuration conf, Map<String, Integer> chrLengths, String sample, String samplem,
+                               String ampliconBasedCalling, Map<String, Integer> adaptorForward, Map<String, Integer> adaptorReverse) {
         this.conf = conf;
         this.chrLengths = chrLengths;
         this.sample = sample;
         this.samplem = samplem;
         this.ampliconBasedCalling = ampliconBasedCalling;
         this.printerTypeOut = conf.printerType;
+        this.adaptorForward = adaptorForward;
+        this.adaptorReverse = adaptorReverse;
     }
 }

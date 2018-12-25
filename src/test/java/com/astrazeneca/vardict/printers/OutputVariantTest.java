@@ -11,6 +11,7 @@ import org.testng.annotations.Test;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import static org.testng.Assert.assertEquals;
@@ -22,7 +23,7 @@ public class OutputVariantTest {
     @BeforeMethod
     public void setUpStreams() {
         outContent = new ByteArrayOutputStream();
-        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "");
+        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "", new HashMap<>(), new HashMap<>());
     }
 
     @AfterMethod
