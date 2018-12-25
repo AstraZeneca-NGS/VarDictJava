@@ -2084,7 +2084,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         if (instance().conf.y) {
             System.err.printf("    Passing Read CNT: %s %s %s %s %s\n", cnt, chr, start, end, midcnt);
         }
-        return cnt <= 0;
+        return cnt <= 0 && midcnt + 1 > 0;
     }
 
     /**

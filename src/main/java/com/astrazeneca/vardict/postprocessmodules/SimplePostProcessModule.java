@@ -79,7 +79,9 @@ public class SimplePostProcessModule implements Consumer<Scope<AlignedVarsData>>
                     if ("Complex".equals(vref.vartype)) {
                         vref.adjComplex();
                     }
-
+                    if (instance().conf.crisprCuttingSite == 0) {
+                        vref.crispr = 0;
+                    }
                     SimpleOutputVariant outputVariant = new SimpleOutputVariant(vref, mapScope.region, variantsOnPosition.sv, position);
                     variantPrinter.print(outputVariant);
                 }

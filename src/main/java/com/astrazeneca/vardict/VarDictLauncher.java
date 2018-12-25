@@ -261,12 +261,4 @@ public class VarDictLauncher {
         }
         return tuple(sample, samplem);
     }
-
-    /**
-     *
-     */
-    public void fillAdaptorMaps() {
-
-    }
-
 }

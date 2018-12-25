@@ -185,6 +185,11 @@ public class Variant {
     public String DEBUG = "";
 
     /**
+     * CRISPR information
+     */
+    public int crispr;
+
+    /**
      * A variant is considered noise if the quality is below <code>goodq</code> and
      * there're no more than 3 reads
      * @return Returns true if variance is considered noise if the quality is below <code>goodq</code>
@@ -397,6 +402,7 @@ public class Variant {
                 ", varallele='" + varallele + '\'' +
                 ", refallele='" + refallele + '\'' +
                 ", vartype='" + vartype + '\'' +
+                ", crispr='" + crispr + '\'' +
                 ", DEBUG='" + DEBUG + '\'' +
                 '}';
     }

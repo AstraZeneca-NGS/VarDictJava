@@ -127,12 +127,12 @@ public class AmpliconMode extends AbstractMode {
     @Override
     public void printHeader() {
         if (instance().conf.printHeader) {
-            System.out.println(join("\t",
-                    "Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt", "Depth", "AltDepth", "RefFwdReads",
+            String header = join("\t","Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt", "Depth", "AltDepth", "RefFwdReads",
                     "RefRevReads", "AltFwdReads", "AltRevReads", "Genotype", "AF", "Bias", "PMean", "PStd",
                     "QMean", "QStd", "MQ", "Sig_Noise", "HiAF", "ExtraAF", "shift3", "MSI", "MSI_NT", "NM",
                     "HiCnt", "HiCov", "5pFlankSeq", "3pFlankSeq", "Seg", "VarType", "GoodVarCount", "TotalVarCount",
-                    "Nocov", "Ampflag"));
+                    "Nocov", "Ampflag");
+            System.out.println(header);
         }
     }
 }

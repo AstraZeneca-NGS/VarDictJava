@@ -175,6 +175,8 @@ public class CmdParser {
             }
         }
 
+        config.crisprCuttingSite = getIntValue(cmd, "J", 0);
+        config.crisprFilteringBp = getIntValue(cmd, "j", 0);
         return config;
     }
 
@@ -548,6 +550,24 @@ public class CmdParser {
                 .withType(String.class)
                 .isRequired(false)
                 .create("adaptor"));
+
+        options.addOption(OptionBuilder.withArgName("CRISPR_cutting_site")
+                .hasArg(true)
+                .withDescription("The genomic position that CRISPR/Cas9 suppose to cut, typically 3bp from the PAM NGG site and within the guide.  For\n" +
+                        "        CRISPR mode only.  It will adjust the variants (mostly In-Del) start and end sites to as close to this location as possible,\n" +
+                        "        if there are alternatives. The option should only be used for CRISPR mode.")
+                .withType(Number.class)
+                .isRequired(false)
+                .withLongOpt("crispr")
+                .create('J'));
+
+        options.addOption(OptionBuilder.withArgName("CRISPR_filtering_bp")
+                .hasArg(true)
+                .withDescription("In CRISPR mode, the minimum amount in bp that a read needs to overlap with cutting site.  If a read does not meet the criteria,\n" +
+                        "        it will not be used for variant calling, since it is likely just a partially amplified PCR.  Default: not set, or no filtering")
+                .withType(Number.class)
+                .isRequired(false)
+                .create('j'));
 
         return options;
     }

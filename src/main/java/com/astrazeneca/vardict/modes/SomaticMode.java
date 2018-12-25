@@ -149,14 +149,15 @@ public class SomaticMode extends AbstractMode {
     @Override
     public void printHeader() {
         if (instance().conf.printHeader) {
-            System.out.println(join("\t",
+            String header = join("\t",
                     "Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt",
                     "Depth", "AltDepth", "RefFwdReads", "RefRevReads", "AltFwdReads", "AltRevReads", "Genotype", "AF",
                     "Bias", "PMean", "PStd", "QMean", "QStd", "MQ", "Sig_Noise", "HiAF", "ExtraAF", "NM",
                     "Depth", "AltDepth", "RefFwdReads", "RefRevReads", "AltFwdReads", "AltRevReads", "Genotype", "AF",
                     "Bias", "PMean", "PStd", "QMean", "QStd", "MQ", "Sig_Noise", "HiAF", "ExtraAF", "NM",
                     "shift3", "MSI", "MSI_NT", "5pFlankSeq", "3pFlankSeq", "Seg", "VarLabel", "VarType",
-                    "Duprate1", "SV_info1", "Duprate2", "SV_info2"));
+                    "Duprate1", "SV_info1", "Duprate2", "SV_info2");
+            System.out.println(header);
         }
     }
 }

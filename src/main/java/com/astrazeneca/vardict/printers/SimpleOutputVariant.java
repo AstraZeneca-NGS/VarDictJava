@@ -34,6 +34,7 @@ public class SimpleOutputVariant extends OutputVariant {
     public int hicov;
 
     public double duprate;
+    public int crispr;
     public String sv;
 
     public SimpleOutputVariant(Variant variant, Region region, String sv, int position) {
@@ -76,6 +77,7 @@ public class SimpleOutputVariant extends OutputVariant {
             this.rightSequence = variant.rightseq.isEmpty() ? "0" : variant.rightseq;
             this.varType = variant.vartype;
             this.duprate = variant.duprate;
+            this.crispr = variant.crispr;
             this.DEBUG = variant.DEBUG;
         }
         this.region = region.chr + ":" + region.start + "-" + region.end;
@@ -124,6 +126,10 @@ public class SimpleOutputVariant extends OutputVariant {
                 duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate),
                 sv
         );
+
+        if (instance().conf.crisprCuttingSite != 0) {
+            outputVariant = join(delimiter, outputVariant, crispr);
+        }
         if (instance().conf.debug) {
             outputVariant = join(delimiter, outputVariant, DEBUG);
         }

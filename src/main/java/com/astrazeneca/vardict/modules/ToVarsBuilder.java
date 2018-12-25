@@ -2,7 +2,6 @@ package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
 import com.astrazeneca.vardict.Utils;
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
 import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
 import com.astrazeneca.vardict.data.scopedata.RealignedVariationData;
@@ -19,9 +18,9 @@ import java.util.*;
 
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.*;
-import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.*;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
+import static java.lang.Math.abs;
 
 /**
  * This step of pipeline takes already realigned variations (as an intermediate structures) and create Aligned
@@ -792,6 +791,66 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     //replace '^' sign with 'i' in genotypes
                     genotype1 = genotype1.replaceFirst("\\^", "i");
                     genotype2 = genotype2.replaceFirst("\\^", "i");
+                }
+
+                // Perform adjustment to get as close to CRISPR site as possible
+                int cutSite = instance().conf.crisprCuttingSite;
+                if (cutSite != 0 && refallele.length() > 1 && varallele.length() > 1 ) { // fix 5' for complex in CRISPR mode
+                    int n = 0;
+                    while (refallele.length() > n + 1 && varallele.length() > n + 1 && substr(refallele, n, 1).equals(substr(varallele, n, 1))) {
+                        n++;
+                    }
+                    if (n != 0) {
+                        startPosition += n;
+                        refallele = substr(refallele, n);
+                        varallele = substr(varallele, n);
+                    }
+		        // Let adjComplex to take care the 3'
+                }
+
+                if (cutSite != 0 && (refallele.length() != varallele.length() && substr(refallele, 0, 1).equals(substr(varallele, 0, 1)))) {
+                    if (!(startPosition == cutSite || endPosition == cutSite)) {
+                        int n = 0;
+                        int dis = abs(cutSite - startPosition) < abs(cutSite - endPosition)
+                                ? abs(cutSite - startPosition)
+                                : abs(cutSite - endPosition);
+                        if (startPosition < cutSite) {
+                            while(startPosition + n < cutSite && n < shift3 && endPosition + n != cutSite) {
+                                n++;
+                            }
+                            if (abs(startPosition + n - cutSite) > dis && abs(endPosition + n - cutSite) > dis ) {
+                                n = 0;
+                                // Don't move if it makes it worse
+                            }
+                        }
+                        if (endPosition < cutSite && n == 0) {
+                            if (abs(endPosition - cutSite) <= abs(startPosition - cutSite) ) {
+                                while(endPosition + n < cutSite && n < shift3) {
+                                    n++;
+                                }
+                            }
+                        }
+                        if (n > 0) {
+                            startPosition += n;
+                            endPosition += n;
+                            refallele = "";
+                            for (int i = startPosition; i <= endPosition; i++) {
+                                refallele += ref.get(i);
+                            }
+                            String tva = "";
+                            if (refallele.length() < varallele.length()) { // Insertion
+                                tva = substr(varallele, 1);
+                                if (tva.length() > 1) {
+                                    int ttn = n % tva.length();
+                                    if (ttn != 0) {
+                                        tva = substr(tva, ttn) + substr(tva, 0, ttn);
+                                    }
+                                }
+                            }
+                            varallele = ref.get(startPosition) + tva;
+                        }
+                        vref.crispr = n;
+                    }
                 }
 
                 //preceding reference sequence

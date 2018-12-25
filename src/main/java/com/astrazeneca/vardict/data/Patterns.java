@@ -146,6 +146,11 @@ public class Patterns {
      */
     public static final jregex.Pattern ALIGNED_LENGTH_MND = new jregex.Pattern("(\\d+)[MND]");
 
+    /**
+     * The total aligned length, excluding soft-clipped bases and insertions
+     */
+    public static final jregex.Pattern ALIGNED_LENGTH_MD = new jregex.Pattern("(\\d+)[MD=X]");
+
     public static final jregex.Pattern SOFT_CLIPPED = new jregex.Pattern("(\\d+)[MIS]");
     public static final Pattern SA_CIGAR_D_S_5clip = Pattern.compile("^\\d\\d+S");
     public static final Pattern SA_CIGAR_D_S_3clip = Pattern.compile("\\d\\dS$");

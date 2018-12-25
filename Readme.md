@@ -463,6 +463,13 @@ These are only rough classification. You need to examine the p-value (after test
     Filter adaptor sequences so that they are not used in realignment. Multiple adaptors can be supplied by setting them
      with comma, like:   
      --adaptor ACGTTGCTC,ACGGGGTCTC,ACGCGGCTAG .
+- `-J|--crispr CRISPR_cutting_site`  
+    The genomic position that CRISPR/Cas9 suppose to cut, typically 3bp from the PAM NGG site and within the guide.  For
+   CRISPR mode only.  It will adjust the variants (mostly In-Del) start and end sites to as close to this location as possible,
+    if there are alternatives. The option should only be used for CRISPR mode.
+- `-j CRISPR_filtering_bp`  
+    In CRISPR mode, the minimum amount in bp that a read needs to overlap with cutting site.  If a read does not meet the criteria,
+    it will not be used for variant calling, since it is likely just a partially amplified PCR.  Default: not set, or no filtering  
 ## Output columns
 ### Simple mode:
 1. Sample - sample name
@@ -502,6 +509,7 @@ These are only rough classification. You need to examine the p-value (after test
 35. DUPRATE - duplication rate in fraction
 36. SV splits-pairs-clusters: Splits - No. of split reads supporting SV, Pairs - No. of pairs supporting SV, 
 Clusters - No. of clusters supporting SV 
+37. CRISPR - only in crispr mode - how close to CRISPR site is variant
 
 ### Amplicon mode
 In amplicon mode columns from #35 are changed to:  

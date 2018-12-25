@@ -296,7 +296,19 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             return; // Ignore the supplementary for now so that it won't skew the coverage
         }
 
-        //TODO: Determine whether to filter a read in CRISPR mode
+        // Skip sites that are not in region of interest in CRISPR mode
+        int cutSite = instance().conf.crisprCuttingSite;
+        int filterBp = instance().conf.crisprFilteringBp;
+        if (cutSite != 0) {
+            //The total aligned length, excluding soft-clipped bases and insertions
+            int rlen3 = sum(globalFind(ALIGNED_LENGTH_MD, cigar.toString()));
+
+            if (filterBp != 0) {
+                if (!(cutSite - start > filterBp && start + rlen3 - cutSite > filterBp)) {
+                    return;
+                }
+            }
+        }
 
         // true if mate is in forward forection
         final boolean mateDirection = (record.getFlags() & 0x20) != 0 ? false : true;
