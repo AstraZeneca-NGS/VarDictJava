@@ -627,10 +627,10 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
             }
         }
-        for (SortPositionDescription tpl : tmp) {
+
+        for (int i = tmp.size() - 1; i > 0; i--) {
             try {
-                //for (int i = tmp.size() - 1; i >= 0; i--) {
-                // Tuple.Tuple3<Integer, String, Integer> os = tmp.get(i);
+                SortPositionDescription tpl = tmp.get(i);
                 int p = tpl.position;
                 lastPosition = p;
                 String vn = tpl.descriptionString;

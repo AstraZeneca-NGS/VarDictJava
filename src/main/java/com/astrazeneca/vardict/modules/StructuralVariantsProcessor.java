@@ -90,6 +90,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
         if (!instance().conf.disableSV) {
             findAllSVs();
         }
+        adjSNV();
         if (instance().conf.y) {
             outputClipping();
             System.err.println("TIME: Finish realign:" + LocalDateTime.now());
@@ -1959,6 +1960,61 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
             }
         }
         return new Match(0, "");
+    }
+
+    /**
+     * Will rescue some SNVs that are sofly clipped due to at the end of the read
+     */
+    private void adjSNV() {
+        for (Map.Entry<Integer, Sclip> entry: softClips5End.entrySet()) {
+            int position = entry.getKey();
+            Sclip sclip = entry.getValue();
+
+            if (sclip.used) {
+                continue;
+            }
+            String seq = findconseq(sclip, 0);
+            if (seq.length() > 5) {
+                continue;
+            }
+            String bp = substr(seq, 0, 1);
+
+            int previousPosition = position - 1;
+            if (nonInsertionVariants.containsKey(previousPosition)
+                    && nonInsertionVariants.get(previousPosition).containsKey(bp)) {
+                if (seq.length() > 1) {
+                    if (isNotEquals(reference.referenceSequences.get(position - 2), seq.charAt(1))) {
+                        continue;
+                    }
+                }
+                adjCnt(nonInsertionVariants.get(previousPosition).get(bp), sclip);
+                incCnt(refCoverage, previousPosition, sclip.varsCount);
+            }
+        }
+
+        for (Map.Entry<Integer, Sclip> entry: softClips3End.entrySet()) {
+            int position = entry.getKey();
+            Sclip sclip = entry.getValue();
+
+            if (sclip.used) {
+                continue;
+            }
+            String seq = findconseq(sclip, 0);
+            if (seq.length() > 5) {
+                continue;
+            }
+            String bp = substr(seq, 0, 1);
+            if (nonInsertionVariants.containsKey(position)
+                    && nonInsertionVariants.get(position).containsKey(bp)) {
+                if (seq.length() > 1) {
+                    if (isNotEquals(reference.referenceSequences.get(position + 1), seq.charAt(1))) {
+                        continue;
+                    }
+                }
+                adjCnt(nonInsertionVariants.get(position).get(bp), sclip);
+                incCnt(refCoverage, position, sclip.varsCount);
+            }
+        }
     }
 
     /**

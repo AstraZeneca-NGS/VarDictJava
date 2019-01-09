@@ -25,7 +25,7 @@ public class Sclip extends Variation {
 
     /**
      * Additional fields for structural variation
-     * //TODO: can be extracted to separate cless
+     * //TODO: can be extracted to separate class
      */
     public int start;
     public int end;

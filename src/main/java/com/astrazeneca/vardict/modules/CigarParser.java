@@ -417,7 +417,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         && q >= instance().conf.goodq
                         && isHasAndNotEquals(ref, start, querySequence, readPositionIncludingSoftClipped)
                         && isNotEquals('N', ref.get(start))) {
-
+                    //Require higher quality for MNV
+                    if (queryQuality.charAt(readPositionIncludingSoftClipped + 1) - 33 < instance().conf.goodq + 5) {
+                        break;
+                    }
                     //Break if base is unknown in the read
                     char nuc = querySequence.charAt(readPositionIncludingSoftClipped + 1);
                     if (nuc == 'N') {
@@ -429,7 +432,6 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
                     //Condition: base at n + 1 does not match reference base at start + 1
                     if (isNotEquals(ref.get(start + 1), nuc)) {
-
                         //append the base from read
                         ss.append(nuc);
                         //add quality to total sum
@@ -456,6 +458,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             }
                         }
                         if (ssn == 0) {
+                            break;
+                        }
+                        //Require higher quality for MNV
+                        if (queryQuality.charAt(readPositionIncludingSoftClipped + ssn) - 33 < instance().conf.goodq + 5) {
                             break;
                         }
                         for (int ssi = 1; ssi <= ssn; ssi++) {
@@ -490,7 +496,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.D
                         && ref.containsKey(start)
                         && (ss.length() > 0 || isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref.get(start)))
-                        && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 > instance().conf.goodq) {
+                        && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 >= instance().conf.goodq) {
 
                     //loop until end of CIGAR segments
                     while (i + 1 < cigarElementLength) {
@@ -552,6 +558,44 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             }
                         }
                     }
+                } else if (instance().conf.performLocalRealignment && cigarElementLength - i <= instance().conf.vext
+                        && cigar.numCigarElements() > ci + 1
+                        && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I
+                        && ref.containsKey(start)
+                        && (ss.length() > 0 || isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref.get(start)))
+                        && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 >= instance().conf.goodq) {
+
+                    while (i + 1 < cigarElementLength) {
+                        s += querySequence.charAt(readPositionIncludingSoftClipped + 1);
+                        q += queryQuality.charAt(readPositionIncludingSoftClipped + 1) - 33;
+                        //increase number of bases
+                        qbases++;
+
+                        //shift read and reference indices by 1
+                        i++;
+                        readPositionIncludingSoftClipped++;
+                        readPositionExcludingSoftClipped++;
+                        start++;
+                    }
+                    //remove '&' delimiter from s
+                    s = s.replaceFirst("&", "");
+                    int nextLen = cigar.getCigarElement(ci + 1).getLength();
+                    s += substr(querySequence, readPositionIncludingSoftClipped + 1, nextLen);
+                    s = substr(s, 0, nextLen) + "&" + s.substring(nextLen);
+                    s = "+" + s;
+
+                    //Loop over next-next segment
+                    for (int qi = 1; qi <= nextLen; qi++) {
+                        //add base quality to total quality
+                        q += queryQuality.charAt(readPositionIncludingSoftClipped + 1 + qi) - 33;
+                        //increase number of insertion bases
+                        qibases++;
+                    }
+                    readPositionIncludingSoftClipped += nextLen;
+                    readPositionExcludingSoftClipped += nextLen;
+                    ci += 1;
+                    qibases--;
+                    qbases++; // need to add to set the correction insertion position
                 }
                 if (!trim) {
                     //If start - qbases + 1 is in region of interest
@@ -978,13 +1022,12 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             2). hash contains variant structure for the position
             3). read base at position n-1 matches reference at start-1
              */
-            if (insertionPosition > position) {
-                Variation tv = getVariationMaybe(nonInsertionVariants, insertionPosition,
-                        querySequence.charAt(readPositionIncludingSoftClipped - 1 - (start - 1 - insertionPosition)));
+            int index = readPositionIncludingSoftClipped - 1 - (start - 1 - insertionPosition);
+            if (insertionPosition > position && isHasAndEquals(querySequence.charAt(index), ref, insertionPosition)) {
+                Variation tv = getVariationMaybe(nonInsertionVariants, insertionPosition, querySequence.charAt(index));
                 //Substract count.
                 if (tv != null) {
-                    subCnt(tv, direction, tp,
-                            queryQuality.charAt(readPositionIncludingSoftClipped - 1 - (start - 1 - insertionPosition)) - 33,
+                    subCnt(tv, direction, tp, queryQuality.charAt(index) - 33,
                             mappingQuality, numberOfMismatches - nmoff);
                 }
             }

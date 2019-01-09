@@ -215,7 +215,7 @@ public class CigarModifier {
                 break;
             }
         }
-        if (rn >= 3) {
+        if (rn > 0 && rn <= 3) {
             mch -= rn;
             cigarStr = matcher.replaceFirst(rn + "S" + mch + "M");
             position += rn;
@@ -330,7 +330,7 @@ public class CigarModifier {
             }
         }
         mch -= rn;
-        if (rn >= 3) {
+        if (rn > 0 && rn <= 3) {
             cigarStr = DIG_M_END.matcher(cigarStr).replaceFirst(mch + "M" + rn + "S");
         }
     }
