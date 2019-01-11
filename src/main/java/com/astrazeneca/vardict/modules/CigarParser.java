@@ -293,11 +293,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             maxReadLength = totalLengthIncludingSoftClipped;
         }
 
-        // If 'SA' tag (supplementary alignment) is present
-        if (instance().conf.samfilter != null && record.getStringAttribute(SAMTag.SA.name()) != null) {
-            if (flag.isSupplementaryAlignment()) { // the supplementary alignment
-                return; // Ignore the supplementary for now so that it won't skew the coverage
-            }
+        // If supplementary alignment is present
+        if (instance().conf.samfilter != null && flag.isSupplementaryAlignment()) {
+            return; // Ignore the supplementary for now so that it won't skew the coverage
         }
 
         //TODO: Determine whether to filter a read in CRISPR mode
@@ -1785,7 +1783,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         int soft5 = 0;
 
         jregex.Matcher matcher = BEGIN_NUM_S_OR_BEGIN_NUM_H.matcher(cigar.toString());
-        if (matcher.find()) {
+        if (matcher.find() && matcher.group(1) != null) {
             int tt = toInt(matcher.group(1));
             if (tt != 0 && queryQuality.charAt(tt - 1) - 33 > instance().conf.goodq) {
                 soft5 = start;
@@ -1794,7 +1792,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         int soft3 = 0;
 
         matcher = END_NUM_S_OR_NUM_H.matcher(cigar.toString());
-        if (matcher.find()) {
+        if (matcher.find() && matcher.group(1) != null) {
             int tt = toInt(matcher.group(1));
             if (tt != 0 && queryQuality.charAt(record.getReadLength() - tt) - 33 > instance().conf.goodq) {
                 soft3 = end;
