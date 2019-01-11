@@ -2,7 +2,7 @@
 
 ## Introduction
 
-VarDictJava is a variant discovery program written in Java and Perl. It is a partial Java port of [VarDict variant caller](https://github.com/AstraZeneca-NGS/VarDict). 
+VarDictJava is a variant discovery program written in Java and Perl. It is a Java port of [VarDict variant caller](https://github.com/AstraZeneca-NGS/VarDict). 
 
 The original Perl VarDict is a sensitive variant caller for both single and paired sample variant calling from BAM files. VarDict implements several novel features such as amplicon bias aware variant calling from targeted
 sequencing experiments, rescue of long indels by realigning bwa soft clipped reads and better scalability
@@ -462,7 +462,7 @@ These are only rough classification. You need to examine the p-value (after test
 - `--adaptor`  
     Filter adaptor sequences so that they are not used in realignment. Multiple adaptors can be supplied by setting them
      with comma, like:   
-     --adaptor ACGTTGCTC,ACGGGGTCTC,ACGCGGCTAG .
+     --adaptor ACGTTGCTC,ACGGGGTCTC,ACGCGGCTAG 
 - `-J|--crispr CRISPR_cutting_site`  
     The genomic position that CRISPR/Cas9 suppose to cut, typically 3bp from the PAM NGG site and within the guide.  For
    CRISPR mode only.  It will adjust the variants (mostly In-Del) start and end sites to as close to this location as possible,
