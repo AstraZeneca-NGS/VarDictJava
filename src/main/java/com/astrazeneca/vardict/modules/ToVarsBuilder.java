@@ -292,9 +292,9 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             List<String> insertionDescriptionStrings = new ArrayList<>(insertionVariations.keySet());
             Collections.sort(insertionDescriptionStrings);
             //Loop over insertion variants
-            for (String descriptionStrin : insertionDescriptionStrings) {
+            for (String descriptionString : insertionDescriptionStrings) {
                 // String n = entV.getKey();
-                Variation cnt = insertionVariations.get(descriptionStrin);
+                Variation cnt = insertionVariations.get(descriptionString);
                 //count of variants in forward strand
                 int fwd = cnt.getDir(false);
                 //count of variants in reverse strand
@@ -335,7 +335,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 }
 
                 Variant tvref = new Variant();
-                tvref.descriptionString = descriptionStrin;
+                tvref.descriptionString = descriptionString;
                 tvref.positionCoverage = cnt.varsCount;
                 tvref.varsCountOnForward = fwd;
                 tvref.varsCountOnReverse = rev;
@@ -358,7 +358,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
 
                 var.add(tvref);
                 if (instance().conf.debug) {
-                    tvref.debugVariantsContentInsertion(debugLines, descriptionStrin);
+                    tvref.debugVariantsContentInsertion(debugLines, descriptionString);
                 }
             }
         }

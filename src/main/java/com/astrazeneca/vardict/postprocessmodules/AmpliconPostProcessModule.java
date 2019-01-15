@@ -25,20 +25,21 @@ public class AmpliconPostProcessModule {
      * Method processed Vars for each amplicon on position.
      * @param rg region
      * @param vars result of calling toVarsBuilder
-     * @param positions map of position =&gt; (list of (region number, region))
+     * @param ampliconsOnPositions map of position =&gt; (list of (region number, region))
      * @param splice set of strings representing spliced regions
      * @param variantPrinter specific variant printer where output must be print
      */
-    public void process(Region rg, List<Map<Integer, Vars>> vars, Map<Integer, List<Tuple.Tuple2<Integer, Region>>> positions,
-                               final Set<String> splice, VariantPrinter variantPrinter) {
+    public void process(Region rg, List<Map<Integer, Vars>> vars,
+                        Map<Integer, List<Tuple.Tuple2<Integer, Region>>> ampliconsOnPositions,
+                        final Set<String> splice, VariantPrinter variantPrinter) {
 
-        List<Integer> pp = new ArrayList<>(positions.keySet());
-        Collections.sort(pp);
+        List<Integer> positions = new ArrayList<>(ampliconsOnPositions.keySet());
+        Collections.sort(positions);
         int lastPosition = 0;
-        for (Integer position : pp) {
+        for (Integer position : positions) {
             try {
                 lastPosition = position;
-                final List<Tuple.Tuple2<Integer, Region>> ampliconRegions = positions.get(position);
+                final List<Tuple.Tuple2<Integer, Region>> ampliconRegions = ampliconsOnPositions.get(position);
                 // good variants
                 List<Tuple.Tuple2<Variant, String>> gvs = new ArrayList<>();
                 //reference variants

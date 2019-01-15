@@ -902,10 +902,11 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                                 int flag = 0;
                                 int offset = (sc3pp - position - 1) % insert.length();
                                 String tvn = vn;
-                                for (int seqi = 0; seqi < seq.length() && seqi + offset < insert.length(); seqi++) {
+                                for (int seqi = 0; seqi < seq.length() && seqi < insert.length(); seqi++) {
                                     if (!substr(seq, seqi, 1).equals(substr(insert, seqi + offset, 1))) {
                                         flag++;
-                                        tvn = tvn.replace(substr(tvn, seqi + offset + 1, 1), substr(seq, seqi, 1));
+                                        int shift = seqi + offset + 1;
+                                        tvn = tvn.substring(0, shift) + substr(seq, seqi, 1) + tvn.substring(shift + 1);
                                     }
                                 }
                                 if (flag > 0) {
@@ -1553,8 +1554,8 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                             if (bams != null && bams.length > 0
                                     && p3 - p5 >= 5 && p3 - p5 < maxReadLength - 10
                                     && mvref != null && mvref.varsCount != 0
-                                    && vref.varsCount > 2 * mvref.varsCount
-                                    && noPassingReads(chr, p5, p3, bams)) {
+                                    && noPassingReads(chr, p5, p3, bams)
+                                    && vref.varsCount > 2 * mvref.varsCount) {
                                 adjCnt(vref, mvref, mvref);
                             }
                             Map<Integer, Map<String, Integer>> tins = new HashMap<>();
