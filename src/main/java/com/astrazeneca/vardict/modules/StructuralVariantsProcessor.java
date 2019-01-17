@@ -152,9 +152,10 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         .collect(toList());
 
                 int softp = soft.isEmpty() ? 0 : soft.get(0)._1;
-                if (instance().conf.y)
-                    System.err.printf("%n%nWorking DEL 5' %d mate cluster cnt: %d%n", softp, del.varsCount);
                 if (softp != 0) {
+                    if (instance().conf.y) {
+                        System.err.printf("%n%nWorking DEL 5' %d mate cluster cnt: %d%n", softp, del.varsCount);
+                    }
                     if (!softClips3End.containsKey(softp)) {
                         continue;
                     }
@@ -164,7 +165,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     }
                     String seq = findconseq(scv, 0);
                     if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
-                        continue; // next unless( $seq && length($seq) >= $SEED2 );
+                        continue;
                     }
                     if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
                         referenceResource.getReference(Region.newModifiedRegion(region, del.mstart, del.mend), 300, reference);
@@ -229,11 +230,11 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         System.err.printf("    Found DEL SV from 5' softclip unhappy reads: %d -%d Cnt: %d AdjCnt: %d%n", bp, dellen, del.varsCount, mcnt);
                     }
                 } else { // Look within a read length
-                    if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
-                        referenceResource.getReference(Region.newModifiedRegion(region, del.mstart, del.mend), 300, reference);
-                    }
                     if (instance().conf.y) {
                         System.err.printf("%n%nWorking DEL 5' no softp mate cluster cnt: %d%n", del.varsCount);
+                    }
+                    if (!isLoaded(region.chr, del.mstart, del.mend, reference)) {
+                        referenceResource.getReference(Region.newModifiedRegion(region, del.mstart, del.mend), 300, reference);
                     }
 
                     for (Map.Entry<Integer, Sclip> entry : softClips3End.entrySet()) {
@@ -343,7 +344,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
                         getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                     }
-                    Match match = findMatch(seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
+                    Match match = findMatch(seq, reference, softp, -1);
                     int bp = match.basePosition;
                     String EXTRA = match.matchedSequence;
                     if (bp == 0) {
@@ -685,33 +686,8 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
      */
     void findsv() {
         Map<Integer, Character> ref = reference.referenceSequences;
-        List<SortPositionSclip> tmp5 = new ArrayList<>();
-        for(Map.Entry<Integer, Sclip> entry : softClips5End.entrySet()) {
-            int p = entry.getKey();
-            Sclip sc5v = entry.getValue();
-            if (sc5v.used) {
-                continue;
-            }
-            if (p < CURSEG.start || p > CURSEG.end) {
-                continue;
-            }
-            tmp5.add(new SortPositionSclip(p, sc5v, sc5v.varsCount));
-        }
-        tmp5.sort(comparing((SortPositionSclip sortPositionSclip) -> sortPositionSclip.count).reversed());
-
-        List<SortPositionSclip> tmp3 = new ArrayList<>();
-        for(Map.Entry<Integer, Sclip> entry : softClips3End.entrySet()) {
-            int p = entry.getKey();
-            Sclip sc3v = entry.getValue();
-            if (sc3v.used) {
-                continue;
-            }
-            if (p < CURSEG.start || p > CURSEG.end) {
-                continue;
-            }
-            tmp3.add(new SortPositionSclip(p, sc3v, sc3v.varsCount));
-        }
-        tmp3.sort(comparing((SortPositionSclip sortPositionSclip) -> sortPositionSclip.count).reversed());
+        List<SortPositionSclip> tmp5 = fillAndSortTmpSV(softClips5End.entrySet());
+        List<SortPositionSclip> tmp3 = fillAndSortTmpSV(softClips3End.entrySet());
 
         int lastPosition = 0;
         for (SortPositionSclip tuple5 : tmp5) {
@@ -984,6 +960,23 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 printExceptionAndContinue(exception, "variant", String.valueOf(lastPosition), region);
             }
         }
+    }
+
+    private List<SortPositionSclip> fillAndSortTmpSV(Set<Map.Entry<Integer, Sclip>> entries) {
+        List<SortPositionSclip> tmp = new ArrayList<>();
+        for (Map.Entry<Integer, Sclip> entry : entries) {
+            int position = entry.getKey();
+            Sclip sclip = entry.getValue();
+            if (sclip.used) {
+                continue;
+            }
+            if (position < CURSEG.start || position > CURSEG.end) {
+                continue;
+            }
+            tmp.add(new SortPositionSclip(position, sclip, sclip.varsCount));
+        }
+        tmp.sort(comparing((SortPositionSclip sortPositionSclip) -> sortPositionSclip.count).reversed());
+        return tmp;
     }
 
 

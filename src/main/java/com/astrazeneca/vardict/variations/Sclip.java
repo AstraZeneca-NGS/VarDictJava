@@ -10,7 +10,7 @@ public class Sclip extends Variation {
      * Map of position of high quality base in the base sequence (from SAM record)
      * to base on this position and it's count
      */
-    public TreeMap<Integer, Map<Character, Integer>> nt = new TreeMap<>();
+    public TreeMap<Integer, TreeMap<Character, Integer>> nt = new TreeMap<>();
     /**
      * Map of position of high quality base in the base sequence (from SAM record)
      * to base on this position and it's variation
@@ -25,7 +25,7 @@ public class Sclip extends Variation {
 
     /**
      * Additional fields for structural variation
-     * //TODO: can be extracted to separate class
+     * //TODO: can be extracted to separate class but collections must be changed
      */
     public int start;
     public int end;

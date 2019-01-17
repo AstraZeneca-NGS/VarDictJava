@@ -41,10 +41,6 @@ import static java.util.Comparator.comparing;
  * The step of pipeline which try to realign variations: softclips, indels, long insertions.
  */
 public class VariationRealigner implements Module<VariationData, RealignedVariationData>  {
-    /**
-     * The current processing segment (chr, start, end)
-     */
-    private CurrentSegment CURSEG;
     private Map<Integer, List<Sclip>> SOFTP2SV = new HashMap<>();
 
     private Map<Integer, VariationMap<String, Variation>> nonInsertionVariants;
@@ -75,9 +71,8 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      */
     @Override
     public Scope<RealignedVariationData> process(Scope<VariationData> scope) {
-
         initFromScope(scope);
-        CURSEG = new CurrentSegment(region.chr, region.start, region.end);
+        CurrentSegment CURSEG = new CurrentSegment(region.chr, region.start, region.end);
 
         if (!instance().conf.disableSV) {
             filterAllSVStructures();
@@ -134,7 +129,10 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
     private static final Comparator<SortPositionSclip> COMP3 = new Comparator<SortPositionSclip>() {
         @Override
         public int compare(SortPositionSclip o1, SortPositionSclip o2) {
-            return Integer.compare(o2.count, o1.count);
+            int f = Integer.compare(o2.count, o1.count);
+            if (f != 0)
+                return f;
+            return Integer.compare(o1.position, o2.position);
         }
     };
 
@@ -265,6 +263,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
             System.err.println(join("; ", "; out of", mates.size()));
         }
         Cluster firstCluster = clusters.get(0);
+        //TODO: refactor this to factory method?
         return firstCluster.cnt / (double) mates.size() >= 0.60
                 ? new Cluster(firstCluster.mateStart_ms, firstCluster.mateEnd_me, firstCluster.cnt,
                 firstCluster.mateLength_mlen/firstCluster.cnt, firstCluster.start_s, firstCluster.end_e,
@@ -276,108 +275,104 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      * Adjust MNP when there're breakpoints within MNP (multi-nucleotide polymorphism)
      */
     public void adjustMNP() {
-
-        for (Map.Entry<Integer, Map<String, Integer>> entry : mnp.entrySet()) {
+        List<SortPositionDescription> tmp = fillAndSortTmp(mnp);
+        for (SortPositionDescription tpl : tmp) {
             int lastPosition = 0;
-
             try {
-                final Integer position = entry.getKey();
+                final Integer position = tpl.position;
                 lastPosition = position;
-                Map<String, Integer> v = entry.getValue();
 
-                for (Map.Entry<String, Integer> en : v.entrySet()) {
-                    final String vn = en.getKey();
-                    final Map<String, Variation> varsOnPosition = nonInsertionVariants.get(position);
-                    if (varsOnPosition == null) {
-                        continue;
-                    }
-                    final Variation vref = varsOnPosition.get(vn);
-                    if (vref == null) { // The variant is likely already been used by indel realignment
-                        continue;
-                    }
-                    if (instance().conf.y) {
-                        System.err.printf("  AdjMnt: %d %s %d\n", position, vn, vref.varsCount);
+                final String vn = tpl.descriptionString;
+                final Map<String, Variation> varsOnPosition = nonInsertionVariants.get(position);
+                if (varsOnPosition == null) {
+                    continue;
+                }
+                final Variation vref = varsOnPosition.get(vn);
+                if (vref == null) { // The variant is likely already been used by indel realignment
+                    continue;
+                }
+                if (instance().conf.y) {
+                    System.err.printf("  AdjMnt: %d %s %d\n", position, vn, vref.varsCount);
+                }
+
+                final String mnt = vn.replaceFirst("&", "");
+                for (int i = 0; i < mnt.length() - 1; i++) {
+                    String left = substr(mnt, 0, i + 1);
+                    if (left.length() > 1) {
+                        StringBuilder sb = new StringBuilder(left);
+                        sb.insert(1, "&");
+                        left = sb.toString();
                     }
 
-                    final String mnt = vn.replaceFirst("&", "");
-                    for (int i = 0; i < mnt.length() - 1; i++) {
-                        String left = substr(mnt, 0, i + 1);
-                        if (left.length() > 1) {
-                            StringBuilder sb = new StringBuilder(left);
-                            sb.insert(1, "&");
-                            left = sb.toString();
-                        }
-
-                        String right = substr(mnt, -(mnt.length() - i - 1));
-                        if (right.length() > 1) {
-                            StringBuilder sb = new StringBuilder(right);
-                            sb.insert(1, "&");
-                            right = sb.toString();
-                        }
-                        {
-                            Variation tref = varsOnPosition.get(left);
-                            if (tref != null) {
-                                if (tref.varsCount <= 0) {
-                                    continue;
-                                }
-                                if (tref.varsCount < vref.varsCount && tref.meanPosition / tref.varsCount <= i + 1) {
-                                    if (instance().conf.y) {
-                                        System.err.printf("    AdjMnt Left: %s %s Left: %s Cnt: %s\n", position, vn, left, tref.varsCount);
-                                    }
-                                    adjCnt(vref, tref);
-                                    varsOnPosition.remove(left);
-                                }
+                    String right = substr(mnt, -(mnt.length() - i - 1));
+                    if (right.length() > 1) {
+                        StringBuilder sb = new StringBuilder(right);
+                        sb.insert(1, "&");
+                        right = sb.toString();
+                    }
+                    {
+                        Variation tref = varsOnPosition.get(left);
+                        if (tref != null) {
+                            if (tref.varsCount <= 0) {
+                                continue;
                             }
-                        }
-                        if (nonInsertionVariants.containsKey(position + i + 1)) {
-                            Variation tref = nonInsertionVariants.get(position + i + 1).get(right);
-                            if (tref != null) {
-                                if (tref.varsCount < 0) {
-                                    continue;
+                            if (tref.varsCount < vref.varsCount && tref.meanPosition / tref.varsCount <= i + 1) {
+                                if (instance().conf.y) {
+                                    System.err.printf("    AdjMnt Left: %s %s Left: %s Cnt: %s\n", position, vn, left, tref.varsCount);
                                 }
-                                // #&& tref.pmean / tref.cnt <= mnt.length() - i - 1)
-                                if (tref.varsCount < vref.varsCount) {
-                                    if (instance().conf.y) {
-                                        System.err.printf("    AdjMnt Right: %s %s Right: %s Cnt: %s\n", position, vn, right, tref.varsCount);
-                                    }
-                                    adjCnt(vref, tref);
-                                    incCnt(refCoverage, position, tref.varsCount);
-                                    nonInsertionVariants.get(position + i + 1).remove(right);
-                                }
+                                adjCnt(vref, tref);
+                                varsOnPosition.remove(left);
                             }
                         }
                     }
-                    if (softClips3End.containsKey(position)) {
-                        final Sclip sc3v = softClips3End.get(position);
-                        if (!sc3v.used) {
-                            final String seq = findconseq(sc3v, 0);
-                            if (seq.startsWith(mnt)) {
+                    if (nonInsertionVariants.containsKey(position + i + 1)) {
+                        Variation tref = nonInsertionVariants.get(position + i + 1).get(right);
+                        if (tref != null) {
+                            if (tref.varsCount < 0) {
+                                continue;
+                            }
+                            // #&& tref.pmean / tref.cnt <= mnt.length() - i - 1)
+                            if (tref.varsCount < vref.varsCount) {
+                                if (instance().conf.y) {
+                                    System.err.printf("    AdjMnt Right: %s %s Right: %s Cnt: %s\n", position, vn, right, tref.varsCount);
+                                }
+                                adjCnt(vref, tref);
+                                incCnt(refCoverage, position, tref.varsCount);
+                                nonInsertionVariants.get(position + i + 1).remove(right);
+                            }
+                        }
+                    }
+                }
+                if (softClips3End.containsKey(position)) {
+                    final Sclip sc3v = softClips3End.get(position);
+                    if (!sc3v.used) {
+                        final String seq = findconseq(sc3v, 0);
+                        if (seq.startsWith(mnt)) {
+                            if (seq.length() == mnt.length()
+                                    || ismatchref(seq.substring(mnt.length()), reference.referenceSequences, position + mnt.length(), 1)) {
+                                adjCnt(nonInsertionVariants.get(position).get(vn), sc3v);
+                                incCnt(refCoverage, position, sc3v.varsCount);
+                                sc3v.used = true;
+                            }
+                        }
+                    }
+                }
+                if (softClips5End.containsKey(position + mnt.length())) {
+                    final Sclip sc5v = softClips5End.get(position + mnt.length());
+                    if (!sc5v.used) {
+                        String seq = findconseq(sc5v, 0);
+                        if (!seq.isEmpty() && seq.length() >= mnt.length()) {
+                            seq = new StringBuffer(seq).reverse().toString();
+                            if (seq.endsWith(mnt)) {
                                 if (seq.length() == mnt.length()
-                                        || ismatchref(seq.substring(mnt.length()), reference.referenceSequences, position + mnt.length(), 1)) {
-                                    adjCnt(nonInsertionVariants.get(position).get(vn), sc3v);
-                                    incCnt(refCoverage, position, sc3v.varsCount);
-                                    sc3v.used = true;
+                                        || ismatchref(seq.substring(0, seq.length() - mnt.length()), reference.referenceSequences, position - 1, -1)) {
+                                    adjCnt(nonInsertionVariants.get(position).get(vn), sc5v);
+                                    incCnt(refCoverage, position, sc5v.varsCount);
+                                    sc5v.used = true;
                                 }
                             }
                         }
-                    }
-                    if (softClips5End.containsKey(position + mnt.length())) {
-                        final Sclip sc5v = softClips5End.get(position + mnt.length());
-                        if (!sc5v.used) {
-                            String seq = findconseq(sc5v, 0);
-                            if (!seq.isEmpty() && seq.length() >= mnt.length()) {
-                                seq = new StringBuffer(seq).reverse().toString();
-                                if (seq.endsWith(mnt)) {
-                                    if (seq.length() == mnt.length()
-                                            || ismatchref(seq.substring(0, seq.length() - mnt.length()), reference.referenceSequences, position - 1, -1)) {
-                                        adjCnt(nonInsertionVariants.get(position).get(vn), sc5v);
-                                        incCnt(refCoverage, position, sc5v.varsCount);
-                                        sc5v.used = true;
-                                    }
-                                }
-                            }
 
-                        }
                     }
                 }
             } catch (Exception exception) {
@@ -406,10 +401,10 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
 
     /**
      * Realign deletions if already present in alignment
-     * @param positiontoDeletionsCount deletion variants count on positions
+     * @param positionToDeletionsCount deletion variants count on positions
      * @param bamsParameter BAM file list (can be null in few cases of running realigndel)
      */
-    public void realigndel(String[] bamsParameter, Map<Integer, Map<String, Integer>> positiontoDeletionsCount) {
+    public void realigndel(String[] bamsParameter, Map<Integer, Map<String, Integer>> positionToDeletionsCount) {
         Map<Integer, Character> ref = reference.referenceSequences;
         String[] bams;
         if (bamsParameter == null) {
@@ -419,7 +414,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         }
         // In perl it doesn't commented, but it doesn't used
         // int longmm = 3; //Longest continued mismatches typical aligned at the end
-        List<SortPositionDescription> tmp = fillTmp(positiontoDeletionsCount);
+        List<SortPositionDescription> tmp = fillAndSortTmp(positionToDeletionsCount);
         int lastPosition = 0;
         for (SortPositionDescription tpl : tmp) {
             try {
@@ -665,7 +660,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      */
     public String realignins(Map<Integer, Map<String, Integer>> positionToInsertionCount) {
         Map<Integer, Character> ref = reference.referenceSequences;
-        List<SortPositionDescription> tmp = fillTmp(positionToInsertionCount);
+        List<SortPositionDescription> tmp = fillAndSortTmp(positionToInsertionCount);
         String NEWINS = "";
         int lastPosition = 0;
         for (SortPositionDescription tpl : tmp) {
@@ -1941,7 +1936,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
      * @param changes initial hash map
      * @return tuple of (position, descriptions string and variation count).
      */
-    List<SortPositionDescription> fillTmp(Map<Integer, Map<String, Integer>> changes) {
+    List<SortPositionDescription> fillAndSortTmp(Map<Integer, Map<String, Integer>> changes) {
         //TODO: perl here have non-deterministic results because of hash, maybe we need to
         // make the sort in Perl more stringent (except simple sort b[2]<=>a[2]
         List<SortPositionDescription> tmp = new ArrayList<>();

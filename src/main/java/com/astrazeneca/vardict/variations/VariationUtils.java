@@ -3,8 +3,7 @@ package com.astrazeneca.vardict.variations;
 import com.astrazeneca.vardict.Configuration;
 import com.astrazeneca.vardict.collection.VariationMap;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 
 import static com.astrazeneca.vardict.Utils.reverse;
@@ -77,37 +76,37 @@ public class VariationUtils {
         int match = 0;
         StringBuilder seq = new StringBuilder();
         boolean flag = false;
-        for (Map.Entry<Integer, Map<Character, Integer>> nve : softClip.nt.entrySet()) {
-            Integer i = nve.getKey();
+        for (Map.Entry<Integer, TreeMap<Character, Integer>> nve : softClip.nt.entrySet()) {
+            Integer positionInSclip = nve.getKey();
             Map<Character, Integer> nv = nve.getValue();
-            int max = 0;
-            double maxq = 0;
-            Character mnt = null;
-            int tt = 0;
+            int maxCount = 0; //$max
+            double maxQuality = 0; //$maxq
+            Character chosenBase = null; //$mnt
+            int totalCount = 0; //$tt
             for (Map.Entry<Character, Integer> ent : nv.entrySet()) {
-                Character nt = ent.getKey();
-                int ncnt = ent.getValue();
-                tt += ncnt;
-                if (ncnt > max  || (softClip.seq.containsKey(i) && softClip.seq.get(i).containsKey(nt)
-                        && softClip.seq.get(i).get(nt).meanQuality > maxq)) {
-                    max = ncnt;
-                    mnt = nt;
-                    maxq = softClip.seq.get(i).get(nt).meanQuality;
+                Character currentBase = ent.getKey(); //$nt
+                int currentCount = ent.getValue(); //$ncnt
+                totalCount += currentCount;
+                if (currentCount > maxCount || (softClip.seq.containsKey(positionInSclip) && softClip.seq.get(positionInSclip).containsKey(currentBase)
+                        && softClip.seq.get(positionInSclip).get(currentBase).meanQuality > maxQuality)) {
+                    maxCount = currentCount;
+                    chosenBase = currentBase;
+                    maxQuality = softClip.seq.get(positionInSclip).get(currentBase).meanQuality;
                 }
             }
-            if (i == 3 && softClip.nt.size() >= 6 && tt/(double)softClip.varsCount < 0.2 && tt <= 2) {
+            if (positionInSclip == 3 && softClip.nt.size() >= 6 && totalCount/(double)softClip.varsCount < 0.2 && totalCount <= 2) {
                 break;
             }
-            if ((tt - max > 2 || max <= tt - max) && max / (double)tt < 0.8) {
+            if ((totalCount - maxCount > 2 || maxCount <= totalCount - maxCount) && maxCount / (double)totalCount < 0.8) {
                 if (flag) {
                     break;
                 }
                 flag = true;
             }
-            total += tt;
-            match += max;
-            if (mnt != null) {
-                seq.append(mnt);
+            total += totalCount;
+            match += maxCount;
+            if (chosenBase != null) {
+                seq.append(chosenBase);
             }
         }
         String SEQ;

@@ -276,7 +276,11 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         Collections.sort(var, new Comparator<Variant>() {
             @Override
             public int compare(Variant o1, Variant o2) {
-                return Double.compare(o2.meanQuality * o2.positionCoverage, o1.meanQuality * o1.positionCoverage);
+                int compare = Double.compare(o2.meanQuality * o2.positionCoverage, o1.meanQuality * o1.positionCoverage);
+                if (compare != 0) {
+                    return compare;
+                }
+                return o1.descriptionString.compareTo(o2.descriptionString);
             }
         });
     }
@@ -548,7 +552,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         int referenceForwardCoverage = 0; // $rfc
         int referenceReverseCoverage = 0; // $rrc
         //description string for reference or best non-reference variant
-        String genotype1 = "";
+        String genotype1;
 
         if (variationsAtPos.referenceVariant != null && variationsAtPos.referenceVariant.frequency >= instance().conf.freq) {
             genotype1 = variationsAtPos.referenceVariant.descriptionString;
@@ -572,7 +576,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             }
         }
         //description string for any other variant
-        String genotype2 = "";
+        String genotype2;
 
         if (totalPosCoverage > refCoverage.get(position) && getNonInsertionVariants().containsKey(position + 1)
                 && ref.containsKey(position + 1)
@@ -587,7 +591,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             //Loop over non-reference variants
             for (Variant vref : variationsAtPos.variants) {
                 //vref - variant reference
-
+                String genotype1current = genotype1;
                 genotype2 = vref.descriptionString;
                 if (genotype2.startsWith("+")) {
                     genotype2 = "+" + (genotype2.length() - 1);
@@ -608,7 +612,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 //reference sequence for variation (to be written to .vcf file)
                 String refallele = "";
                 //variant sequence (to be written to .vcf file)
-                String varallele = "";
+                String varallele;
 
                 // how many bp can a deletion be shifted to 3 prime
                 //3' shift (integer) for MSI adjustment
@@ -720,7 +724,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     //append length(extra) bases from reference sequence to reference allele and genotype1
                     String tch = joinRef(ref, endPosition + 1, endPosition + extra.length());
                     refallele += tch;
-                    genotype1 += tch;
+                    genotype1current += tch;
 
                     //Adjust position
                     endPosition += extra.length();
@@ -731,7 +735,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                         varallele = varallele.replaceFirst("&", "");
                         tch = joinRef(ref, endPosition + 1, endPosition + vextra.length());
                         refallele += tch;
-                        genotype1 += tch;
+                        genotype1current += tch;
                         endPosition += vextra.length();
                     }
 
@@ -780,7 +784,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     varallele = varallele.replaceFirst("#", "").replaceFirst("\\^(\\d+)?", "");
 
                     //replace '#' with 'm' and '^' with 'i' in genotypes
-                    genotype1 = genotype1.replaceFirst("#", "m").replaceFirst("\\^", "i");
+                    genotype1current = genotype1current.replaceFirst("#", "m").replaceFirst("\\^", "i");
                     genotype2 = genotype2.replaceFirst("#", "m").replaceFirst("\\^", "i");
                 }
                 mtch = CARET_ATGNC.matcher(descriptionString); // for deletion followed directly by insertion in novolign
@@ -789,7 +793,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     varallele = varallele.replaceFirst("\\^", "");
 
                     //replace '^' sign with 'i' in genotypes
-                    genotype1 = genotype1.replaceFirst("\\^", "i");
+                    genotype1current = genotype1current.replaceFirst("\\^", "i");
                     genotype2 = genotype2.replaceFirst("\\^", "i");
                 }
 
@@ -859,7 +863,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 //following reference sequence
                 vref.rightseq = joinRef(ref, endPosition + 1, endPosition + 20 > chr0 ? chr0 : endPosition + 20); // right 20 nt
                 //genotype description string
-                String genotype = genotype1 + "/" + genotype2;
+                String genotype = genotype1current + "/" + genotype2;
                 //remove '&' and '#' symbols from genotype string
                 //replace '^' symbol with 'i' in genotype string
                 genotype = genotype
