@@ -902,7 +902,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                                 int flag = 0;
                                 int offset = (sc3pp - position - 1) % insert.length();
                                 String tvn = vn;
-                                for (int seqi = 0; seqi < seq.length() && seqi < insert.length(); seqi++) {
+                                for (int seqi = 0; seqi < seq.length() && seqi + offset < insert.length(); seqi++) {
                                     if (!substr(seq, seqi, 1).equals(substr(insert, seqi + offset, 1))) {
                                         flag++;
                                         int shift = seqi + offset + 1;
