@@ -18,11 +18,11 @@ import htsjdk.samtools.util.SequenceUtil;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.getMode;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.collection.VariationMap.getSV;
 import static com.astrazeneca.vardict.data.ReferenceResource.isLoaded;
 import static com.astrazeneca.vardict.collection.VariationMap.SV;
-import static com.astrazeneca.vardict.modes.AbstractMode.partialPipeline;
 import static com.astrazeneca.vardict.modules.VariationRealigner.ismatchref;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
 import static com.astrazeneca.vardict.Utils.*;
@@ -171,7 +171,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         Region modifiedRegion = Region.newModifiedRegion(this.region, del.mstart - 200, del.mend + 200);
                         Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                        partialPipeline(currentScope, new DirectThreadExecutor());
+                        getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                     }
                     Match match = findMatch(seq, reference, softp, 1);
                     int bp = match.basePosition;
@@ -341,7 +341,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         Region modifiedRegion = Region.newModifiedRegion(this.region, del.mstart - 200, del.mend + 200);
                         Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                        partialPipeline(currentScope, new DirectThreadExecutor());
+                        getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                     }
                     Match match = findMatch(seq, reference, softp, -1);// my ($bp, $EXTRA) = findMatch($seq, $reference, $softp, -1);
                     int bp = match.basePosition;
@@ -519,7 +519,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     Region modifiedRegion = Region.newModifiedRegion(this.region, inv.mstart - 200, inv.mend + 200);
                     Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                             variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                    partialPipeline(currentScope, new DirectThreadExecutor());
+                    getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                 }
                 int bp = 0;
                 Sclip scv = new Sclip();
@@ -1358,7 +1358,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     Region modifiedRegion = Region.newModifiedRegion(this.region, ms - 200, me + 200);
                     Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                             variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                    partialPipeline(currentScope, new DirectThreadExecutor());
+                    getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                 }
 
                 int cntf = cnt;
@@ -1501,7 +1501,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     Region modifiedRegion = Region.newModifiedRegion(this.region, ms - 200, me + 200);
                     Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                             variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                    partialPipeline(currentScope, new DirectThreadExecutor());
+                    getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                 }
                 int cntf = cnt;
                 int cntr = cnt;

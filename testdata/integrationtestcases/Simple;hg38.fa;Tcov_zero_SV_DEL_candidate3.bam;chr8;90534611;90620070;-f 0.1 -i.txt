@@ -1,0 +1,17 @@
+Simple,hg38.fa,Tcov_zero_SV_DEL_candidate3.bam,chr8,90534611,90620070,-f 0.1 -i
+Tcov_zero_SV_DEL_candidate3	chr8	90474812-90534537	2
+Tcov_zero_SV_DEL_candidate3	chr8	90562340-90605767	1
+Tcov_zero_SV_DEL_candidate3	chr8	90619022-90645110	1
+Tcov_zero_SV_DEL_candidate3	chr8	90593971-90645110	1
+Tcov_zero_SV_DEL_candidate3	chr8	90572408-90645308	1
+Tcov_zero_SV_DEL_candidate3	chr8	90593971-90605767	3
+Tcov_zero_SV_DEL_candidate3	chr8	90579794-90624972	1
+Tcov_zero_SV_DEL_candidate3	chr8	90596154-90645170	1
+Tcov_zero_SV_DEL_candidate3	chr8	90606084-90625240	1
+Tcov_zero_SV_DEL_candidate3	chr8	90534626-90554350	3
+Tcov_zero_SV_DEL_candidate3	chr8	90618679-90622360	1
+Tcov_zero_SV_DEL_candidate3	chr8	90504494-90534541	1
+Tcov_zero_SV_DEL_candidate3	chr8	90593103-90593831	3
+Tcov_zero_SV_DEL_candidate3	chr8	90595792-90624144	1
+Tcov_zero_SV_DEL_candidate3	chr8	90573633-90625633	1
+Tcov_zero_SV_DEL_candidate3	chr8	90554666-90562228	1

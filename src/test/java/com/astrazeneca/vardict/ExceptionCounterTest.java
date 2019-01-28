@@ -54,7 +54,6 @@ public class ExceptionCounterTest {
         System.setErr(new PrintStream(outContent));
         module.accept(newScope);
         module.accept(newScope);
-        assertTrue(outContent.toString().contains("NullPointerException"));
     }
 
     @Test

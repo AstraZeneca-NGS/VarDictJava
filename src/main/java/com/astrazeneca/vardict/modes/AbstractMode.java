@@ -41,15 +41,31 @@ public abstract class AbstractMode {
      * @param executor current Executor for parallel/single mode
      * @return object contains map of aligned variants
      */
-    public static CompletableFuture<Scope<AlignedVarsData>> pipeline(Scope<InitialData> initialDataScope,
+    public CompletableFuture<Scope<AlignedVarsData>> pipeline(Scope<InitialData> initialDataScope,
                                                                      Executor executor) {
-
         return CompletableFuture.supplyAsync(
                 () -> new SAMFileParser().process(initialDataScope), executor)
                 .thenApply(new CigarParser(false)::process)
                 .thenApply(new VariationRealigner()::process)
                 .thenApply(new StructuralVariantsProcessor()::process)
-                .thenApply(new ToVarsBuilder()::process);
+                .thenApply(new ToVarsBuilder()::process)
+                .exceptionally(ex -> {
+                    stopVardictWithException(initialDataScope.region, ex);
+                    throw new RuntimeException(ex);
+                });
+    }
+
+    /**
+     * Method for stopping VarDict with Exception. Number of exceptions set by Configuration.MAX_EXCEPTION_COUNT can be
+     * skipped, but after this limit program must stop even in parallel mode (where Executor may hang on Exception).
+     * @param region region where Exception occurs
+     * @param ex initial exception
+     */
+    void stopVardictWithException(Region region, Throwable ex) {
+        System.err.println("Critical exception occurs on region: "
+                + region.chr +":" + region.start + "-" + region.end + ", program will be stopped.");
+        ex.printStackTrace();
+        System.exit(1);
     }
 
     /**
@@ -60,13 +76,25 @@ public abstract class AbstractMode {
      * @param executor current Executor for parallel/single mode
      * @return object contains variation data (updated maps of variations and softclips).
      */
-    public static CompletableFuture<Scope<VariationData>> partialPipeline(Scope<InitialData> currentScope,
+    public CompletableFuture<Scope<VariationData>> partialPipeline(Scope<InitialData> currentScope,
                                                                           Executor executor) {
-
-
         return CompletableFuture.supplyAsync(
                 () -> new SAMFileParser().process(currentScope), executor)
                 .thenApply(new CigarParser(true)::process);
+    }
+
+    /**
+     * Starts pipeline for splicing mode: output only information about splice counts (N in CIGAR reads).
+     * @param currentScope current data for pipeline. contains data about BAM, region, reference and already
+     *                     filled maps of variations and softclips
+     * @param executor current Executor for parallel/single mode
+     * @return empty object for variation data.
+     */
+    public CompletableFuture<Scope<VariationData>> splicingPipeline(Scope<InitialData> currentScope,
+                                                                          Executor executor) {
+        return CompletableFuture.supplyAsync(
+                () -> new SAMFileParser().process(currentScope), executor)
+                .thenApply(new CigarParser(false)::process);
     }
 
     public abstract void notParallel();

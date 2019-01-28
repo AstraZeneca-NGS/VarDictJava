@@ -108,15 +108,20 @@ public class AmpliconMode extends AbstractMode {
                     }
 
                     Region lastRegion = currentRegion;
-                    CompletableFuture<OutputStream> processAmpliconOutput = CompletableFuture.supplyAsync(() -> {
-                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                        PrintStream out = new PrintStream(baos);
-                        VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
-                        variantPrinter.setOut(out);
-                        new AmpliconPostProcessModule().process(lastRegion, vars, pos, splice, variantPrinter);
-                        out.close();
-                        return baos;
-                    }, executor);
+                    CompletableFuture<OutputStream> processAmpliconOutput = CompletableFuture
+                            .supplyAsync(() -> {
+                                OutputStream baos = new ByteArrayOutputStream();
+                                PrintStream out = new PrintStream(baos);
+                                VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
+                                variantPrinter.setOut(out);
+                                new AmpliconPostProcessModule().process(lastRegion, vars, pos, splice, variantPrinter);
+                                out.close();
+                                return baos;
+                                }, executor)
+                            .exceptionally(ex -> {
+                                stopVardictWithException(lastRegion, ex);
+                                throw new RuntimeException(ex);
+                            });
                     toPrint.add(processAmpliconOutput);
                 }
                 toPrint.put(AbstractMode.LAST_SIGNAL_FUTURE);

@@ -101,9 +101,19 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
         if (instance().conf.outputSplicing) {
             for (Map.Entry<String, int[]> entry : spliceCount.entrySet()) {
-                System.out.printf("%s\t%s\t%s\t%s\n", region.chr, entry.getKey(), entry.getValue()[0]);
+                String intron = entry.getKey();
+                int intronCount = entry.getValue()[0];
+                System.out.printf("%s\t%s\t%s\t%s\n", instance().sample, region.chr, intron, intronCount);
             }
-            return null;
+            return new Scope<>(
+                    scope.bam,
+                    scope.region,
+                    scope.regionRef,
+                    scope.referenceResource,
+                    maxReadLength,
+                    splice,
+                    scope.out,
+                    new VariationData());
         }
 
         double duprate;
@@ -297,18 +307,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         }
 
         // Skip sites that are not in region of interest in CRISPR mode
-        int cutSite = instance().conf.crisprCuttingSite;
-        int filterBp = instance().conf.crisprFilteringBp;
-        if (cutSite != 0) {
-            //The total aligned length, excluding soft-clipped bases and insertions
-            int rlen3 = sum(globalFind(ALIGNED_LENGTH_MD, cigar.toString()));
-
-            if (filterBp != 0) {
-                if (!(cutSite - start > filterBp && start + rlen3 - cutSite > filterBp)) {
-                    return;
-                }
-            }
-        }
+        if (skipSitesOutRegionOfInterest()) return;
 
         // true if mate is in forward forection
         final boolean mateDirection = (record.getFlags() & 0x20) != 0 ? false : true;
@@ -366,18 +365,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             //Loop over bases of CIGAR segment
             for (int i = offset; i < cigarElementLength; i++) {
                 //flag to trim reads at opt_T bases from start or end (depending on direction)
-                boolean trim = false;
-                if (instance().conf.trimBasesAfter != 0) {
-                    if (!direction) {
-                        if (readPositionIncludingSoftClipped > instance().conf.trimBasesAfter) {
-                            trim = true;
-                        }
-                    } else {
-                        if (totalLengthIncludingSoftClipped - readPositionIncludingSoftClipped > instance().conf.trimBasesAfter) {
-                            trim = true;
-                        }
-                    }
-                }
+                boolean trim = isTrimAtOptTBases(direction, totalLengthIncludingSoftClipped);
 
                 //variation string. Initialize to first base of the read sequence
                 final char ch1 = querySequence.charAt(readPositionIncludingSoftClipped);
@@ -491,13 +479,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 5). either multi-nucleotide mismatch is found or read base at $n does not match reference base
                 6). read base at $n has good quality
                  */
-                if (instance().conf.performLocalRealignment && cigarElementLength - i <= instance().conf.vext
-                        && cigar.numCigarElements() > ci + 1
-                        && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.D
-                        && ref.containsKey(start)
-                        && (ss.length() > 0 || isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref.get(start)))
-                        && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 >= instance().conf.goodq) {
-
+                if (isCloserThenVextAndGoodBase(querySequence, ref, queryQuality, ci, i, ss, CigarOperator.D)) {
                     //loop until end of CIGAR segments
                     while (i + 1 < cigarElementLength) {
                         //append next base to s and add its quality to q
@@ -522,8 +504,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     ci += 1;
 
                     //If CIGAR has insertion two segments ahead
-                    if (cigar.numCigarElements() > ci + 1
-                            && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I) {
+                    if (isTwoInsertionsAhead(ci)) {
                         //append '^' + next-next segment sequence
                         s += "^" + substr(querySequence, readPositionIncludingSoftClipped + 1, cigar.getCigarElement(ci + 1).getLength());
 
@@ -541,8 +522,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         readPositionExcludingSoftClipped += nextLen;
                         ci += 1;
                     }
-                    if (cigar.numCigarElements() > ci + 1
-                            && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
+                    if (isNextAfterNumMatched(ci, 1)) {
                         Offset tpl = findOffset(start + ddlen + 1,
                                 readPositionIncludingSoftClipped + 1, cigar.getCigarElement(ci + 1).getLength(), querySequence,
                                 queryQuality, ref, refCoverage);
@@ -558,13 +538,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             }
                         }
                     }
-                } else if (instance().conf.performLocalRealignment && cigarElementLength - i <= instance().conf.vext
-                        && cigar.numCigarElements() > ci + 1
-                        && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I
-                        && ref.containsKey(start)
-                        && (ss.length() > 0 || isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref.get(start)))
-                        && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 >= instance().conf.goodq) {
-
+                } else if (isCloserThenVextAndGoodBase(querySequence, ref, queryQuality, ci, i, ss, CigarOperator.I)) {
                     while (i + 1 < cigarElementLength) {
                         s += querySequence.charAt(readPositionIncludingSoftClipped + 1);
                         q += queryQuality.charAt(readPositionIncludingSoftClipped + 1) - 33;
@@ -602,7 +576,8 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     final int pos = start - qbases + 1;
                     if (pos >= region.start && pos <= region.end) {
                         addVariationForMatchingPart(mappingQuality, numberOfMismatches,
-                                direction, readLengthIncludeMatchingAndInsertions, nmoff, s, startWithDeletion, q, qbases, qibases, ddlen, pos);
+                                direction, readLengthIncludeMatchingAndInsertions, nmoff, s, startWithDeletion,
+                                q, qbases, qibases, ddlen, pos);
                     }
                 }
 
@@ -635,6 +610,31 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 break;
             }
         }
+    }
+
+    private boolean isTrimAtOptTBases(boolean direction, int totalLengthIncludingSoftClipped) {
+        if (instance().conf.trimBasesAfter != 0) {
+            if (!direction) {
+                return readPositionIncludingSoftClipped > instance().conf.trimBasesAfter;
+            } else {
+                return totalLengthIncludingSoftClipped - readPositionIncludingSoftClipped > instance().conf.trimBasesAfter;
+            }
+        }
+        return false;
+    }
+
+    private boolean skipSitesOutRegionOfInterest() {
+        int cutSite = instance().conf.crisprCuttingSite;
+        int filterBp = instance().conf.crisprFilteringBp;
+        if (cutSite != 0) {
+            //The total aligned length, excluding soft-clipped bases and insertions
+            int rlen3 = sum(globalFind(ALIGNED_LENGTH_MD, cigar.toString()));
+
+            if (filterBp != 0) {
+                return !(cutSite - start > filterBp && start + rlen3 - cutSite > filterBp);
+            }
+        }
+        return false;
     }
 
     /**
@@ -673,27 +673,19 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         4). CIGAR string has one more entry after next one
         5). this entry is insertion or deletion
          */
-        if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
-                && cigar.getCigarElement(ci + 1).getLength() <= instance().conf.vext
-                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
-                && (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
-                || cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D)
-                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
-                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
-
+        if (isInsertionOrDeletionWithNextMatched(ci)) {
             int mLen = cigar.getCigarElement(ci + 1).getLength();
             int indelLen = cigar.getCigarElement(ci + 2).getLength();
 
             int begin = readPositionIncludingSoftClipped;
-            appendSegments(querySequence, queryQuality, cigar, ci, descStringOfDeletedElement, qualityOfSegment,
+            appendSegments(querySequence, queryQuality, ci, descStringOfDeletedElement, qualityOfSegment,
                     mLen, indelLen, begin, false);
 
             //add length of next segment to both read and reference offsets
             //add length of next-next segment to reference position (for insertion) or to read position(for deletion)
             multoffs += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D ? indelLen : 0);
             multoffp += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I ? indelLen : 0);
-            if (cigar.numCigarElements() > ci + 3
-                    && cigar.getCigarElement(ci + 3).getOperator() == CigarOperator.M) {
+            if (isNextAfterNumMatched(ci, 3)) {
                 int vsn = 0;
                 int tn = readPositionIncludingSoftClipped + multoffp;
                 int ts = start + multoffs + cigarElementLength;
@@ -725,8 +717,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             }
             // skip next 2 CIGAR segments
             ci += 2;
-        } else if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
-                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I) {
+        } else if (isNextInsertion(ci)) {
             /*
             Condition:
             1). CIGAR string has next entry
@@ -741,8 +732,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             //Shift reference position by length of next segment
             //skip next CIGAR segment
             multoffp += insLen;
-            if (cigar.numCigarElements() > ci + 2
-                    && cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.M) {
+            if (isNextAfterNumMatched(ci, 2)) {
                 int mLen = cigar.getCigarElement(ci + 2).getLength();
                 int vsn = 0;
                 int tn = readPositionIncludingSoftClipped + multoffp;
@@ -781,8 +771,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             1). CIGAR string has next entry
             2). next CIGAR segment is matched
              */
-            if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
-                    && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
+            if (isNextMatched(ci)) {
                 int mLen = cigar.getCigarElement(ci + 1).getLength();
                 int vsn = 0;
                 //Loop over next CIGAR segment (no more than conf.vext bases ahead)
@@ -840,7 +829,8 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         //If reference position is inside region of interest
         if (start >= region.start && start <= region.end) {
             addVariationForDeletion(mappingQuality,
-                    numberOfMismatches, direction, readLengthIncludeMatchingAndInsertions, descStringOfDeletedElement, qualityOfSegment, nmoff);
+                    numberOfMismatches, direction, readLengthIncludeMatchingAndInsertions,
+                    descStringOfDeletedElement, qualityOfSegment, nmoff);
         }
 
         //adjust reference position by offset + multoffs
@@ -850,6 +840,44 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         readPositionIncludingSoftClipped += offset + multoffp;
         readPositionExcludingSoftClipped += offset + multoffp;
         return ci;
+    }
+
+    private boolean isNextAfterNumMatched(int ci, int number) {
+        return cigar.numCigarElements() > ci + number && cigar.getCigarElement(ci + number).getOperator() == CigarOperator.M;
+    }
+
+    private boolean isTwoInsertionsAhead(int ci) {
+        return cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I;
+    }
+
+    private boolean isNextInsertion(int ci) {
+        return instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
+                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I;
+    }
+
+    private boolean isNextMatched(int ci) {
+        return instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
+                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M;
+    }
+
+    private boolean isInsertionOrDeletionWithNextMatched(int ci) {
+        return instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
+                && cigar.getCigarElement(ci + 1).getLength() <= instance().conf.vext
+                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
+                && (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
+                || cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D)
+                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
+                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D;
+    }
+
+    private boolean isCloserThenVextAndGoodBase(String querySequence, Map<Integer, Character> ref, String queryQuality,
+                                                int ci, int i, StringBuilder ss, CigarOperator cigarOperator) {
+        return instance().conf.performLocalRealignment && cigarElementLength - i <= instance().conf.vext
+                && cigar.numCigarElements() > ci + 1
+                && cigar.getCigarElement(ci + 1).getOperator() == cigarOperator
+                && ref.containsKey(start)
+                && (ss.length() > 0 || isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref.get(start)))
+                && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 >= instance().conf.goodq;
     }
 
     /**
@@ -887,19 +915,12 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         4). CIGAR string has one more entry after next one
         5). this entry is insertion or deletion
          */
-        if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
-                && cigar.getCigarElement(ci + 1).getLength() <= instance().conf.vext
-                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
-                && (cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.I
-                || cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.D)
-                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
-                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
-
+        if (isInsertionOrDeletionWithNextMatched(ci)) {
             int mLen = cigar.getCigarElement(ci + 1).getLength();
             int indelLen = cigar.getCigarElement(ci + 2).getLength();
 
             int begin = readPositionIncludingSoftClipped + cigarElementLength;
-            appendSegments(querySequence, queryQuality, cigar, ci, descStringOfInsertionSegment, qualityString,
+            appendSegments(querySequence, queryQuality, ci, descStringOfInsertionSegment, qualityString,
                     mLen, indelLen, begin, true);
             //add length of next segment to both multoffs and multoffp
             //add length of next-next segment to multoffp (for insertion) or to multoffs (for deletion)
@@ -923,8 +944,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             1). CIGAR string has next entry
             2). next CIGAR segment is matched
              */
-            if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
-                    && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
+            if (isNextMatched(ci)) {
                 int vsn = 0;
                 //Loop over next CIGAR segment (no more than conf.vext bases ahead)
                 for (int vi = 0; vsn <= instance().conf.vext && vi < cigar.getCigarElement(ci + 1).getLength(); vi++) {
@@ -1791,7 +1811,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
     /**
      * Append sequence for deletion or insertion cases to create description string and quality string.
      */
-    private void appendSegments(String querySequence, String queryQuality, Cigar cigar, int ci,
+    private void appendSegments(String querySequence, String queryQuality, int ci,
                                 StringBuilder descStringOfElement, StringBuilder qualitySegment,
                                 int mLen, int indelLen, int begin, boolean isInsertion) {
 

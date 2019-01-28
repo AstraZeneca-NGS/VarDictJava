@@ -4,10 +4,7 @@ import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.ReferenceResource;
 import com.astrazeneca.vardict.data.Region;
 import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
-import com.astrazeneca.vardict.modes.AbstractMode;
-import com.astrazeneca.vardict.modes.AmpliconMode;
-import com.astrazeneca.vardict.modes.SimpleMode;
-import com.astrazeneca.vardict.modes.SomaticMode;
+import com.astrazeneca.vardict.modes.*;
 import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMSequenceRecord;
 import htsjdk.samtools.SamReader;
@@ -30,6 +27,7 @@ import static com.astrazeneca.vardict.data.Patterns.SAMPLE_PATTERN2;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.INTEGER_ONLY;
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.setMode;
 
 /**
  * Class starts the Vardict for current run
@@ -43,8 +41,8 @@ public class VarDictLauncher {
     }
 
     /**
-     * Initialize resources and starts the needed VarDict mode (amplicon/simple/somatic).
-     * @param config
+     * Initialize resources and starts the needed VarDict mode (amplicon/simple/somatic/splicing).
+     * @param config starting configuration
      */
     public void start(Configuration config) {
         initResources(config);
@@ -52,14 +50,16 @@ public class VarDictLauncher {
         final Configuration conf = instance().conf;
         final AbstractMode mode;
 
-        if (conf.regionOfInterest != null || instance().ampliconBasedCalling == null) {
+        if (instance().conf.outputSplicing) {
+            mode = new SplicingMode(segments, referenceResource);
+        } else if (conf.regionOfInterest != null || instance().ampliconBasedCalling == null) {
             mode = conf.bam.hasBam2() ?
                     new SomaticMode(segments, referenceResource) :
                     new SimpleMode(segments, referenceResource);
         } else {
             mode = new AmpliconMode(segments, referenceResource);
         }
-
+        setMode(mode);
         if (instance().conf.threads == 1)
             mode.notParallel();
         else
@@ -111,7 +111,8 @@ public class VarDictLauncher {
                     }
                 }
             }
-            GlobalReadOnlyScope.init(conf, chrLengths, samples._1, samples._2, ampliconBasedCalling, adaptorForward, adaptorReverse);
+            GlobalReadOnlyScope.init(conf, chrLengths, samples._1, samples._2, ampliconBasedCalling,
+                    adaptorForward, adaptorReverse);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
