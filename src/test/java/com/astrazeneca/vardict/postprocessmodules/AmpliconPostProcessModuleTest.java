@@ -223,7 +223,7 @@ public class AmpliconPostProcessModuleTest {
         AmpliconPostProcessModule module = runMethod();
         module.process(region, mapsOnAmplicon, positionsMap, new HashSet<>(), variantPrinter);
         assertEquals(outContent.toString(), "test_bam\tgene_name\t1\t0\t0\tT\tA\t0\t4\t0\t0\t3\t5\tT/A\t0.4000" +
-                "\t2\t9.0\t0\t26.0\t0\t7.8\t2.500\t0\t0\t0\t0\t0\t2.0\t44\t0\t0\t0\t1:1-1\tSNV\t1\t1\t0\t1\n");
+                "\t2\t9.0\t0\t26.0\t0\t7.8\t2.500\t0\t0\t0\t0\t0\t2.0\t44\t0\t0\t0\t1:1-1\tSNV\t2\t2\t0\t1\n");
     }
 
     private AmpliconPostProcessModule runMethod() {
@@ -232,7 +232,7 @@ public class AmpliconPostProcessModuleTest {
 
         Configuration config = new Configuration();
         config.goodq = 23;
-        GlobalReadOnlyScope.init(config, null, sample, null, "");
+        GlobalReadOnlyScope.init(config, null, sample, null, "", new HashMap<>(), new HashMap<>());
         return Mockito.spy(ampliconPostProcessModule);
     }
 }

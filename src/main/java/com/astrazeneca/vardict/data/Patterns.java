@@ -3,7 +3,7 @@ package com.astrazeneca.vardict.data;
 import java.util.regex.Pattern;
 
 /**
- * Regex Patterns from all classes of VarDict.
+ * Regex Patterns from all classes of VarDict stored in one place.
  */
 public class Patterns {
     // SAMRecord patterns
@@ -145,6 +145,11 @@ public class Patterns {
      * Regexp finds numbers followed by M (matched) or D (deleted) in CIGAR string
      */
     public static final jregex.Pattern ALIGNED_LENGTH_MND = new jregex.Pattern("(\\d+)[MND]");
+
+    /**
+     * The total aligned length, excluding soft-clipped bases and insertions
+     */
+    public static final jregex.Pattern ALIGNED_LENGTH_MD = new jregex.Pattern("(\\d+)[MD=X]");
 
     public static final jregex.Pattern SOFT_CLIPPED = new jregex.Pattern("(\\d+)[MIS]");
     public static final Pattern SA_CIGAR_D_S_5clip = Pattern.compile("^\\d\\d+S");

@@ -1,19 +1,16 @@
 package com.astrazeneca.vardict.modes;
 
 import com.astrazeneca.vardict.data.ReferenceResource;
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.*;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
 import com.astrazeneca.vardict.data.scopedata.InitialData;
 import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.data.scopedata.VariationData;
 import com.astrazeneca.vardict.modules.*;
 import com.astrazeneca.vardict.printers.VariantPrinter;
-import com.astrazeneca.vardict.variations.Vars;
 
 import java.io.OutputStream;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.*;
 
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
@@ -22,7 +19,10 @@ import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instanc
  * Abstract Mode of VarDict. Provide interfaces for possible modes (not-parallel and parallel) and typical pipelines.
  */
 public abstract class AbstractMode {
-
+    /**
+     * CompletableFuture which used to trigger the executor that it was the last Future in the chain. After adding it,
+     * the variants will be printed.
+     */
     final static CompletableFuture<OutputStream> LAST_SIGNAL_FUTURE = CompletableFuture.completedFuture(null);
 
     protected List<List<Region>> segments;
@@ -33,56 +33,40 @@ public abstract class AbstractMode {
         this.referenceResource = referenceResource;
     }
 
-    public static CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline(String bam,
-                                                                                               Region region,
-                                                                                               Reference ref,
-                                                                                               ReferenceResource referenceResource,
-                                                                                               int maxReadLength,
-                                                                                               Set<String> splice,
-                                                                                               VariantPrinter out,
-                                                                                               Executor executor) {
+    /**
+     * Starts the typical pipeline of VarDict on each region. It parse SAM/BAM file, for each record parse CIGAR,
+     * modify it if needed, create Variations, realign variations, search for Structural Variants and create map of
+     * aligned variants ready for output preparation.
+     * @param initialDataScope initial data for pipeline. contains data about BAM, region, reference
+     * @param executor current Executor for parallel/single mode
+     * @return object contains map of aligned variants
+     */
+    public static CompletableFuture<Scope<AlignedVarsData>> pipeline(Scope<InitialData> initialDataScope,
+                                                                     Executor executor) {
 
         return CompletableFuture.supplyAsync(
-                () -> new SAMFileParser().process(
-                        createInitialPipelineScope(bam, region, ref, referenceResource, maxReadLength, splice, out, new InitialData())
-                ), executor)
+                () -> new SAMFileParser().process(initialDataScope), executor)
                 .thenApply(new CigarParser(false)::process)
                 .thenApply(new VariationRealigner()::process)
                 .thenApply(new StructuralVariantsProcessor()::process)
                 .thenApply(new ToVarsBuilder()::process);
     }
 
-    public static CompletableFuture<Scope<VariationData>> partialPipeline(InitialData initialData,
-                                                                          String bam,
-                                                                          Region region,
-                                                                          Reference ref,
-                                                                          ReferenceResource referenceResource,
-                                                                          int maxReadLength,
-                                                                          Set<String> splice,
-                                                                          VariantPrinter out,
+    /**
+     * Starts the partial pipeline of VarDict on each region needed while searching structural variants on extended regions.
+     * It parse SAM/BAM file, for each record parse CIGAR, modify it if needed and create Variations.
+     * @param currentScope current data for pipeline. contains data about BAM, region, reference and already
+     *                     filled maps of variations and softclips
+     * @param executor current Executor for parallel/single mode
+     * @return object contains variation data (updated maps of variations and softclips).
+     */
+    public static CompletableFuture<Scope<VariationData>> partialPipeline(Scope<InitialData> currentScope,
                                                                           Executor executor) {
 
 
         return CompletableFuture.supplyAsync(
-                () -> new SAMFileParser().process(
-                        createInitialPipelineScope(bam, region, ref, referenceResource, maxReadLength, splice, out, initialData)
-                ), executor)
+                () -> new SAMFileParser().process(currentScope), executor)
                 .thenApply(new CigarParser(true)::process);
-    }
-
-    private static Scope<InitialData> createInitialPipelineScope(String bam,
-                                                                 Region region,
-                                                                 Reference ref,
-                                                                 ReferenceResource referenceResource,
-                                                                 int maxReadLength,
-                                                                 Set<String> splice,
-                                                                 VariantPrinter out,
-                                                                 InitialData initialData) {
-        Scope<InitialData> scope;
-
-        scope = new Scope<>(bam, region, (ref == null ? referenceResource.getReference(region) : ref), referenceResource,
-                maxReadLength, splice, out, initialData);
-        return scope;
     }
 
     public abstract void notParallel();
@@ -93,6 +77,10 @@ public abstract class AbstractMode {
 
     protected abstract AbstractParallelMode createParallelMode();
 
+    /**
+     * Abstract class for parallel modes of VarDict. Initializes executor, starts tasks and prints the variants.
+     * The tasks producer must be overriding in the childs.
+     */
     protected static abstract class AbstractParallelMode {
         static final int CAPACITY = 10;
 
@@ -126,6 +114,9 @@ public abstract class AbstractMode {
         abstract void produceTasks() throws InterruptedException, ExecutionException;
     }
 
+    /**
+     * Print header to output with option -h. Each mode creates own string for header.
+     */
     public abstract void printHeader();
 
 }

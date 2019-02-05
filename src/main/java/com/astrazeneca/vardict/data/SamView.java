@@ -5,6 +5,8 @@ import htsjdk.samtools.*;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
+
 /**
  * To avoid performance issues only one SamView object on the same file can be opened per thread
  */
@@ -15,14 +17,15 @@ public class SamView implements AutoCloseable {
     private int filter = 0;
 
     public SamView(String file, String samfilter, Region region, ValidationStringency stringency) {
-
         iterator = fetchReader(file, stringency)
                 .queryOverlapping(region.chr, region.start, region.end);
-        if (!"".equals(samfilter)) {
-            filter = Integer.decode(samfilter);
-        }
+        filter = Integer.decode(samfilter);
     }
 
+    /**
+     * Read record from SAM/BAM file. Skip the record that are filtered with -F filter option.
+     * @return SAMRecord created from each string in SAM/BAM file.
+     */
     public SAMRecord read() {
         while(iterator.hasNext()) {
             SAMRecord record = iterator.next();

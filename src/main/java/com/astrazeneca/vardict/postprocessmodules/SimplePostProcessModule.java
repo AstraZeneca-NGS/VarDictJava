@@ -1,7 +1,7 @@
 package com.astrazeneca.vardict.postprocessmodules;
 
 import com.astrazeneca.vardict.Configuration;
-import com.astrazeneca.vardict.collection.Tuple;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
 import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.variations.Variant;
 import com.astrazeneca.vardict.printers.SimpleOutputVariant;
@@ -19,7 +19,7 @@ import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instanc
 /**
  * Class for preparation of variants found in simple analysis to the output
  */
-public class SimplePostProcessModule implements Consumer<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> {
+public class SimplePostProcessModule implements Consumer<Scope<AlignedVarsData>> {
     private VariantPrinter variantPrinter;
 
     public SimplePostProcessModule(VariantPrinter variantPrinter) {
@@ -27,12 +27,12 @@ public class SimplePostProcessModule implements Consumer<Scope<Tuple.Tuple2<Inte
     }
 
     /**
-     * Single sample mode variant calling
+     * Single sample mode variant calling. Creates variant output for variants from aligned map and prints them.
      */
     @Override
-    public void accept(Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>> mapScope) {
+    public void accept(Scope<AlignedVarsData> mapScope) {
         int lastPosition = 0;
-        for (Map.Entry<Integer, Vars> ent : mapScope.data._2.entrySet()) {
+        for (Map.Entry<Integer, Vars> ent : mapScope.data.alignedVariants.entrySet()) {
             try {
                 int position = ent.getKey();
                 lastPosition = position;
@@ -79,7 +79,9 @@ public class SimplePostProcessModule implements Consumer<Scope<Tuple.Tuple2<Inte
                     if ("Complex".equals(vref.vartype)) {
                         vref.adjComplex();
                     }
-
+                    if (instance().conf.crisprCuttingSite == 0) {
+                        vref.crispr = 0;
+                    }
                     SimpleOutputVariant outputVariant = new SimpleOutputVariant(vref, mapScope.region, variantsOnPosition.sv, position);
                     variantPrinter.print(outputVariant);
                 }

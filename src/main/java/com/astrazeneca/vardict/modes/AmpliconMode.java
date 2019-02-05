@@ -5,6 +5,8 @@ import com.astrazeneca.vardict.collection.ConcurrentHashSet;
 import com.astrazeneca.vardict.collection.DirectThreadExecutor;
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
+import com.astrazeneca.vardict.data.scopedata.InitialData;
 import com.astrazeneca.vardict.data.scopedata.Scope;
 import com.astrazeneca.vardict.postprocessmodules.AmpliconPostProcessModule;
 import com.astrazeneca.vardict.printers.VariantPrinter;
@@ -36,41 +38,42 @@ public class AmpliconMode extends AbstractMode {
         printHeader();
     }
 
+    /**
+     * In not parallel mode each region will be processed in sequence.
+     */
     @Override
     public void notParallel() {
         VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
 
         for (List<Region> regions : segments) {
             Map<Integer, List<Tuple.Tuple2<Integer, Region>>> pos = new HashMap<>();
-            int j = 0;
+            int ampliconNumber = 0;
             Region currentRegion = regions.get(0);
             final Set<String> splice = new HashSet<>();
             List<Map<Integer, Vars>> vars = new ArrayList<>();
             for (Region region : regions) {
                 currentRegion = region;
-                for (int p = region.start; p <= region.end; p++) {
+                for (int p = region.insertStart; p <= region.insertEnd; p++) {
                     List<Tuple.Tuple2<Integer, Region>> list = pos.computeIfAbsent(p, k -> new ArrayList<>());
-                    list.add(tuple(j, region));
+                    list.add(tuple(ampliconNumber, region));
                 }
-                CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = pipeline(
-                        instance().conf.bam.getBam1(),
-                        region,
-                        referenceResource.getReference(region),
-                        referenceResource,
-                        0,
-                        splice,
-                        variantPrinter,
-                        new DirectThreadExecutor()
-                );
+                Scope<InitialData> initialScope = new Scope<>(instance().conf.bam.getBam1(), region,
+                        referenceResource.getReference(region), referenceResource, 0, splice,
+                        variantPrinter, new InitialData());
+                CompletableFuture<Scope<AlignedVarsData>> pipeline = pipeline(initialScope,
+                        new DirectThreadExecutor());
 
-                Tuple.Tuple2<Integer, Map<Integer, Vars>> data = pipeline.join().data;
-                vars.add(data._2);
-                j++;
+                AlignedVarsData data = pipeline.join().data;
+                vars.add(data.alignedVariants);
+                ampliconNumber++;
             }
             new AmpliconPostProcessModule().process(currentRegion, vars, pos, splice, variantPrinter);
         }
     }
 
+    /**
+     * In parallel mode workers are created for each region and are processed in parallel.
+     */
     @Override
     protected AbstractParallelMode createParallelMode() {
         return new AbstractParallelMode() {
@@ -81,32 +84,27 @@ public class AmpliconMode extends AbstractMode {
                     int j = 0;
                     Region currentRegion = regions.get(0);
                     final Set<String> splice = new ConcurrentHashSet<>();
-                    List<CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>>> workers = new ArrayList<>(regions.size() - 1);
+                    List<CompletableFuture<Scope<AlignedVarsData>>> workers = new ArrayList<>(regions.size() - 1);
 
                     for (Region region : regions) {
                         currentRegion = region;
-                        for (int p = region.start; p <= region.end; p++) {
+                        for (int p = region.insertStart; p <= region.insertEnd; p++) {
                             List<Tuple.Tuple2<Integer, Region>> list = pos.computeIfAbsent(p, k -> new ArrayList<>());
                             list.add(tuple(j, region));
                         }
                         VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
+                        Scope<InitialData> initialScope = new Scope<>(instance().conf.bam.getBam1(), region,
+                                referenceResource.getReference(region), referenceResource, 0, splice,
+                                variantPrinter, new InitialData());
 
-                        CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> pipeline = pipeline(
-                                instance().conf.bam.getBam1(),
-                                region,
-                                null,
-                                referenceResource,
-                                0,
-                                splice,
-                                variantPrinter,
-                                executor);
+                        CompletableFuture<Scope<AlignedVarsData>> pipeline = pipeline(initialScope, executor);
                         workers.add(pipeline);
                         j++;
                     }
 
                     List<Map<Integer, Vars>> vars = new ArrayList<>();
-                    for (CompletableFuture<Scope<Tuple.Tuple2<Integer, Map<Integer, Vars>>>> future : workers) {
-                        vars.add(future.get().data._2);
+                    for (CompletableFuture<Scope<AlignedVarsData>> future : workers) {
+                        vars.add(future.join().data.alignedVariants);
                     }
 
                     Region lastRegion = currentRegion;
@@ -129,12 +127,12 @@ public class AmpliconMode extends AbstractMode {
     @Override
     public void printHeader() {
         if (instance().conf.printHeader) {
-            System.out.println(join("\t",
-                    "Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt", "Depth", "AltDepth", "RefFwdReads",
+            String header = join("\t","Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt", "Depth", "AltDepth", "RefFwdReads",
                     "RefRevReads", "AltFwdReads", "AltRevReads", "Genotype", "AF", "Bias", "PMean", "PStd",
                     "QMean", "QStd", "MQ", "Sig_Noise", "HiAF", "ExtraAF", "shift3", "MSI", "MSI_NT", "NM",
                     "HiCnt", "HiCov", "5pFlankSeq", "3pFlankSeq", "Seg", "VarType", "GoodVarCount", "TotalVarCount",
-                    "Nocov", "Ampflag"));
+                    "Nocov", "Ampflag");
+            System.out.println(header);
         }
     }
 }

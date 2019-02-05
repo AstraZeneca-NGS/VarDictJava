@@ -9,9 +9,6 @@ REF_GENOME="$DIR_REFERENCE/hg19.fa"
 COLO20="$TESTS_DIR/non_deterministic_behavior/Colo829.chr20.PerlNonDeterm.bam"
 REGION="-R chr20:61659400-61659600"
 
-# Flag to remove differences because Perl doesn't sort unmapped reads
-UNMAPPED_FLAG="-F 0x504"
-
 N=5
 for i in $(seq 1 $N); do 
 	echo "Running VarDict Perl: $i / $N"
@@ -20,7 +17,6 @@ for i in $(seq 1 $N); do
 			-f 0.001 \
 			-N abc \
 			-b $COLO20 \
-			$UNMAPPED_FLAG \
 			$REGION \
 		| sort \
 		> $DIR_OUTPUT/vardictColo20.perl.$i.txt
@@ -31,7 +27,6 @@ for i in $(seq 1 $N); do
  			-f 0.001 \
 			-N abc \
  			-b $COLO20 \
-			$UNMAPPED_FLAG \
  			$REGION \
  	| sort \
  	> $DIR_OUTPUT/vardictColo20.java.$i.txt

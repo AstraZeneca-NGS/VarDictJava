@@ -17,6 +17,9 @@ public class Reference {
         this.seed = new HashMap<>();
     }
 
+    /**
+     * Class to store already loaded region in reference to avoid excess operations on it
+     */
     public static class LoadedRegion {
         public String chr;
         public int sequenceStart;

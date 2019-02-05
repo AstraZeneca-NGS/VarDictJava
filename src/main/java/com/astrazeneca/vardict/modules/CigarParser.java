@@ -20,12 +20,11 @@ import static com.astrazeneca.vardict.Utils.*;
 import static com.astrazeneca.vardict.modules.RecordPreprocessor.getChrName;
 import static com.astrazeneca.vardict.modules.VariationRealigner.adjInsPos;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
-import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.*;
 import static java.lang.Math.abs;
 
 /**
- * Utility methods for parsing CIGAR.
+ * Utility methods for parsing CIGAR from SAMRecord.
  */
 public class CigarParser implements Module<RecordPreprocessor, VariationData> {
     // Utils maps
@@ -48,14 +47,18 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
     private Cigar cigar;
     private int start;
     private int totalReads;
-    private int dupReads;
-    private int disc;
+    private int duplicateReads;
+    private int discordantCount;
     private boolean svflag;
     private int offset;
     private int cigarElementLength;
     private int readPositionIncludingSoftClipped; // keep track the read position, including softclipped
     private int readPositionExcludingSoftClipped; // keep track the position in the alignment, excluding softclipped
 
+    /**
+     * Creates new CigarParser
+     * @param svflag duprate calculates different ways due to it needed in partial pipeline or not.
+     */
     public CigarParser(boolean svflag) {
         this.positionToInsertionCount = new HashMap<>();
         this.mnp = new HashMap<>();
@@ -65,11 +68,14 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         this.svflag = svflag;
     }
 
+    /**
+     * Parse cigar and create variations for each SAMRecord.
+     * @param scope contains RecordPreprocessor (non-filtered record only)
+     * @return filled variation data (with insertions and non-insertion maps of variations)
+     */
     @Override
     public Scope<VariationData> process(Scope<RecordPreprocessor> scope) {
-        SAMRecord record;
         RecordPreprocessor processor = scope.data;
-
         initFromScope(scope);
 
         if (instance().conf.y) {
@@ -77,14 +83,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     scope.bam, region.chr, region.start, region.end);
         }
 
-        while ((record = processor.next()) != null) {
+        SAMRecord record;
+        while ((record = processor.nextRecord()) != null) {
             try {
-                parseCigar(
-                        getChrName(scope.region),
-                        record,
-                        record.getReadString(),
-                        record.getMappingQuality(),
-                        new Flags(record.getFlags()));
+                parseCigar(getChrName(scope.region), record);
             } catch (Exception exception) {
                 printExceptionAndContinue(exception, "record", record.getReadName(), scope.region);
             }
@@ -106,10 +108,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
         double duprate;
         if (svflag) {
-            duprate = (disc + 1) / (totalReads - dupReads + 1) > 0.5 ? 0.0 : 1.0;
+            duprate = (discordantCount + 1) / (totalReads - duplicateReads + 1) > 0.5 ? 0.0 : 1.0;
         } else {
             duprate = (instance().conf.removeDuplicatedReads && totalReads != 0)
-                    ? Double.parseDouble(String.format("%.3f", ((double) dupReads) / totalReads))
+                    ? Double.parseDouble(String.format("%.3f", ((double) duplicateReads) / totalReads))
                     : 0.0;
         }
 
@@ -144,12 +146,11 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         this.refCoverage = scope.data.refCoverage;
         this.softClips3End = scope.data.softClips3End;
         this.softClips5End = scope.data.softClips5End;
-
         this.region = scope.region;
         this.splice = scope.splice;
         this.reference = scope.regionRef;
         this.maxReadLength = scope.maxReadLength;
-        this.dupReads = scope.data.dupReads;
+        this.duplicateReads = scope.data.duplicateReads;
         this.totalReads = scope.data.totalReads;
     }
 
@@ -200,30 +201,32 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
     /**
      * Modify the CIGAR for potential mis-alignment for indels at the end of reads to softclipping
      * and let VarDict's algorithm to figure out indels
+     * @param chrName name of chromosome from region
+     * @param record SAMRecord to process
      */
     private void parseCigar(String chrName,
-                           SAMRecord record,
-                           String querySequence,
-                           int mappingQuality,
-                           Flags flag) {
+                           SAMRecord record) {
+        String querySequence = record.getReadString();
+        int mappingQuality = record.getMappingQuality();
         cigar = record.getCigar();
         Map<Integer, Character> ref = reference.referenceSequences;
+
         final int insertionDeletionLength = getInsertionDeletionLength(cigar);
+        int totalNumberOfMismatches = 0;
+        Integer numberOfMismatchesFromTag = record.getIntegerAttribute(SAMTag.NM.name());
 
-        int tnm = 0;
-        Integer nmi = record.getIntegerAttribute(SAMTag.NM.name());
-
-        // Number of mismatches. Don't use NM since it includes gaps, which can be from indels
-        if (nmi != null) {
-            tnm = nmi - insertionDeletionLength;
-            if (tnm > instance().conf.mismatch) { // Edit distance - indels is the # of mismatches
+        // Number of mismatches from NM tag. Don't use NM since it includes gaps, which can be from indels
+        if (numberOfMismatchesFromTag != null) {
+            // Edit distance - indels is the # of mismatches
+            totalNumberOfMismatches = numberOfMismatchesFromTag - insertionDeletionLength;
+            if (totalNumberOfMismatches > instance().conf.mismatch) {
                 return;
             }
-        } else { //Skip the read if number of mismatches is not available
+        } else { //Log the read if number of mismatches is not available
             if (instance().conf.y && !record.getCigarString().equals("*")) {
                 System.err.println("No NM tag for mismatches. " + record.getSAMString());
             }
-            // Skip unmapped reads (issue #56)
+            // Skip unmapped reads (issue #56) and reads without alignment
             if (record.getReadUnmappedFlag() || record.getCigarString().equals(SAMRecord.NO_ALIGNMENT_CIGAR)) {
                 return;
             }
@@ -231,10 +234,8 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
         final String queryQuality = getBaseQualityString(record);
         final boolean isMateReferenceNameEqual = record.getReferenceName().equals(record.getMateReferenceName());
-
-        // Number of mismatches
-        final int nm = tnm;
-        boolean direction = flag.isReverseStrand();
+        final int numberOfMismatches = totalNumberOfMismatches;
+        boolean direction = record.getReadNegativeStrandFlag();
 
         if (instance().ampliconBasedCalling != null) {
             if (parseCigarWithAmpCase(record, isMateReferenceNameEqual))  {
@@ -249,7 +250,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         if (instance().conf.performLocalRealignment) {
             // Modify the CIGAR for potential mis-alignment for indels at the end of reads to softclipping and let VarDict's
             // algorithm to figure out indels
-            CigarUtils cigarModifier = new CigarUtils(record.getAlignmentStart(),
+            CigarModifier cigarModifier = new CigarModifier(record.getAlignmentStart(),
                     record.getCigarString(),
                     querySequence,
                     queryQuality,
@@ -265,26 +266,23 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         }
 
         cleanupCigar(record);
-
         //adjusted start position
         start = position;
         offset = 0;
 
-
         //determine discordant reads
-        boolean mdir = (record.getFlags() & 0x20) != 0 ? false : true;
         if (!getMateReferenceName(record).equals("=")) {
-            disc++;
+            discordantCount++;
         }
 
+        //Ignore reads that are softclipped at both ends and both greater than 10 bp
         if (BEGIN_dig_dig_S_ANY_dig_dig_S_END.matcher(cigar.toString()).find()) {
-            return; //ignore reads that are softclipped at both ends and both greater than 10 bp
+            return;
         }
-        //adjusted start position
         // Only match and insertion counts toward read length
         // For total length, including soft-clipped bases
-        int rlen1 = getMatchInsertionLength(cigar); // The read length for matched bases
-        if (instance().conf.minmatch != 0 && rlen1 < instance().conf.minmatch) {
+        final int readLengthIncludeMatchingAndInsertions = getMatchInsertionLength(cigar); // The read length for matched bases
+        if (instance().conf.minmatch != 0 && readLengthIncludeMatchingAndInsertions < instance().conf.minmatch) {
             return;
         }
         // The total length, including soft-clipped bases
@@ -294,25 +292,40 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         }
 
         // If supplementary alignment is present
-        if (instance().conf.samfilter != null && flag.isSupplementaryAlignment()) {
+        if (!instance().conf.samfilter.equals("0") && record.getSupplementaryAlignmentFlag()) {
             return; // Ignore the supplementary for now so that it won't skew the coverage
         }
 
-        //TODO: Determine whether to filter a read in CRISPR mode
+        // Skip sites that are not in region of interest in CRISPR mode
+        int cutSite = instance().conf.crisprCuttingSite;
+        int filterBp = instance().conf.crisprFilteringBp;
+        if (cutSite != 0) {
+            //The total aligned length, excluding soft-clipped bases and insertions
+            int rlen3 = sum(globalFind(ALIGNED_LENGTH_MD, cigar.toString()));
 
-        if (flag.isUnmappedMate()) { //Mate unmapped, potential insertion
+            if (filterBp != 0) {
+                if (!(cutSite - start > filterBp && start + rlen3 - cutSite > filterBp)) {
+                    return;
+                }
+            }
+        }
+
+        // true if mate is in forward forection
+        final boolean mateDirection = (record.getFlags() & 0x20) != 0 ? false : true;
+
+        if (record.getReadPairedFlag() && record.getMateUnmappedFlag()) { //Mate unmapped, potential insertion
             // To be implemented
         } else if(record.getMappingQuality() > 10 && !instance().conf.disableSV) {
             // Consider high mapping quality mates only
-             prepareSVStructuresForAnalysis(record, queryQuality,
-                    nm, direction, cigar, mdir, position, totalLengthIncludingSoftClipped);
+             prepareSVStructuresForAnalysis(record, queryQuality, numberOfMismatches, direction, mateDirection,
+                     position, totalLengthIncludingSoftClipped);
         }
         int mateAlignmentStart = record.getMateAlignmentStart();
 
         processCigar:
         //Loop over CIGAR records
         for (int ci = 0; ci < cigar.numCigarElements(); ci++) {
-            if (skipOverlappingReads(record, position, direction, start, mateAlignmentStart)) {
+            if (skipOverlappingReads(record, position, direction, mateAlignmentStart)) {
                 break;
             }
             // Length of segment in CIGAR
@@ -320,608 +333,27 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
             //Letter from CIGAR
             final CigarOperator operator = getCigarOperator(cigar, ci);
-
             switch (operator) {
-                case N: //N in CIGAR - skipped region from reference
-                    //Skip the region and add string start-end to %SPLICE
-                    String key = (start - 1) + "-" + (start + cigarElementLength - 1);
-                    splice.add(key);
-                    int[] cnt = spliceCount.get(key);
-                    if (cnt == null) {
-                        cnt = new int[] { 0 };
-                        spliceCount.put(key, cnt);
-                    }
-                    cnt[0]++;
-
-                    start += cigarElementLength;
+                case N: // Not matched
+                    processNotMatched();
+                    continue;
+                case S: // Soft clipping
+                    processSoftClip(chrName, record, querySequence, mappingQuality, ref, queryQuality, numberOfMismatches,
+                            direction, position, totalLengthIncludingSoftClipped, ci);
+                    continue;
+                case H: // Hard clipping - skip
                     offset = 0;
                     continue;
-
-                case S:
-                    //First record in CIGAR
-                    if (ci == 0) { // 5' soft clipped
-                        // Ignore large soft clip due to chimeric reads in library construction
-                        if (!instance().conf.chimeric) {
-                            String saTagString = record.getStringAttribute(SAMTag.SA.name());
-
-                            if (cigarElementLength >= 20 && saTagString != null) {
-                                if (isReadChimericWithSA(record, position, saTagString, maxReadLength, direction, true)) {
-                                    readPositionIncludingSoftClipped += cigarElementLength;
-                                    offset = 0;
-                                    // Had to reset the start due to softclipping adjustment
-                                    start = position;
-
-                                    continue;
-                                }
-                                //trying to detect chimeric reads even when there's no supplementary
-                                // alignment from aligner
-                            } else if (cigarElementLength >= Configuration.SEED_1) {
-                                Map<String, List<Integer>> referenceSeedMap = reference.seed;
-                                String sequence = getReverseComplementedSequence(record, 0, cigarElementLength);
-                                String reverseComplementedSeed = sequence.substring(0, Configuration.SEED_1);
-
-                                if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
-                                    List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
-                                    if (positions.size() == 1 &&
-                                            abs(start - positions.get(0)) <  2 * maxReadLength) {
-                                        readPositionIncludingSoftClipped += cigarElementLength;
-                                        offset = 0;
-                                        // Had to reset the start due to softclipping adjustment
-                                        start = position;
-                                        if (instance().conf.y) {
-                                            System.err.println(sequence + " at 5' is a chimeric at "
-                                                    + start + " by SEED " + Configuration.SEED_1);
-                                        }
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
-                        // Align softclipped but matched sequences due to mis-softclipping
-                        /*
-                        Conditions:
-                        1). segment length > 1
-                        2). start between 0 and chromosome length,
-                        3). reference genome is known at this position
-                        4). reference and read bases match
-                        5). read quality is more than 10
-                         */
-                        while (cigarElementLength - 1 >= 0 && start - 1 > 0 && start - 1 <= instance().chrLengths.get(chrName)
-                                && isHasAndEquals(querySequence.charAt(cigarElementLength - 1), ref, start - 1)
-                                && queryQuality.charAt(cigarElementLength - 1) - 33 > 10) {
-                            //create variant if it is not present
-                            Variation variation = getVariation(nonInsertionVariants, start - 1, ref.get(start - 1).toString());
-                            //add count
-                            addCnt(variation, direction, cigarElementLength, queryQuality.charAt(cigarElementLength - 1) - 33, mappingQuality, nm);
-                            //increase coverage
-                            incCnt(refCoverage, start - 1, 1);
-                            start--;
-                            cigarElementLength--;
-                        }
-                        if (cigarElementLength > 0) { //If there remains a soft-clipped sequence at the beginning (not everything was matched)
-                            int q = 0; // Sum of read qualities (to get mean quality)
-                            int qn = 0; // Number of quality figures
-                            int lowqcnt = 0; // Number of low-quality bases in the sequence
-
-                            // Loop over remaining soft-clipped sequence
-                            for (int si = cigarElementLength - 1; si >= 0; si--) {
-                                // Stop if unknown base (N - any of ATGC) is found
-                                if (querySequence.charAt(si) == 'N') {
-                                    break;
-                                }
-                                // Tq - base quality
-                                int tq = queryQuality.charAt(si) - 33;
-                                if (tq <= 12)
-                                    lowqcnt++;
-                                //Stop if a low-quality base is found
-                                if (lowqcnt > 1) {
-                                    break;
-                                }
-                                q += tq;
-                                qn++;
-                            }
-                            sclip5HighQualityProcessing(region, softClips5End, querySequence, mappingQuality,
-                                    queryQuality, nm, direction, start, cigarElementLength, q, qn, lowqcnt);
-                        }
-                        cigarElementLength = cigar.getCigarElement(ci).getLength();
-                    } else if (ci == cigar.numCigarElements() - 1) { // 3' soft clipped
-                        // Ignore large soft clip due to chimeric reads in library construction
-                        if (!instance().conf.chimeric) {
-                            String saTagString = record.getStringAttribute(SAMTag.SA.name());
-                            if (cigarElementLength >= 20 && saTagString != null) {
-                                if (isReadChimericWithSA(record, position, saTagString, maxReadLength,
-                                        direction, false)) {
-                                    readPositionIncludingSoftClipped += cigarElementLength;
-                                    offset = 0;
-                                    // Had to reset the start due to softclipping adjustment
-                                    start = position;
-
-                                    continue;
-                                }
-                            } else if (cigarElementLength >= Configuration.SEED_1) {
-                                Map<String, List<Integer>> referenceSeedMap = reference.seed;
-                                String sequence = getReverseComplementedSequence(record, -cigarElementLength, cigarElementLength);
-                                String reverseComplementedSeed = substr(sequence, -Configuration.SEED_1, Configuration.SEED_1);
-
-                                if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
-                                    List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
-                                    if (positions.size() == 1 && abs(start - positions.get(0)) <  2 * maxReadLength) {
-                                        readPositionIncludingSoftClipped += cigarElementLength;
-                                        offset = 0;
-                                        // Had to reset the start due to softclipping adjustment
-                                        start = position;
-                                        if (instance().conf.y) {
-                                            System.err.println(sequence  + " at 3' is a chimeric at "
-                                                    + start + " by SEED " + Configuration.SEED_1);
-                                        }
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
-                        /*
-                        Conditions:
-                        1). read position is less than sequence length
-                        2). reference base is defined for start
-                        3). reference base at start matches read base at n
-                        4). read quality is more than 10
-                         */
-                        while (readPositionIncludingSoftClipped < querySequence.length()
-                                && isHasAndEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref, start)
-                                && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 > 10) {
-                            //Initialize entry in $hash if not present
-                            Variation variation = getVariation(nonInsertionVariants, start, ref.get(start).toString());
-                            //Add count
-                            addCnt(variation, direction, totalLengthIncludingSoftClipped - readPositionExcludingSoftClipped, queryQuality.charAt(readPositionIncludingSoftClipped) - 33, mappingQuality, nm);
-                            //Add coverage
-                            incCnt(refCoverage, start, 1);
-                            readPositionIncludingSoftClipped++;
-                            start++;
-                            cigarElementLength--;
-                            readPositionExcludingSoftClipped++;
-                        }
-                        //If there remains a soft-clipped sequence at the end (not everything was matched)
-                        if (querySequence.length() - readPositionIncludingSoftClipped > 0) {
-                            int q = 0; //Sum of read qualities (to get mean quality)
-                            int qn = 0; //Number of quality figures
-                            int lowqcnt = 0; //Number of low-quality bases in the sequence
-                            for (int si = 0; si < cigarElementLength; si++) { //Loop over remaining soft-clipped sequence
-                                //Stop if unknown base (N - any of ATGC) is found
-                                if (querySequence.charAt(readPositionIncludingSoftClipped + si) == 'N') {
-                                    break;
-                                }
-                                int tq = queryQuality.charAt(readPositionIncludingSoftClipped + si) - 33; //Base quality
-                                if (tq <= 12) {
-                                    lowqcnt++;
-                                }
-                                //Stop if a low-quality base is found
-                                if (lowqcnt > 1) {
-                                    break;
-                                }
-                                q += tq;
-                                qn++;
-                            }
-                            sclip3HighQualityProcessing(region, softClips3End, querySequence, mappingQuality,
-                                    queryQuality, nm, readPositionIncludingSoftClipped, direction, start, cigarElementLength, q, qn, lowqcnt);
-                        }
-                    }
-                    //Move read position by m (length of segment in CIGAR)
-                    readPositionIncludingSoftClipped += cigarElementLength;
+                case I: { // Insertion
                     offset = 0;
-                    start = position; // Had to reset the start due to softclipping adjustment
-                    continue;
-                case H: //Hard clipping - skip
-                    offset = 0;
-                    continue;
-                case I: { //Insertion
-                    offset = 0;
-
-                    // Ignore insertions right after introns at exon edge in RNA-seq
-                    if (skipIndelNextToIntron(cigar, ci)) {
-                        readPositionIncludingSoftClipped += cigarElementLength;
-                        continue;
-                    }
-
-                    //Inserted segment of read sequence
-                    StringBuilder s = new StringBuilder(substr(querySequence, readPositionIncludingSoftClipped, cigarElementLength));
-
-                    //Quality of this segment
-                    StringBuilder q = new StringBuilder(substr(queryQuality, readPositionIncludingSoftClipped, cigarElementLength));
-                    //Sequence to be appended if next segment is matched
-                    String ss = "";
-
-                    // For multiple indels within 10bp
-                    //Offset for read position if next segment is matched
-                    int multoffs = 0;
-                    //offset for reference position if next segment is matched
-                    int multoffp = 0;
-                    int nmoff = 0;
-
-                    /*
-                    Condition:
-                    1). CIGAR string has next entry
-                    2). length of next CIGAR segment is less than conf.vext
-                    3). next segment is matched
-                    4). CIGAR string has one more entry after next one
-                    5). this entry is insertion or deletion
-                     */
-                    if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
-                            && cigar.getCigarElement(ci + 1).getLength() <= instance().conf.vext
-                            && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
-                            && (cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.I
-                            || cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.D)
-                            && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
-                            && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
-
-                        int mLen = cigar.getCigarElement(ci + 1).getLength();
-                        int indelLen = cigar.getCigarElement(ci + 2).getLength();
-
-                        int begin = readPositionIncludingSoftClipped + cigarElementLength;
-                        appendSegments(querySequence, queryQuality, cigar, ci, s, q, mLen, indelLen, begin, true);
-                        //add length of next segment to both multoffs and multoffp
-                        //add length of next-next segment to multoffp (for insertion) or to multoffs (for deletion)
-                        multoffs += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D ? indelLen : 0);
-                        multoffp += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I ? indelLen : 0);
-
-                        int ci6 = cigar.numCigarElements() > ci + 3 ? cigar.getCigarElement(ci + 3).getLength() : 0;
-                        if (ci6 != 0 && cigar.getCigarElement(ci + 3).getOperator()  == CigarOperator.M) {
-                            Tuple.Tuple4<Integer, String, String, Integer> tpl = findOffset(start + multoffs,
-                                    readPositionIncludingSoftClipped + cigarElementLength + multoffp, ci6, querySequence, queryQuality, ref, refCoverage);
-                            offset = tpl._1;
-                            ss = tpl._2;
-                            q.append(tpl._3);
-                        }
-                        //skip 2 CIGAR segments
-                        ci += 2;
-                    } else {
-                        /*
-                        Condition:
-                        1). CIGAR string has next entry
-                        2). next CIGAR segment is matched
-                         */
-                        if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
-                                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
-                            int vsn = 0;
-                            //Loop over next CIGAR segment (no more than conf.vext bases ahead)
-                            for (int vi = 0; vsn <= instance().conf.vext && vi < cigar.getCigarElement(ci + 1).getLength(); vi++) {
-                                //If base is unknown, exit loop
-                                if (querySequence.charAt(readPositionIncludingSoftClipped + cigarElementLength + vi) == 'N') {
-                                    break;
-                                }
-                                //If base quality is less than conf.goodq, exit loop
-                                if (queryQuality.charAt(readPositionIncludingSoftClipped + cigarElementLength + vi) - 33 < instance().conf.goodq) {
-                                    break;
-                                }
-                                //If reference sequence has base at this position and it matches read base, update offset
-                                if (ref.containsKey(start + vi)) {
-                                    if (isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped + cigarElementLength + vi), ref.get(start + vi))) {
-                                        offset = vi + 1;
-                                        nmoff++;
-                                        vsn = 0;
-                                    } else {
-                                        vsn++;
-                                    }
-                                }
-                            }
-                            if (offset != 0) { //If next CIGAR segment has good matching base
-                                //Append first offset bases of next segment to ss and q
-                                ss += substr(querySequence, readPositionIncludingSoftClipped + cigarElementLength, offset);
-                                q.append(substr(queryQuality, readPositionIncludingSoftClipped + cigarElementLength, offset));
-                                //Increase coverage for positions corresponding to first offset bases of next segment
-                                for (int osi = 0; osi < offset; osi++) {
-                                    incCnt(refCoverage, start + osi, 1);
-                                }
-                            }
-                        }
-                    }
-
-                    // Offset should be reset to 0 on every loop, so it is non-zero only if previous part of
-                    // code was executed
-                    // Append '&' and $ss to s if next segment has good matching base
-                    if (offset > 0) {
-                        s.append("&").append(ss);
-                    }
-
-                    //If start of the segment is within region of interest and the segment does not have unknown bases
-                    if (start - 1 >= region.start && start - 1 <= region.end && !s.toString().contains("N")) {
-                        int inspos = start - 1;
-                        Matcher mm = BEGIN_ATGC_END.matcher(s);
-                        if (mm.find()) {
-                            Tuple.Tuple3<Integer, String, Integer> tpl = adjInsPos(start - 1, s.toString(), ref);
-                            inspos = tpl._1;
-                            s = new StringBuilder(tpl._2);
-                        }
-                        //add '+' + s to insertions at inspos
-                        incCnt(getOrElse(positionToInsertionCount, inspos, new HashMap<>()), "+" + s, 1);
-
-                        //add insertion to table of variations
-                        Variation hv = getVariation(insertionVariants, inspos, "+" + s); //variant structure for this insertion
-                        hv.incDir(direction);
-                        //add count
-                        hv.varsCount++;
-                        //minimum of positions from start of read and end of read
-                        int tp = readPositionExcludingSoftClipped < rlen1 - readPositionExcludingSoftClipped ? readPositionExcludingSoftClipped + 1 : rlen1 - readPositionExcludingSoftClipped;
-
-                        //mean read quality of the segment
-                        double tmpq = 0;
-                        for (int i = 0; i < q.length(); i++) {
-                            tmpq += q.charAt(i) - 33;
-                        }
-                        tmpq = tmpq / q.length();
-
-                        //pstd is a flag that is 1 if the variant is covered by at least 2 read segments with different positions
-                        if (!hv.pstd && hv.pp != 0 && tp != hv.pp) {
-                            hv.pstd = true;
-                        }
-                        //qstd is a flag that is 1 if the variant is covered by at least 2 segment reads with different qualities
-                        if (!hv.qstd && hv.pq != 0 && tmpq != hv.pq) {
-                            hv.qstd = true;
-                        }
-                        hv.meanPosition += tp;
-                        hv.meanQuality += tmpq;
-                        hv.meanMappingQuality += mappingQuality;
-                        hv.pp = tp;
-                        hv.pq = tmpq;
-                        if (tmpq >= instance().conf.goodq) {
-                            hv.highQualityReadsCount++;
-                        } else {
-                            hv.lowQualityReadsCount++;
-                        }
-                        hv.numberOfMismatches += nm - nmoff;
-
-                        // Adjust the reference count for insertion reads
-                        /*
-                        Condition:
-                        1). reference sequence has base for the position
-                        2). hash contains variant structure for the position
-                        3). read base at position n-1 matches reference at start-1
-                         */
-                        if (inspos > position) {
-                            Variation tv = getVariationMaybe(nonInsertionVariants, inspos, querySequence.charAt(readPositionIncludingSoftClipped - 1 - (start - 1 - inspos)));
-                            //Substract count.
-                            if (tv != null) {
-                                subCnt(tv, direction, tp, queryQuality.charAt(readPositionIncludingSoftClipped - 1 - (start - 1 - inspos)) - 33,
-                                        mappingQuality, nm - nmoff);
-                            }
-                        }
-                        // Adjust count if the insertion is at the edge so that the AF won't > 1
-                        /*
-                        Condition:
-                        1). looking at second segment in CIGAR string
-                        2). first segment is a soft-clipping or a hard-clipping
-                        */
-                        if (ci == 1 && (cigar.getCigarElement(0).getOperator() == CigarOperator.S
-                                || cigar.getCigarElement(0).getOperator() == CigarOperator.H)) {
-                            //Add one more variant corresponding to base at start - 1 to hash
-                            Variation ttref = getVariation(nonInsertionVariants, inspos, ref.get(inspos).toString());
-                            ttref.incDir(direction);
-                            ttref.varsCount++;
-                            ttref.pstd = hv.pstd;
-                            ttref.qstd = hv.qstd;
-                            ttref.meanPosition += tp;
-                            ttref.meanQuality += tmpq;
-                            ttref.meanMappingQuality += mappingQuality;
-                            ttref.pp = tp;
-                            ttref.pq = tmpq;
-                            ttref.numberOfMismatches += nm - nmoff;
-                            incCnt(refCoverage, inspos, 1);
-                        }
-                    }
-
-                    //adjust read position by m (CIGAR segment length) + offset + multoffp
-                    readPositionIncludingSoftClipped += cigarElementLength + offset + multoffp;
-                    readPositionExcludingSoftClipped += cigarElementLength + offset + multoffp;
-                    //adjust reference position by offset + multoffs
-                    start += offset + multoffs;
+                    ci = processInsertion(querySequence, mappingQuality, ref, queryQuality, numberOfMismatches,
+                            direction, position, readLengthIncludeMatchingAndInsertions, ci);
                     continue;
                 }
-                case D: { //deletion
+                case D: { // Deletion
                     offset = 0;
-
-                    // Ignore deletions right after introns at exon edge in RNA-seq
-                    if (skipIndelNextToIntron(cigar, ci)) {
-                        readPositionExcludingSoftClipped += cigarElementLength;
-                        continue;
-                    }
-
-                    //description string of deleted segment
-                    StringBuilder s = new StringBuilder("-").append(cigarElementLength);
-                    //sequence to be appended if next segment is matched
-                    StringBuilder ss = new StringBuilder();
-                    //quality of last base before deletion
-                    char q1 = queryQuality.charAt(readPositionIncludingSoftClipped - 1);
-                    //quality of this segment
-                    StringBuilder q = new StringBuilder();
-
-                    // For multiple indels within $VEXT bp
-                    //offset for read position if next segment is matched
-                    int multoffs = 0;
-                    //offset for reference position if next segment is matched
-                    int multoffp = 0;
-                    int nmoff = 0;
-
-                    /*
-                    Condition:
-                    1). CIGAR string has next entry
-                    2). length of next CIGAR segment is less than conf.vext
-                    3). next segment is matched
-                    4). CIGAR string has one more entry after next one
-                    5). this entry is insertion or deletion
-                     */
-                    if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
-                            && cigar.getCigarElement(ci + 1).getLength() <= instance().conf.vext
-                            && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
-                            && (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
-                            || cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D)
-                            && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
-                            && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
-
-                        int mLen = cigar.getCigarElement(ci + 1).getLength();
-                        int indelLen = cigar.getCigarElement(ci + 2).getLength();
-
-                        int begin = readPositionIncludingSoftClipped;
-                        appendSegments(querySequence, queryQuality, cigar, ci, s, q, mLen, indelLen, begin,
-                                false);
-
-                        //add length of next segment to both read and reference offsets
-                        //add length of next-next segment to reference position (for insertion) or to read position(for deletion)
-                        multoffs += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D ? indelLen : 0);
-                        multoffp += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I ? indelLen : 0);
-                        if (cigar.numCigarElements() > ci + 3
-                                && cigar.getCigarElement(ci + 3).getOperator() == CigarOperator.M) {
-                            int vsn = 0;
-                            int tn = readPositionIncludingSoftClipped + multoffp;
-                            int ts = start + multoffs + cigarElementLength;
-                            for (int vi = 0; vsn <= instance().conf.vext && vi < cigar.getCigarElement(ci + 3).getLength(); vi++) {
-                                if (querySequence.charAt(tn + vi) == 'N') {
-                                    break;
-                                }
-                                if (queryQuality.charAt(tn + vi) - 33 < instance().conf.goodq) {
-                                    break;
-                                }
-                                if (isHasAndEquals('N', ref, ts + vi)) {
-                                    break;
-                                }
-                                Character refCh = ref.get(ts + vi);
-                                if (refCh != null) {
-                                    if (isNotEquals(querySequence.charAt(tn + vi), refCh)) {
-                                        offset = vi + 1;
-                                        nmoff++;
-                                        vsn = 0;
-                                    } else {
-                                        vsn++;
-                                    }
-                                }
-                            }
-                            if (offset != 0) {
-                                ss.append(substr(querySequence, tn, offset));
-                                q.append(substr(queryQuality, tn, offset));
-                            }
-                        }
-                        // skip next 2 CIGAR segments
-                        ci += 2;
-                    } else if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
-                            && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I) {
-                        /*
-                        Condition:
-                        1). CIGAR string has next entry
-                        2). next CIGAR segment is an insertion
-                         */
-                        int insLen = cigar.getCigarElement(ci + 1).getLength();
-                        //Append '^' + next segment (inserted)
-                        s.append("^").append(substr(querySequence, readPositionIncludingSoftClipped, insLen));
-                        //Append next segement to quality string
-                        q.append(substr(queryQuality, readPositionIncludingSoftClipped, insLen));
-
-                        //Shift reference position by length of next segment
-                        //skip next CIGAR segment
-                        multoffp += insLen;
-                        if (cigar.numCigarElements() > ci + 2
-                                && cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.M) {
-                            int mLen = cigar.getCigarElement(ci + 2).getLength();
-                            int vsn = 0;
-                            int tn = readPositionIncludingSoftClipped + multoffp;
-                            int ts = start + cigarElementLength;
-                            for (int vi = 0; vsn <= instance().conf.vext && vi < mLen; vi++) {
-                                char seqCh = querySequence.charAt(tn + vi);
-                                if (seqCh == 'N') {
-                                    break;
-                                }
-                                if (queryQuality.charAt(tn + vi) - 33 < instance().conf.goodq) {
-                                    break;
-                                }
-                                Character refCh = ref.get(ts + vi);
-                                if (refCh != null) {
-                                    if (isEquals('N', refCh)) {
-                                        break;
-                                    }
-                                    if (isNotEquals(seqCh, refCh)) {
-                                        offset = vi + 1;
-                                        nmoff++;
-                                        vsn = 0;
-                                    } else {
-                                        vsn++;
-                                    }
-                                }
-                            }
-                            if (offset != 0) {
-                                ss.append(substr(querySequence, tn, offset));
-                                q.append(substr(queryQuality, tn, offset));
-                            }
-                        }
-                        ci += 1;
-                    } else {
-                        /*
-                        Condition:
-                        1). CIGAR string has next entry
-                        2). next CIGAR segment is matched
-                         */
-                        if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
-                                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
-                            int mLen = cigar.getCigarElement(ci + 1).getLength();
-                            int vsn = 0;
-                            //Loop over next CIGAR segment (no more than conf.vext bases ahead)
-                            for (int vi = 0; vsn <= instance().conf.vext && vi < mLen; vi++) {
-                                char seqCh = querySequence.charAt(readPositionIncludingSoftClipped + vi);
-                                //If base is unknown, exit loop
-                                if (seqCh == 'N') {
-                                    break;
-                                }
-                                //If base quality is less than $GOODQ, exit loop
-                                if (queryQuality.charAt(readPositionIncludingSoftClipped + vi) - 33 < instance().conf.goodq) {
-                                    break;
-                                }
-                                //If reference sequence has base at this position and it matches read base, update offset
-                                Character refCh = ref.get(start + cigarElementLength + vi);
-                                if (refCh != null) {
-                                    if (isEquals('N', refCh)) {
-                                        break;
-                                    }
-                                    if (isNotEquals(seqCh, refCh)) {
-                                        offset = vi + 1;
-                                        nmoff++;
-                                        vsn = 0;
-                                    } else {
-                                        vsn++;
-                                    }
-                                }
-                            }
-
-                            //If next CIGAR segment has good matching base
-                            if (offset != 0) {
-                                //Append first offset bases of next segment to ss and q
-                                ss.append(substr(querySequence, readPositionIncludingSoftClipped, offset));
-                                q.append(substr(queryQuality, readPositionIncludingSoftClipped, offset));
-                            }
-                        }
-                    }
-                    //offset should be reset to 0 on every loop, so it is non-zero only if previous next CIGAR segment is matched
-                    // Append '&' and ss to s if next segment has good matching base
-                    if (offset > 0) {
-                        s.append("&").append(ss);
-                    }
-
-                    //quality of first matched base after deletion
-                    //append best of $q1 and $q2
-                    if (readPositionIncludingSoftClipped + offset >= queryQuality.length()) {
-                        q.append(q1);
-                    } else {
-                        char q2 = queryQuality.charAt(readPositionIncludingSoftClipped + offset);
-                        q.append(q1 > q2 ? q1 : q2);
-                    }
-
-                    //If reference position is inside region of interest
-                    if (start >= region.start && start <= region.end) {
-                        addVariationForDeletion(nonInsertionVariants, refCoverage, positionToDeletionCount, mappingQuality,
-                                nm, readPositionExcludingSoftClipped, direction, start, rlen1, cigarElementLength, s, q, nmoff);
-                    }
-
-                    //adjust reference position by offset + multoffs
-                    start += cigarElementLength + offset + multoffs;
-
-                    //adjust read position by m (CIGAR segment length) + offset + multoffp
-                    readPositionIncludingSoftClipped += offset + multoffp;
-                    readPositionExcludingSoftClipped += offset + multoffp;
+                    ci = processDeletion(querySequence, mappingQuality, ref, queryQuality, numberOfMismatches,
+                            direction, readLengthIncludeMatchingAndInsertions, ci);
                     continue;
                 }
                 default:
@@ -985,7 +417,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         && q >= instance().conf.goodq
                         && isHasAndNotEquals(ref, start, querySequence, readPositionIncludingSoftClipped)
                         && isNotEquals('N', ref.get(start))) {
-
+                    //Require higher quality for MNV
+                    if (queryQuality.charAt(readPositionIncludingSoftClipped + 1) - 33 < instance().conf.goodq + 5) {
+                        break;
+                    }
                     //Break if base is unknown in the read
                     char nuc = querySequence.charAt(readPositionIncludingSoftClipped + 1);
                     if (nuc == 'N') {
@@ -997,7 +432,6 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
                     //Condition: base at n + 1 does not match reference base at start + 1
                     if (isNotEquals(ref.get(start + 1), nuc)) {
-
                         //append the base from read
                         ss.append(nuc);
                         //add quality to total sum
@@ -1024,6 +458,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             }
                         }
                         if (ssn == 0) {
+                            break;
+                        }
+                        //Require higher quality for MNV
+                        if (queryQuality.charAt(readPositionIncludingSoftClipped + ssn) - 33 < instance().conf.goodq + 5) {
                             break;
                         }
                         for (int ssi = 1; ssi <= ssn; ssi++) {
@@ -1058,7 +496,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.D
                         && ref.containsKey(start)
                         && (ss.length() > 0 || isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref.get(start)))
-                        && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 > instance().conf.goodq) {
+                        && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 >= instance().conf.goodq) {
 
                     //loop until end of CIGAR segments
                     while (i + 1 < cigarElementLength) {
@@ -1105,28 +543,66 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     }
                     if (cigar.numCigarElements() > ci + 1
                             && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
-                        Tuple.Tuple4<Integer, String, String, Integer> tpl = findOffset(start + ddlen + 1,
+                        Offset tpl = findOffset(start + ddlen + 1,
                                 readPositionIncludingSoftClipped + 1, cigar.getCigarElement(ci + 1).getLength(), querySequence,
                                 queryQuality, ref, refCoverage);
-                        int toffset = tpl._1;
+                        int toffset = tpl.offset;
                         if (toffset != 0) {
                             moffset = toffset;
-                            nmoff += tpl._4;
-                            s += "&" + tpl._2;
-                            String tq = tpl._3;
+                            nmoff += tpl.offsetNumberOfMismatches;
+                            s += "&" + tpl.sequence;
+                            String tq = tpl.qualitySequence;
                             for (int qi = 0; qi < tq.length(); qi++) {
                                 q += tq.charAt(qi) - 33;
                                 qibases++;
                             }
                         }
                     }
+                } else if (instance().conf.performLocalRealignment && cigarElementLength - i <= instance().conf.vext
+                        && cigar.numCigarElements() > ci + 1
+                        && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I
+                        && ref.containsKey(start)
+                        && (ss.length() > 0 || isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref.get(start)))
+                        && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 >= instance().conf.goodq) {
+
+                    while (i + 1 < cigarElementLength) {
+                        s += querySequence.charAt(readPositionIncludingSoftClipped + 1);
+                        q += queryQuality.charAt(readPositionIncludingSoftClipped + 1) - 33;
+                        //increase number of bases
+                        qbases++;
+
+                        //shift read and reference indices by 1
+                        i++;
+                        readPositionIncludingSoftClipped++;
+                        readPositionExcludingSoftClipped++;
+                        start++;
+                    }
+                    //remove '&' delimiter from s
+                    s = s.replaceFirst("&", "");
+                    int nextLen = cigar.getCigarElement(ci + 1).getLength();
+                    s += substr(querySequence, readPositionIncludingSoftClipped + 1, nextLen);
+                    s = substr(s, 0, nextLen) + "&" + s.substring(nextLen);
+                    s = "+" + s;
+
+                    //Loop over next-next segment
+                    for (int qi = 1; qi <= nextLen; qi++) {
+                        //add base quality to total quality
+                        q += queryQuality.charAt(readPositionIncludingSoftClipped + 1 + qi) - 33;
+                        //increase number of insertion bases
+                        qibases++;
+                    }
+                    readPositionIncludingSoftClipped += nextLen;
+                    readPositionExcludingSoftClipped += nextLen;
+                    ci += 1;
+                    qibases--;
+                    qbases++; // need to add to set the correction insertion position
                 }
                 if (!trim) {
                     //If start - qbases + 1 is in region of interest
                     final int pos = start - qbases + 1;
                     if (pos >= region.start && pos <= region.end) {
-                        addVariationForMatchingPart(nonInsertionVariants, refCoverage, mnp, positionToDeletionCount, mappingQuality, nm, readPositionExcludingSoftClipped,
-                                direction, start, rlen1, nmoff, s, startWithDeletion, q, qbases, qibases, ddlen, pos);
+                        addVariationForMatchingPart(mappingQuality, numberOfMismatches,
+                                direction, readLengthIncludeMatchingAndInsertions, nmoff, s, startWithDeletion, q, qbases, qibases, ddlen, pos);
                     }
                 }
 
@@ -1145,7 +621,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     readPositionExcludingSoftClipped++;
                 }
                 // Skip read if it is overlap
-                if (skipOverlappingReads(record, position, direction, start, mateAlignmentStart)) {
+                if (skipOverlappingReads(record, position, direction, mateAlignmentStart)) {
                     break processCigar;
                 }
             }
@@ -1161,6 +637,638 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         }
     }
 
+    /**
+     * Process CIGAR deletions part. Will ignore indels next to introns and create Variations for deletions
+     */
+    private int processDeletion(String querySequence, int mappingQuality, Map<Integer, Character> ref,
+                                String queryQuality, int numberOfMismatches, boolean direction,
+                                int readLengthIncludeMatchingAndInsertions, int ci) {
+        // Ignore deletions right after introns at exon edge in RNA-seq
+        if (skipIndelNextToIntron(cigar, ci)) {
+            readPositionExcludingSoftClipped += cigarElementLength;
+            return ci;
+        }
+
+        // $s description string of deleted segment
+        StringBuilder descStringOfDeletedElement = new StringBuilder("-").append(cigarElementLength);
+        // $ss sequence to be appended if next segment is matched
+        StringBuilder sequenceToAppendIfNextSegmentMatched = new StringBuilder();
+        // $q1 quality of last base before deletion
+        char qualityOfLastSegmentBeforeDel = queryQuality.charAt(readPositionIncludingSoftClipped - 1);
+        // $q quality of this segment
+        StringBuilder qualityOfSegment = new StringBuilder();
+
+        // For multiple indels within $VEXT bp
+        //offset for read position if next segment is matched
+        int multoffs = 0;
+        //offset for reference position if next segment is matched
+        int multoffp = 0;
+        int nmoff = 0;
+
+        /*
+        Condition:
+        1). CIGAR string has next entry
+        2). length of next CIGAR segment is less than conf.vext
+        3). next segment is matched
+        4). CIGAR string has one more entry after next one
+        5). this entry is insertion or deletion
+         */
+        if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
+                && cigar.getCigarElement(ci + 1).getLength() <= instance().conf.vext
+                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
+                && (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
+                || cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D)
+                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
+                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
+
+            int mLen = cigar.getCigarElement(ci + 1).getLength();
+            int indelLen = cigar.getCigarElement(ci + 2).getLength();
+
+            int begin = readPositionIncludingSoftClipped;
+            appendSegments(querySequence, queryQuality, cigar, ci, descStringOfDeletedElement, qualityOfSegment,
+                    mLen, indelLen, begin, false);
+
+            //add length of next segment to both read and reference offsets
+            //add length of next-next segment to reference position (for insertion) or to read position(for deletion)
+            multoffs += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D ? indelLen : 0);
+            multoffp += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I ? indelLen : 0);
+            if (cigar.numCigarElements() > ci + 3
+                    && cigar.getCigarElement(ci + 3).getOperator() == CigarOperator.M) {
+                int vsn = 0;
+                int tn = readPositionIncludingSoftClipped + multoffp;
+                int ts = start + multoffs + cigarElementLength;
+                for (int vi = 0; vsn <= instance().conf.vext && vi < cigar.getCigarElement(ci + 3).getLength(); vi++) {
+                    if (querySequence.charAt(tn + vi) == 'N') {
+                        break;
+                    }
+                    if (queryQuality.charAt(tn + vi) - 33 < instance().conf.goodq) {
+                        break;
+                    }
+                    if (isHasAndEquals('N', ref, ts + vi)) {
+                        break;
+                    }
+                    Character refCh = ref.get(ts + vi);
+                    if (refCh != null) {
+                        if (isNotEquals(querySequence.charAt(tn + vi), refCh)) {
+                            offset = vi + 1;
+                            nmoff++;
+                            vsn = 0;
+                        } else {
+                            vsn++;
+                        }
+                    }
+                }
+                if (offset != 0) {
+                    sequenceToAppendIfNextSegmentMatched.append(substr(querySequence, tn, offset));
+                    qualityOfSegment.append(substr(queryQuality, tn, offset));
+                }
+            }
+            // skip next 2 CIGAR segments
+            ci += 2;
+        } else if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
+                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.I) {
+            /*
+            Condition:
+            1). CIGAR string has next entry
+            2). next CIGAR segment is an insertion
+             */
+            int insLen = cigar.getCigarElement(ci + 1).getLength();
+            //Append '^' + next segment (inserted)
+            descStringOfDeletedElement.append("^").append(substr(querySequence, readPositionIncludingSoftClipped, insLen));
+            //Append next segement to quality string
+            qualityOfSegment.append(substr(queryQuality, readPositionIncludingSoftClipped, insLen));
+
+            //Shift reference position by length of next segment
+            //skip next CIGAR segment
+            multoffp += insLen;
+            if (cigar.numCigarElements() > ci + 2
+                    && cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.M) {
+                int mLen = cigar.getCigarElement(ci + 2).getLength();
+                int vsn = 0;
+                int tn = readPositionIncludingSoftClipped + multoffp;
+                int ts = start + cigarElementLength;
+                for (int vi = 0; vsn <= instance().conf.vext && vi < mLen; vi++) {
+                    char seqCh = querySequence.charAt(tn + vi);
+                    if (seqCh == 'N') {
+                        break;
+                    }
+                    if (queryQuality.charAt(tn + vi) - 33 < instance().conf.goodq) {
+                        break;
+                    }
+                    Character refCh = ref.get(ts + vi);
+                    if (refCh != null) {
+                        if (isEquals('N', refCh)) {
+                            break;
+                        }
+                        if (isNotEquals(seqCh, refCh)) {
+                            offset = vi + 1;
+                            nmoff++;
+                            vsn = 0;
+                        } else {
+                            vsn++;
+                        }
+                    }
+                }
+                if (offset != 0) {
+                    sequenceToAppendIfNextSegmentMatched.append(substr(querySequence, tn, offset));
+                    qualityOfSegment.append(substr(queryQuality, tn, offset));
+                }
+            }
+            ci += 1;
+        } else {
+            /*
+            Condition:
+            1). CIGAR string has next entry
+            2). next CIGAR segment is matched
+             */
+            if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
+                    && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
+                int mLen = cigar.getCigarElement(ci + 1).getLength();
+                int vsn = 0;
+                //Loop over next CIGAR segment (no more than conf.vext bases ahead)
+                for (int vi = 0; vsn <= instance().conf.vext && vi < mLen; vi++) {
+                    char seqCh = querySequence.charAt(readPositionIncludingSoftClipped + vi);
+                    //If base is unknown, exit loop
+                    if (seqCh == 'N') {
+                        break;
+                    }
+                    //If base quality is less than $GOODQ, exit loop
+                    if (queryQuality.charAt(readPositionIncludingSoftClipped + vi) - 33 < instance().conf.goodq) {
+                        break;
+                    }
+                    //If reference sequence has base at this position and it matches read base, update offset
+                    Character refCh = ref.get(start + cigarElementLength + vi);
+                    if (refCh != null) {
+                        if (isEquals('N', refCh)) {
+                            break;
+                        }
+                        if (isNotEquals(seqCh, refCh)) {
+                            offset = vi + 1;
+                            nmoff++;
+                            vsn = 0;
+                        } else {
+                            vsn++;
+                        }
+                    }
+                }
+
+                //If next CIGAR segment has good matching base
+                if (offset != 0) {
+                    //Append first offset bases of next segment to ss and q
+                    sequenceToAppendIfNextSegmentMatched.append(substr(querySequence, readPositionIncludingSoftClipped, offset));
+                    qualityOfSegment.append(substr(queryQuality, readPositionIncludingSoftClipped, offset));
+                }
+            }
+        }
+        //offset should be reset to 0 on every loop, so it is non-zero only if previous next CIGAR segment is matched
+        // Append '&' and ss to s if next segment has good matching base
+        if (offset > 0) {
+            descStringOfDeletedElement.append("&").append(sequenceToAppendIfNextSegmentMatched);
+        }
+
+        //quality of first matched base after deletion
+        //append best of $q1 and $q2
+        if (readPositionIncludingSoftClipped + offset >= queryQuality.length()) {
+            qualityOfSegment.append(qualityOfLastSegmentBeforeDel);
+        } else {
+            char qualityOfSegmentWithOffset = queryQuality.charAt(readPositionIncludingSoftClipped + offset); // $q2
+            qualityOfSegment.append(qualityOfLastSegmentBeforeDel > qualityOfSegmentWithOffset
+                    ? qualityOfLastSegmentBeforeDel
+                    : qualityOfSegmentWithOffset);
+        }
+
+        //If reference position is inside region of interest
+        if (start >= region.start && start <= region.end) {
+            addVariationForDeletion(mappingQuality,
+                    numberOfMismatches, direction, readLengthIncludeMatchingAndInsertions, descStringOfDeletedElement, qualityOfSegment, nmoff);
+        }
+
+        //adjust reference position by offset + multoffs
+        start += cigarElementLength + offset + multoffs;
+
+        //adjust read position by m (CIGAR segment length) + offset + multoffp
+        readPositionIncludingSoftClipped += offset + multoffp;
+        readPositionExcludingSoftClipped += offset + multoffp;
+        return ci;
+    }
+
+    /**
+     * Process CIGAR insertion part. Will ignore indels next to introns and create Variations for insertions
+     */
+    private int processInsertion(String querySequence, int mappingQuality, Map<Integer, Character> ref,
+                                 String queryQuality, int numberOfMismatches, boolean direction, int position,
+                                 int readLengthIncludeMatchingAndInsertions, int ci) {
+        // Ignore insertions right after introns at exon edge in RNA-seq
+        if (skipIndelNextToIntron(cigar, ci)) {
+            readPositionIncludingSoftClipped += cigarElementLength;
+            return ci;
+        }
+
+        //Inserted segment of read sequence
+        StringBuilder descStringOfInsertionSegment = new StringBuilder(substr(querySequence, readPositionIncludingSoftClipped, cigarElementLength));
+
+        //Quality of this segment
+        StringBuilder qualityString = new StringBuilder(substr(queryQuality, readPositionIncludingSoftClipped, cigarElementLength));
+        //Sequence to be appended if next segment is matched
+        String ss = "";
+
+        // For multiple indels within 10bp
+        //Offset for read position if next segment is matched
+        int multoffs = 0;
+        //offset for reference position if next segment is matched
+        int multoffp = 0;
+        int nmoff = 0;
+
+        /*
+        Condition:
+        1). CIGAR string has next entry
+        2). length of next CIGAR segment is less than conf.vext
+        3). next segment is matched
+        4). CIGAR string has one more entry after next one
+        5). this entry is insertion or deletion
+         */
+        if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 2
+                && cigar.getCigarElement(ci + 1).getLength() <= instance().conf.vext
+                && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M
+                && (cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.I
+                || cigar.getCigarElement(ci + 2).getOperator()  == CigarOperator.D)
+                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.I
+                && cigar.getCigarElement(ci + 3).getOperator() != CigarOperator.D) {
+
+            int mLen = cigar.getCigarElement(ci + 1).getLength();
+            int indelLen = cigar.getCigarElement(ci + 2).getLength();
+
+            int begin = readPositionIncludingSoftClipped + cigarElementLength;
+            appendSegments(querySequence, queryQuality, cigar, ci, descStringOfInsertionSegment, qualityString,
+                    mLen, indelLen, begin, true);
+            //add length of next segment to both multoffs and multoffp
+            //add length of next-next segment to multoffp (for insertion) or to multoffs (for deletion)
+            multoffs += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.D ? indelLen : 0);
+            multoffp += mLen + (cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I ? indelLen : 0);
+
+            int ci6 = cigar.numCigarElements() > ci + 3 ? cigar.getCigarElement(ci + 3).getLength() : 0;
+            if (ci6 != 0 && cigar.getCigarElement(ci + 3).getOperator()  == CigarOperator.M) {
+                Offset tpl = findOffset(start + multoffs,
+                        readPositionIncludingSoftClipped + cigarElementLength + multoffp,
+                        ci6, querySequence, queryQuality, ref, refCoverage);
+                offset = tpl.offset;
+                ss = tpl.sequence;
+                qualityString.append(tpl.qualitySequence);
+            }
+            //skip 2 CIGAR segments
+            ci += 2;
+        } else {
+            /*
+            Condition:
+            1). CIGAR string has next entry
+            2). next CIGAR segment is matched
+             */
+            if (instance().conf.performLocalRealignment && cigar.numCigarElements() > ci + 1
+                    && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.M) {
+                int vsn = 0;
+                //Loop over next CIGAR segment (no more than conf.vext bases ahead)
+                for (int vi = 0; vsn <= instance().conf.vext && vi < cigar.getCigarElement(ci + 1).getLength(); vi++) {
+                    //If base is unknown, exit loop
+                    if (querySequence.charAt(readPositionIncludingSoftClipped + cigarElementLength + vi) == 'N') {
+                        break;
+                    }
+                    //If base quality is less than conf.goodq, exit loop
+                    if (queryQuality.charAt(readPositionIncludingSoftClipped + cigarElementLength + vi) - 33 < instance().conf.goodq) {
+                        break;
+                    }
+                    //If reference sequence has base at this position and it matches read base, update offset
+                    if (ref.containsKey(start + vi)) {
+                        if (isNotEquals(querySequence.charAt(readPositionIncludingSoftClipped + cigarElementLength + vi), ref.get(start + vi))) {
+                            offset = vi + 1;
+                            nmoff++;
+                            vsn = 0;
+                        } else {
+                            vsn++;
+                        }
+                    }
+                }
+                if (offset != 0) { //If next CIGAR segment has good matching base
+                    //Append first offset bases of next segment to ss and q
+                    ss += substr(querySequence, readPositionIncludingSoftClipped + cigarElementLength, offset);
+                    qualityString.append(substr(queryQuality, readPositionIncludingSoftClipped + cigarElementLength, offset));
+                    //Increase coverage for positions corresponding to first offset bases of next segment
+                    for (int osi = 0; osi < offset; osi++) {
+                        incCnt(refCoverage, start + osi, 1);
+                    }
+                }
+            }
+        }
+
+        // Offset should be reset to 0 on every loop, so it is non-zero only if previous part of
+        // code was executed
+        // Append '&' and $ss to s if next segment has good matching base
+        if (offset > 0) {
+            descStringOfInsertionSegment.append("&").append(ss);
+        }
+
+        //If start of the segment is within region of interest and the segment does not have unknown bases
+        if (start - 1 >= region.start && start - 1 <= region.end && !descStringOfInsertionSegment.toString().contains("N")) {
+            int insertionPosition = start - 1;
+            Matcher mm = BEGIN_ATGC_END.matcher(descStringOfInsertionSegment);
+            if (mm.find()) {
+                BaseInsertion tpl = adjInsPos(start - 1, descStringOfInsertionSegment.toString(), ref);
+                insertionPosition = tpl.baseInsert;
+                descStringOfInsertionSegment = new StringBuilder(tpl.insertionSequence);
+            }
+            //add '+' + s to insertions at inspos
+            incCnt(getOrElse(positionToInsertionCount, insertionPosition, new HashMap<>()), "+" + descStringOfInsertionSegment, 1);
+
+            //add insertion to table of variations
+            Variation hv = getVariation(insertionVariants, insertionPosition, "+" + descStringOfInsertionSegment); //variant structure for this insertion
+            hv.incDir(direction);
+            //add count
+            hv.varsCount++;
+            //minimum of positions from start of read and end of read
+            int tp = readPositionExcludingSoftClipped < readLengthIncludeMatchingAndInsertions - readPositionExcludingSoftClipped
+                    ? readPositionExcludingSoftClipped + 1
+                    : readLengthIncludeMatchingAndInsertions - readPositionExcludingSoftClipped;
+
+            //mean read quality of the segment
+            double tmpq = 0;
+            for (int i = 0; i < qualityString.length(); i++) {
+                tmpq += qualityString.charAt(i) - 33;
+            }
+            tmpq = tmpq / qualityString.length();
+
+            //pstd is a flag that is 1 if the variant is covered by at least 2 read segments with different positions
+            if (!hv.pstd && hv.pp != 0 && tp != hv.pp) {
+                hv.pstd = true;
+            }
+            //qstd is a flag that is 1 if the variant is covered by at least 2 segment reads with different qualities
+            if (!hv.qstd && hv.pq != 0 && tmpq != hv.pq) {
+                hv.qstd = true;
+            }
+            hv.meanPosition += tp;
+            hv.meanQuality += tmpq;
+            hv.meanMappingQuality += mappingQuality;
+            hv.pp = tp;
+            hv.pq = tmpq;
+            if (tmpq >= instance().conf.goodq) {
+                hv.highQualityReadsCount++;
+            } else {
+                hv.lowQualityReadsCount++;
+            }
+            hv.numberOfMismatches += numberOfMismatches - nmoff;
+
+            // Adjust the reference count for insertion reads
+            /*
+            Condition:
+            1). reference sequence has base for the position
+            2). hash contains variant structure for the position
+            3). read base at position n-1 matches reference at start-1
+             */
+            int index = readPositionIncludingSoftClipped - 1 - (start - 1 - insertionPosition);
+            if (insertionPosition > position && isHasAndEquals(querySequence.charAt(index), ref, insertionPosition)) {
+                Variation tv = getVariationMaybe(nonInsertionVariants, insertionPosition, querySequence.charAt(index));
+                //Substract count.
+                if (tv != null) {
+                    subCnt(tv, direction, tp, queryQuality.charAt(index) - 33,
+                            mappingQuality, numberOfMismatches - nmoff);
+                }
+            }
+            // Adjust count if the insertion is at the edge so that the AF won't > 1
+            /*
+            Condition:
+            1). looking at second segment in CIGAR string
+            2). first segment is a soft-clipping or a hard-clipping
+            */
+            if (ci == 1 && (cigar.getCigarElement(0).getOperator() == CigarOperator.S
+                    || cigar.getCigarElement(0).getOperator() == CigarOperator.H)) {
+                //Add one more variant corresponding to base at start - 1 to hash
+                Variation ttref = getVariation(nonInsertionVariants, insertionPosition, ref.get(insertionPosition).toString());
+                ttref.incDir(direction);
+                ttref.varsCount++;
+                ttref.pstd = hv.pstd;
+                ttref.qstd = hv.qstd;
+                ttref.meanPosition += tp;
+                ttref.meanQuality += tmpq;
+                ttref.meanMappingQuality += mappingQuality;
+                ttref.pp = tp;
+                ttref.pq = tmpq;
+                ttref.numberOfMismatches += numberOfMismatches - nmoff;
+                incCnt(refCoverage, insertionPosition, 1);
+            }
+        }
+
+        //adjust read position by m (CIGAR segment length) + offset + multoffp
+        readPositionIncludingSoftClipped += cigarElementLength + offset + multoffp;
+        readPositionExcludingSoftClipped += cigarElementLength + offset + multoffp;
+        //adjust reference position by offset + multoffs
+        start += offset + multoffs;
+        return ci;
+    }
+
+    /**
+     * Process CIGAR soft-clipped part. Will ignore large soft-clips and create Variations for mis-softclipping reads
+     * due to alignment
+     */
+    private void processSoftClip(String chrName, SAMRecord record, String querySequence, int mappingQuality,
+                                 Map<Integer, Character> ref, String queryQuality, int numberOfMismatches,
+                                 boolean direction, int position, int totalLengthIncludingSoftClipped, int ci) {
+        //First record in CIGAR
+        if (ci == 0) { // 5' soft clipped
+            // Ignore large soft clip due to chimeric reads in library construction
+            if (!instance().conf.chimeric) {
+                String saTagString = record.getStringAttribute(SAMTag.SA.name());
+
+                if (cigarElementLength >= 20 && saTagString != null) {
+                    if (isReadChimericWithSA(record, position, saTagString, direction, true)) {
+                        readPositionIncludingSoftClipped += cigarElementLength;
+                        offset = 0;
+                        // Had to reset the start due to softclipping adjustment
+                        start = position;
+
+                        return;
+                    }
+                    //trying to detect chimeric reads even when there's no supplementary
+                    // alignment from aligner
+                } else if (cigarElementLength >= Configuration.SEED_1) {
+                    Map<String, List<Integer>> referenceSeedMap = reference.seed;
+                    String sequence = getReverseComplementedSequence(record, 0, cigarElementLength);
+                    String reverseComplementedSeed = sequence.substring(0, Configuration.SEED_1);
+
+                    if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
+                        List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
+                        if (positions.size() == 1 &&
+                                abs(start - positions.get(0)) <  2 * maxReadLength) {
+                            readPositionIncludingSoftClipped += cigarElementLength;
+                            offset = 0;
+                            // Had to reset the start due to softclipping adjustment
+                            start = position;
+                            if (instance().conf.y) {
+                                System.err.println(sequence + " at 5' is a chimeric at "
+                                        + start + " by SEED " + Configuration.SEED_1);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            // Align softclipped but matched sequences due to mis-softclipping
+            /*
+            Conditions:
+            1). segment length > 1
+            2). start between 0 and chromosome length,
+            3). reference genome is known at this position
+            4). reference and read bases match
+            5). read quality is more than 10
+             */
+            while (cigarElementLength - 1 >= 0 && start - 1 > 0 && start - 1 <= instance().chrLengths.get(chrName)
+                    && isHasAndEquals(querySequence.charAt(cigarElementLength - 1), ref, start - 1)
+                    && queryQuality.charAt(cigarElementLength - 1) - 33 > 10) {
+                //create variant if it is not present
+                Variation variation = getVariation(nonInsertionVariants, start - 1, ref.get(start - 1).toString());
+                //add count
+                addCnt(variation, direction, cigarElementLength, queryQuality.charAt(cigarElementLength - 1) - 33, mappingQuality, numberOfMismatches);
+                //increase coverage
+                incCnt(refCoverage, start - 1, 1);
+                start--;
+                cigarElementLength--;
+            }
+            if (cigarElementLength > 0) { //If there remains a soft-clipped sequence at the beginning (not everything was matched)
+                int sumOfReadQualities = 0; // $q Sum of read qualities (to get mean quality)
+                int numberOfHighQualityBases = 0; // $qn Number of quality figures
+                int numberOfLowQualityBases = 0; // $lowcnt Number of low-quality bases in the sequence
+
+                // Loop over remaining soft-clipped sequence
+                for (int si = cigarElementLength - 1; si >= 0; si--) {
+                    // Stop if unknown base (N - any of ATGC) is found
+                    if (querySequence.charAt(si) == 'N') {
+                        break;
+                    }
+                    // $tq - base quality
+                    int baseQuality = queryQuality.charAt(si) - 33;
+                    if (baseQuality <= 12)
+                        numberOfLowQualityBases++;
+                    //Stop if a low-quality base is found
+                    if (numberOfLowQualityBases > 1) {
+                        break;
+                    }
+                    sumOfReadQualities += baseQuality;
+                    numberOfHighQualityBases++;
+                }
+                sclip5HighQualityProcessing(querySequence, mappingQuality, queryQuality, numberOfMismatches,
+                        direction, sumOfReadQualities, numberOfHighQualityBases, numberOfLowQualityBases);
+            }
+            cigarElementLength = cigar.getCigarElement(ci).getLength();
+        } else if (ci == cigar.numCigarElements() - 1) { // 3' soft clipped
+            // Ignore large soft clip due to chimeric reads in library construction
+            if (!instance().conf.chimeric) {
+                String saTagString = record.getStringAttribute(SAMTag.SA.name());
+                if (cigarElementLength >= 20 && saTagString != null) {
+                    if (isReadChimericWithSA(record, position, saTagString, direction, false)) {
+                        readPositionIncludingSoftClipped += cigarElementLength;
+                        offset = 0;
+                        // Had to reset the start due to softclipping adjustment
+                        start = position;
+
+                        return;
+                    }
+                } else if (cigarElementLength >= Configuration.SEED_1) {
+                    Map<String, List<Integer>> referenceSeedMap = reference.seed;
+                    String sequence = getReverseComplementedSequence(record, -cigarElementLength, cigarElementLength);
+                    String reverseComplementedSeed = substr(sequence, -Configuration.SEED_1, Configuration.SEED_1);
+
+                    if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
+                        List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
+                        if (positions.size() == 1 && abs(start - positions.get(0)) <  2 * maxReadLength) {
+                            readPositionIncludingSoftClipped += cigarElementLength;
+                            offset = 0;
+                            // Had to reset the start due to softclipping adjustment
+                            start = position;
+                            if (instance().conf.y) {
+                                System.err.println(sequence  + " at 3' is a chimeric at "
+                                        + start + " by SEED " + Configuration.SEED_1);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            /*
+            Conditions:
+            1). read position is less than sequence length
+            2). reference base is defined for start
+            3). reference base at start matches read base at n
+            4). read quality is more than 10
+             */
+            while (readPositionIncludingSoftClipped < querySequence.length()
+                    && isHasAndEquals(querySequence.charAt(readPositionIncludingSoftClipped), ref, start)
+                    && queryQuality.charAt(readPositionIncludingSoftClipped) - 33 > 10) {
+                //Initialize entry in $hash if not present
+                Variation variation = getVariation(nonInsertionVariants, start, ref.get(start).toString());
+                //Add count
+                addCnt(variation, direction, totalLengthIncludingSoftClipped - readPositionExcludingSoftClipped,
+                        queryQuality.charAt(readPositionIncludingSoftClipped) - 33, mappingQuality, numberOfMismatches);
+                //Add coverage
+                incCnt(refCoverage, start, 1);
+                readPositionIncludingSoftClipped++;
+                start++;
+                cigarElementLength--;
+                readPositionExcludingSoftClipped++;
+            }
+            //If there remains a soft-clipped sequence at the end (not everything was matched)
+            if (querySequence.length() - readPositionIncludingSoftClipped > 0) {
+                int sumOfReadQualities = 0; // $q Sum of read qualities (to get mean quality)
+                int numberOfHighQualityBases = 0; // $qn Number of quality figures
+                int numberOfLowQualityBases = 0; // $lowcnt Number of low-quality bases in the sequence
+                for (int si = 0; si < cigarElementLength; si++) { //Loop over remaining soft-clipped sequence
+                    //Stop if unknown base (N - any of ATGC) is found
+                    if (querySequence.charAt(readPositionIncludingSoftClipped + si) == 'N') {
+                        break;
+                    }
+                    // $tq - Base quality
+                    int baseQuality = queryQuality.charAt(readPositionIncludingSoftClipped + si) - 33;
+                    if (baseQuality <= 12) {
+                        numberOfLowQualityBases++;
+                    }
+                    //Stop if a low-quality base is found
+                    if (numberOfLowQualityBases > 1) {
+                        break;
+                    }
+                    sumOfReadQualities += baseQuality;
+                    numberOfHighQualityBases++;
+                }
+                sclip3HighQualityProcessing(querySequence, mappingQuality, queryQuality, numberOfMismatches,
+                        direction, sumOfReadQualities, numberOfHighQualityBases, numberOfLowQualityBases);
+            }
+        }
+        //Move read position by m (length of segment in CIGAR)
+        readPositionIncludingSoftClipped += cigarElementLength;
+        offset = 0;
+        start = position; // Had to reset the start due to softclipping adjustment
+    }
+
+    /**
+     * N in CIGAR - skipped region from reference
+     * Skip the region and add string start-end to %SPLICE
+     */
+    private void processNotMatched() {
+        String key = (start - 1) + "-" + (start + cigarElementLength - 1);
+        splice.add(key);
+        int[] cnt = spliceCount.get(key);
+        if (cnt == null) {
+            cnt = new int[] { 0 };
+            spliceCount.put(key, cnt);
+        }
+        cnt[0]++;
+
+        start += cigarElementLength;
+        offset = 0;
+        return;
+    }
+
+    /**
+     * In amplicon mode try to check distances and overlap fraction of amplicon.
+     * @param record SAMRecord to check
+     * @param isMateReferenceNameEqual true if reard and mate reference names identical
+     * @return true if read must be proccesed further
+     */
     private boolean parseCigarWithAmpCase(SAMRecord record, boolean isMateReferenceNameEqual) {
         String[] split = instance().ampliconBasedCalling.split(":");
         // Distance to amplicon (specified in -a option)
@@ -1174,11 +1282,11 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             distanceToAmplicon = 10;
             overlapFraction = 0.95;
         }
-        // rlen3 holds sum of lengths of matched and deleted segments (The total aligned length,
+        // $rlen3 holds sum of lengths of matched and deleted segments (The total aligned length,
         // excluding soft-clipped bases and insertions)
-        int rlen3 = getAlignedLength(cigar);
+        int readLengthIncludeMatchedAndDeleted = getAlignedLength(cigar);
         int segstart = record.getAlignmentStart();
-        int segend = segstart + rlen3 - 1;
+        int segend = segstart + readLengthIncludeMatchedAndDeleted - 1;
 
         //If read starts with soft-clipped sequence
         if (cigar.getCigarElement(0).getOperator() == CigarOperator.S) {
@@ -1229,7 +1337,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * @param mappingBaseQuality bases's mapping quality    $Q
      * @param numberOfMismatches number of mismatches   $nm
      */
-    static void subCnt(Variation variation,
+    void subCnt(Variation variation,
                               boolean direction,
                               int readPosition,
                               double baseQuality,
@@ -1258,7 +1366,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * @param mappingBaseQuality bases's mapping quality    $Q
      * @param numberOfMismatches number of mismatches   $nm
      */
-     static void addCnt(Variation variation,
+     void addCnt(Variation variation,
                               boolean direction,
                               int readPosition,
                               double baseQuality,
@@ -1280,27 +1388,27 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
     /**
      * Increase count for variation
      * @param counters map to increase count for variation
-     * @param idx index in <code>counters</code> map
-     * @param s string with variations
+     * @param index index in <code>counters</code> map
+     * @param descriptionString string with variations
      */
-    private static void increment(Map<Integer, Map<String, Integer>> counters,
-                                  int idx,
-                                  String s) {
-        Map<String, Integer> map = counters.get(idx);
+    private void increment(Map<Integer, Map<String, Integer>> counters,
+                           int index,
+                           String descriptionString) {
+        Map<String, Integer> map = counters.get(index);
         if (map == null) {
             map = new HashMap<>();
-            counters.put(idx, map);
+            counters.put(index, map);
         }
-        incCnt(map, s, 1);
+        incCnt(map, descriptionString, 1);
     }
 
-    static boolean isBEGIN_ATGC_AMP_ATGCs_END(String s) {
-        if (s.length() > 2) {
-            char ch1 = s.charAt(0);
-            char ch2 = s.charAt(1);
-            if (ch2 == '&' && isATGC(ch1)) {
-                for (int i = 2; i < s.length(); i++) {
-                    if (!isATGC(s.charAt(i))) {
+    boolean isBEGIN_ATGC_AMP_ATGCs_END(String sequence) {
+        if (sequence.length() > 2) {
+            char firstChar = sequence.charAt(0);
+            char secondChar = sequence.charAt(1);
+            if (secondChar == '&' && isATGC(firstChar)) {
+                for (int i = 2; i < sequence.length(); i++) {
+                    if (!isATGC(sequence.charAt(i))) {
                         return false;
                     }
                 }
@@ -1310,7 +1418,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         return false;
     }
 
-    static boolean isATGC(char ch) {
+    boolean isATGC(char ch) {
         switch (ch) {
             case 'A':
             case 'T':
@@ -1332,15 +1440,15 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * @param queryQuality base quality sequence    $qstr
      * @param reference reference bases by position     $ref
      * @param refCoverage reference coverage    $cov
-     * @return Tuple of (offset, querySequence's substring, queryQuality substring, number of mismatches)
+     * @return Offset object of (offset, querySequence's substring, queryQuality substring, number of mismatches)
      */
-    static Tuple.Tuple4<Integer, String, String, Integer> findOffset(int referencePosition,
-                                                                            int readPosition,
-                                                                            int cigarLength,
-                                                                            String querySequence,
-                                                                            String queryQuality,
-                                                                            Map<Integer, Character> reference,
-                                                                            Map<Integer, Integer> refCoverage) {
+    Offset findOffset(int referencePosition,
+                      int readPosition,
+                      int cigarLength,
+                      String querySequence,
+                      String queryQuality,
+                      Map<Integer, Character> reference,
+                      Map<Integer, Integer> refCoverage) {
         int offset = 0;
         String ss = "";
         String q = "";
@@ -1372,7 +1480,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 incCnt(refCoverage, referencePosition + osi, 1);
             }
         }
-        return tuple(offset, ss, q, tnm);
+        return new Offset(offset, ss, q, tnm);
     }
 
     /**
@@ -1381,7 +1489,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * leading or trailing insertions into soft-clips.
      * @param rec SAMRecord
      */
-    static void cleanupCigar(final SAMRecord rec) {
+    void cleanupCigar(final SAMRecord rec) {
         if (rec.getCigar() != null) {
             final List<CigarElement> elems = new ArrayList<>(rec.getCigar().getCigarElements());
 
@@ -1436,6 +1544,11 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         return operator;
     }
 
+    /**
+     * Method calculates the read length including deleted and matched segments (excluding soft-clipped and insertions)
+     * @param readCigar current read CIGAR
+     * @return length of aligned segment
+     */
     static int getAlignedLength(Cigar readCigar) {
         int length = 0;
         for (CigarElement element : readCigar.getCigarElements()) {
@@ -1446,6 +1559,11 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         return length;
     }
 
+    /**
+     * Method calculates the read length including matched, soft-clipped and insertions segments
+     * @param readCigar current read CIGAR
+     * @return length of segment
+     */
     static int getSoftClippedLength(Cigar readCigar) {
         int length = 0;
         for (CigarElement element : readCigar.getCigarElements()) {
@@ -1457,6 +1575,11 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         return length;
     }
 
+    /**
+     * Method calculates the read length including matched and insertions segments
+     * @param readCigar current read CIGAR
+     * @return length of segment
+     */
     static int getMatchInsertionLength(Cigar readCigar) {
         int length = 0;
         for (CigarElement element : readCigar.getCigarElements()) {
@@ -1467,6 +1590,11 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         return length;
     }
 
+    /**
+     * Method calculates the read length including deletions and insertions segments
+     * @param readCigar current read CIGAR
+     * @return length of segment
+     */
     static int getInsertionDeletionLength(Cigar readCigar) {
         int length = 0;
         for (CigarElement element : readCigar.getCigarElements()) {
@@ -1494,7 +1622,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * @param ci current index of element in cigar
      * @return true if cigar operator must be skipped, false if not
      */
-    private static boolean skipIndelNextToIntron(Cigar cigar, int ci) {
+    private boolean skipIndelNextToIntron(Cigar cigar, int ci) {
         if ((cigar.numCigarElements() > ci && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.N)
                 || (ci > 1 && cigar.getCigarElement(ci - 1).getOperator() == CigarOperator.N)) {
             return true;
@@ -1502,17 +1630,15 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         return false;
     }
 
-    private static void addVariationForMatchingPart(Map<Integer, VariationMap<String, Variation>> hash,
-                                                    Map<Integer, Integer> cov,
-                                                    Map<Integer, Map<String, Integer>> mnp,
-                                                    Map<Integer, Map<String, Integer>> dels5,
-                                                    int mappingQuality,
-                                                    int nm, int p, boolean dir, int start,
+    /**
+     * Creates variation for matching part of Cigar (M). If variation already exists, increment it's counters
+     */
+    private void addVariationForMatchingPart(int mappingQuality, int nm, boolean dir,
                                                     int rlen1, int nmoff, String s,
                                                     boolean startWithDelition, double q,
                                                     int qbases, int qibases, int ddlen, int pos) {
         //add variation record for $s
-        Variation hv = getVariation(hash, pos, s); //reference to variant structure
+        Variation hv = getVariation(nonInsertionVariants, pos, s); //reference to variant structure
         hv.incDir(dir);
 
         if(isBEGIN_ATGC_AMP_ATGCs_END(s)) {
@@ -1525,7 +1651,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         hv.varsCount++;
 
         //minimum of positions from start of read and end of read
-        int tp = p < rlen1 - p ? p + 1 : rlen1 - p;
+        int tp = readPositionExcludingSoftClipped < rlen1 - readPositionExcludingSoftClipped
+                ? readPositionExcludingSoftClipped + 1
+                : rlen1 - readPositionExcludingSoftClipped;
 
         //average quality of bases in the variation
         q = q / (qbases + qibases);
@@ -1553,45 +1681,46 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
         //increase coverage for bases covered by the variation
         for (int qi = 1; qi <= qbases; qi++) {
-            incCnt(cov, start - qi + 1, 1);
+            incCnt(refCoverage, start - qi + 1, 1);
         }
 
         //If variation starts with a deletion ('-' character)
         if (startWithDelition) {
             //add variation to deletions map
-            increment(dels5, pos, s);
+            increment(positionToDeletionCount, pos, s);
 
             //increase coverage for next CIGAR segment
             for (int qi = 1; qi < ddlen; qi++) {
-                incCnt(cov, start + qi, 1);
+                incCnt(refCoverage, start + qi, 1);
             }
         }
     }
 
-    private static void addVariationForDeletion(Map<Integer, VariationMap<String, Variation>> hash,
-                                                Map<Integer, Integer> cov,
-                                                Map<Integer, Map<String, Integer>> dels5,
-                                                int mappingQuality, int nm, int p,
-                                                boolean dir, int start, int rlen1,
-                                                int m, StringBuilder s, StringBuilder q, int nmoff) {
+    /**
+     * Creates variation for deletion in Cigar (D). If variation already exists, increment it's counters
+     */
+    private void addVariationForDeletion(int mappingQuality, int nm, boolean dir, int rlen1,
+                                         StringBuilder descStringOfDeletedElement, StringBuilder qualityOfSegment, int nmoff) {
         //add variant structure for deletion at this position
-        Variation hv = getVariation(hash, start, s.toString()); //variation structure
+        Variation hv = getVariation(nonInsertionVariants, start, descStringOfDeletedElement.toString()); //variation structure
         //add record for deletion in deletions map
-        increment(dels5, start, s.toString());
+        increment(positionToDeletionCount, start, descStringOfDeletedElement.toString());
         hv.incDir(dir);
         //increase count
         hv.varsCount++;
 
         //minimum of positions from start of read and end of read
-        int tp = p < rlen1 - p ? p + 1 : rlen1 - p;
+        int tp = readPositionExcludingSoftClipped < rlen1 - readPositionExcludingSoftClipped
+                ? readPositionExcludingSoftClipped + 1
+                : rlen1 - readPositionExcludingSoftClipped;
 
         //average quality of bases
         double tmpq = 0;
 
-        for (int i = 0; i < q.length(); i++) {
-            tmpq += q.charAt(i) - 33;
+        for (int i = 0; i < qualityOfSegment.length(); i++) {
+            tmpq += qualityOfSegment.charAt(i) - 33;
         }
-        tmpq = tmpq / q.length();
+        tmpq = tmpq / qualityOfSegment.length();
 
         //pstd is a flag that is 1 if the variant is covered by at least 2 read segments with different positions
         if (!hv.pstd && hv.pp != 0 && tp != hv.pp) {
@@ -1615,13 +1744,22 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         }
 
         //increase coverage count for reference bases missing from the read
-        for (int i = 0; i < m; i++) {
-            incCnt(cov, start + i, 1);
+        for (int i = 0; i < cigarElementLength; i++) {
+            incCnt(refCoverage, start + i, 1);
         }
     }
 
-    private static boolean isReadChimericWithSA(SAMRecord record, int position, String saTagString, int rlen,
-                                                boolean dir, boolean is5Side){
+    /**
+     * Check if read is chimeric and contains SA tag
+     * @param record SAMRecord to check
+     * @param position start position of read
+     * @param saTagString content of SA tag
+     * @param dir direction of the strand (true is reverse direction)
+     * @param is5Side true if it is 5' side
+     * @return true if record is chimeric with SA tag
+     */
+    private boolean isReadChimericWithSA(SAMRecord record, int position, String saTagString,
+                                         boolean dir, boolean is5Side){
         String[] saTagArray = saTagString.split(",");
         String saChromosome = saTagArray[0];
         int saPosition = Integer.valueOf(saTagArray[1]);
@@ -1636,7 +1774,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
         boolean isChimericWithSA = ((dir && saDirectionIsForward) || (!dir && !saDirectionIsForward))
                 && saChromosome.equals(record.getReferenceName())
-                && (abs(saPosition - position) < 2 * rlen)
+                && (abs(saPosition - position) < 2 * maxReadLength)
                 && mm.find();
 
         if (instance().conf.y && isChimericWithSA) {
@@ -1650,48 +1788,66 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         return isChimericWithSA;
     }
 
-    private static void appendSegments(String querySequence, String queryQuality, Cigar cigar, int ci,
-                                       StringBuilder s, StringBuilder q, int mLen, int indelLen, int begin,
-                                       boolean isInsertion) {
+    /**
+     * Append sequence for deletion or insertion cases to create description string and quality string.
+     */
+    private void appendSegments(String querySequence, String queryQuality, Cigar cigar, int ci,
+                                StringBuilder descStringOfElement, StringBuilder qualitySegment,
+                                int mLen, int indelLen, int begin, boolean isInsertion) {
 
         //begin is n + m for insertion and n for deletion
         //append to s '#' and part of read sequence corresponding to next CIGAR segment (matched one)
-        s.append("#").append(substr(querySequence, begin, mLen));
+        descStringOfElement.append("#").append(substr(querySequence, begin, mLen));
         //append quality string of next matched segment from read
-        q.append(substr(queryQuality, begin, mLen));
+        qualitySegment.append(substr(queryQuality, begin, mLen));
 
         //if an insertion is two segments ahead, append '^' + part of sequence corresponding
         // to next-next segment otherwise (deletion) append '^' + length of a next-next segment
-        s.append('^').append(cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
+        descStringOfElement.append('^').append(cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
                 ? substr(querySequence, begin + mLen, indelLen)
                 : indelLen);
         //if an insertion is two segments ahead, append part of quality string sequence
         // corresponding to next-next segment otherwise (deletion)
         // append first quality score of next segment or return empty string
         if (isInsertion) {
-            q.append(cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
+            qualitySegment.append(cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
                     ? substr(queryQuality, begin + mLen, indelLen)
                     : queryQuality.charAt(begin + mLen));
         } else {
-            q.append(cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
+            qualitySegment.append(cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.I
                     ? substr(queryQuality, begin + mLen, indelLen)
                     : "");
         }
     }
 
-    private static boolean skipOverlappingReads(SAMRecord record, int position, boolean dir, int start, int mateAlignmentStart) {
+    /**
+     * Skip overlapping reads to avoid double counts for coverage (alignment or second in pair flag is used)
+     * @param record SAMRecord to check
+     * @param position start position of read
+     * @param dir direction of the strand (true is reverse direction)
+     * @param mateAlignmentStart start position of mate
+     * @return true if reads overlap and we must skip them
+     */
+    private boolean skipOverlappingReads(SAMRecord record, int position, boolean dir, int mateAlignmentStart) {
         if (instance().conf.uniqueModeAlignmentEnabled && isPairedAndSameChromosome(record)
                 && !dir && start >= mateAlignmentStart) {
             return true;
         }
         if (instance().conf.uniqueModeSecondInPairEnabled && record.getSecondOfPairFlag() && isPairedAndSameChromosome(record)
-                && isReadsOverlap(record, start, position, mateAlignmentStart)) {
+                && isReadsOverlap(record, position, mateAlignmentStart)) {
             return true;
         }
         return false;
     }
 
-    private static boolean isReadsOverlap(SAMRecord record, int start, int position, int mateAlignmentStart){
+    /**
+     * Check if reads are overlapping. Two cases are considered: if position after mate start and if before.
+     * @param record SAMRecord to check
+     * @param position start position of read
+     * @param mateAlignmentStart start position of mate
+     * @return true if reads overlap
+     */
+    private boolean isReadsOverlap(SAMRecord record, int position, int mateAlignmentStart){
         if (position >= mateAlignmentStart) {
             return start >= mateAlignmentStart
                     && start <= (mateAlignmentStart + record.getCigar().getReferenceLength() - 1);
@@ -1702,24 +1858,32 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         }
     }
 
-    private static boolean isPairedAndSameChromosome(SAMRecord record) {
+    /**
+     * Check if read is paired and has the same chromosome name for read and mate
+     * @param record SAMRecord to check
+     * @return if read is paired and it's chromosome name is identical to mate reference name
+     */
+    private boolean isPairedAndSameChromosome(SAMRecord record) {
         return record.getReadPairedFlag() && getMateReferenceName(record).equals("=");
     }
 
-    private static void sclip3HighQualityProcessing(Region region, Map<Integer, Sclip> sclip3,
-                                                    String querySequence, int mappingQuality, String queryQuality,
-                                                    int nm, int n, boolean dir, int start, int m, int q,
-                                                    int qn, int lowqcnt) {
+    /**
+     * Process soft clip on 3' if it is has high quality reads
+     */
+    private void sclip3HighQualityProcessing(String querySequence, int mappingQuality, String queryQuality,
+                                            int numberOfMismatches, boolean dir, int sumOfReadQualities,
+                                            int numberOfHighQualityBases, int numberOfLowQualityBases) {
         //If we have at least 1 high-quality soft-clipped base of region of interest
-        if (qn >= 1 && qn > lowqcnt && start >= region.start && start <= region.end) {
+        if (numberOfHighQualityBases >= 1 && numberOfHighQualityBases > numberOfLowQualityBases
+                && start >= region.start && start <= region.end) {
             //add record to $sclip3
-            Sclip sclip = sclip3.get(start);
+            Sclip sclip = softClips3End.get(start);
             if (sclip == null) {
                 sclip = new Sclip();
-                sclip3.put(start, sclip);
+                softClips3End.put(start, sclip);
             }
-            for (int si = 0; si < qn; si++) {
-                Character ch = querySequence.charAt(n + si);
+            for (int si = 0; si < numberOfHighQualityBases; si++) {
+                Character ch = querySequence.charAt(readPositionIncludingSoftClipped + si);
                 int idx = si;
                 Map<Character, Integer> cnts = sclip.nt.get(idx);
                 if (cnts == null) {
@@ -1729,27 +1893,30 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 }
                 incCnt(cnts, ch, 1);
                 Variation variation = getVariationFromSeq(sclip, idx, ch);
-                addCnt(variation, dir, qn - si, queryQuality.charAt(n + si) - 33, mappingQuality, nm);
+                addCnt(variation, dir, numberOfHighQualityBases - si,
+                        queryQuality.charAt(readPositionIncludingSoftClipped + si) - 33, mappingQuality, numberOfMismatches);
             }
-            addCnt(sclip, dir, m, q / (double) qn, mappingQuality, nm);
+            addCnt(sclip, dir, cigarElementLength, sumOfReadQualities / (double) numberOfHighQualityBases, mappingQuality, numberOfMismatches);
         }
     }
 
-    private static void sclip5HighQualityProcessing(Region region, Map<Integer, Sclip> sclip5,
-                                                    String querySequence, int mappingQuality, String queryQuality,
-                                                    int nm, boolean dir, int start, int m, int q,
-                                                    int qn, int lowqcnt) {
+    /**
+     * Process soft clip on 5' if it is has high quality reads
+     */
+    private void sclip5HighQualityProcessing(String querySequence, int mappingQuality, String queryQuality,
+                                             int numberOfMismatches, boolean dir, int sumOfReadQualities,
+                                             int numberOfHighQualityBases, int numberOfLowQualityBases) {
         //If we have at least 1 high-quality soft-clipped base of region of interest
-        if (qn >= 1 && qn > lowqcnt && start >= region.start && start <= region.end) {
+        if (numberOfHighQualityBases >= 1 && numberOfHighQualityBases > numberOfLowQualityBases && start >= region.start && start <= region.end) {
             //add record to $sclip5
-            Sclip sclip = sclip5.get(start);
+            Sclip sclip = softClips5End.get(start);
             if (sclip == null) {
                 sclip = new Sclip();
-                sclip5.put(start, sclip);
+                softClips5End.put(start, sclip);
             }
-            for (int si = m - 1; m - si <= qn; si--) {
+            for (int si = cigarElementLength - 1; cigarElementLength - si <= numberOfHighQualityBases; si--) {
                 Character ch = querySequence.charAt(si);
-                int idx = m - 1 - si;
+                int idx = cigarElementLength - 1 - si;
                 Map<Character, Integer> cnts = sclip.nt.get(idx);
                 if (cnts == null) {
                     cnts = new HashMap<>();
@@ -1757,25 +1924,26 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 }
                 incCnt(cnts, ch, 1);
                 Variation seqVariation = getVariationFromSeq(sclip, idx, ch);
-                addCnt(seqVariation, dir, si - (m - qn), queryQuality.charAt(si) - 33, mappingQuality, nm);
+                addCnt(seqVariation, dir, si - (cigarElementLength - numberOfHighQualityBases),
+                        queryQuality.charAt(si) - 33, mappingQuality, numberOfMismatches);
             }
-            addCnt(sclip, dir, m, q / (double) qn, mappingQuality, nm);
+            addCnt(sclip, dir, cigarElementLength, sumOfReadQualities / (double) numberOfHighQualityBases,
+                    mappingQuality, numberOfMismatches);
         }
     }
 
     /**
      * Prepare and fill SV structures for deletions, duplications, inversions.
      */
-    private  void prepareSVStructuresForAnalysis(SAMRecord record,
-                                               String queryQuality,
-                                               int nm,
-                                               boolean dir,
-                                               Cigar cigar,
-                                               boolean mdir,
-                                               int start,
-                                               int rlen2) {
-        int mstart = record.getMateAlignmentStart();
-        int mend = mstart + rlen2;
+    private void prepareSVStructuresForAnalysis(final SAMRecord record,
+                                                final String queryQuality,
+                                                final int numberOfMismatches,
+                                                final boolean readDirection,
+                                                final boolean mateDirection,
+                                                final int start,
+                                                final int totalLengthIncludingSoftClipped) {
+        final int mateStart = record.getMateAlignmentStart();
+        final int mend = mateStart + totalLengthIncludingSoftClipped;
         int end = start;
         List<String> msegs = globalFind(ALIGNED_LENGTH_MND, cigar.toString());
         end += sum(msegs);
@@ -1798,9 +1966,13 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 soft3 = end;
             }
         }
-        int dirNum = dir ? -1 : 1;
-        int mdirNum = mdir ? 1 : -1;
-        int MIN_D = 75;
+        //Variables for direction will be simplier for calculations. Mate direction is true if it is forward,
+        //read direction is true if it is reverse.
+        final int readDirNum = readDirection ? -1 : 1;
+        final int mateDirNum = mateDirection ? 1 : -1;
+        //Minimal distance from start to end of SV
+        final int MIN_D = 75;
+
         if (getMateReferenceName(record).equals("=")) {
             int mlen = record.getInferredInsertSize();
             if (record.getStringAttribute(SAMTag.MC.name()) != null
@@ -1809,20 +1981,20 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             } else if (record.getIntegerAttribute(SAMTag.MQ.name()) != null
                     && record.getIntegerAttribute(SAMTag.MQ.name()) < 15) {
                 // Ignore those with mate mapping quality less than 15
-            } else if (dirNum * mdirNum == -1 && (mlen * dirNum) > 0 ) {
+            } else if (readDirNum * mateDirNum == -1 && (mlen * readDirNum) > 0 ) {
                 // deletion candidate
-                mlen = mstart > start ? mend - start : end - mstart;
+                mlen = mateStart > start ? mend - start : end - mateStart;
                 if(abs(mlen) > instance().conf.INSSIZE + instance().conf.INSSTDAMT * instance().conf.INSSTD ) {
-                    if (dirNum == 1) {
+                    if (readDirNum == 1) {
                         if (svStructures.svfdel.size() == 0
                                 || start - svStructures.svdelfend > Configuration.MINSVCDIST * maxReadLength) {
                             Sclip sclip = new Sclip();
                             sclip.varsCount = 0;
                             svStructures.svfdel.add(sclip);
                         }
-                        addSV(getLastSVStructure(svStructures.svfdel), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft3, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                        addSV(getLastSVStructure(svStructures.svfdel), start, end, mateStart,
+                                mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft3, maxReadLength/2.0,
+                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svdelfend = end;
                     } else {
                         if (svStructures.svrdel.size() == 0
@@ -1831,9 +2003,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             sclip.varsCount = 0;
                             svStructures.svrdel.add(sclip);
                         }
-                        addSV(getLastSVStructure(svStructures.svrdel), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft5, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                        addSV(getLastSVStructure(svStructures.svrdel), start, end, mateStart,
+                                mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft5, maxReadLength/2.0,
+                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svdelrend = end;
                     }
 
@@ -1864,18 +2036,18 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         adddisccnt(getLastSVStructure(svStructures.svrinv3));
                     }
                 }
-            } else if (dirNum * mdirNum == -1 && dirNum * mlen < 0) {
+            } else if (readDirNum * mateDirNum == -1 && readDirNum * mlen < 0) {
                 //duplication
-                if (dirNum == 1) {
+                if (readDirNum == 1) {
                     if (svStructures.svfdup.size() == 0
                             || start - svStructures.svdupfend > Configuration.MINSVCDIST * maxReadLength) {
                         Sclip sclip = new Sclip();
                         sclip.varsCount = 0;
                         svStructures.svfdup.add(sclip);
                     }
-                    addSV(getLastSVStructure(svStructures.svfdup), start, end, mstart,
-                            mend, dirNum, rlen2, mlen, soft3, maxReadLength/2.0,
-                            queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                    addSV(getLastSVStructure(svStructures.svfdup), start, end, mateStart,
+                            mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft3, maxReadLength/2.0,
+                            queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                     svStructures.svdupfend = end;
                 } else {
                     if (svStructures.svrdup.size() == 0
@@ -1884,9 +2056,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         sclip.varsCount = 0;
                         svStructures.svrdup.add(sclip);
                     }
-                    addSV(getLastSVStructure(svStructures.svrdup), start, end, mstart,
-                            mend, dirNum, rlen2, mlen, soft5, maxReadLength/2.0,
-                            queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                    addSV(getLastSVStructure(svStructures.svrdup), start, end, mateStart,
+                            mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft5, maxReadLength/2.0,
+                            queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                     svStructures.svduprend = end;
                 }
                 if (!svStructures.svfdup.isEmpty()
@@ -1915,8 +2087,8 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 if (!svStructures.svrinv3.isEmpty() && abs(start - svStructures.svinvrend3) <= MIN_D) {
                     adddisccnt(getLastSVStructure(svStructures.svrinv3));
                 }
-            } else if (dirNum * mdirNum == 1) { // Inversion
-                if (dirNum == 1 && mlen != 0 ) {
+            } else if (readDirNum * mateDirNum == 1) { // Inversion
+                if (readDirNum == 1 && mlen != 0 ) {
                     if (mlen < -3 * maxReadLength) {
                         if (svStructures.svfinv3.size() == 0
                                 || start - svStructures.svinvfend3 > Configuration.MINSVCDIST * maxReadLength) {
@@ -1924,9 +2096,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             sclip.varsCount = 0;
                             svStructures.svfinv3.add(sclip);
                         }
-                        addSV(getLastSVStructure(svStructures.svfinv3), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft3, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                        addSV(getLastSVStructure(svStructures.svfinv3), start, end, mateStart,
+                                mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft3, maxReadLength/2.0,
+                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svinvfend3 = end;
                         getLastSVStructure(svStructures.svfinv3).disc++;
                     } else if (mlen > 3 * maxReadLength) {
@@ -1936,9 +2108,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             sclip.varsCount = 0;
                             svStructures.svfinv5.add(sclip);
                         }
-                        addSV(getLastSVStructure(svStructures.svfinv5), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft3, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                        addSV(getLastSVStructure(svStructures.svfinv5), start, end, mateStart,
+                                mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft3, maxReadLength/2.0,
+                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svinvfend5 = end;
                         getLastSVStructure(svStructures.svfinv5).disc++;
                     }
@@ -1950,9 +2122,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             sclip.varsCount = 0;
                             svStructures.svrinv3.add(sclip);
                         }
-                        addSV(getLastSVStructure(svStructures.svrinv3), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft5, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                        addSV(getLastSVStructure(svStructures.svrinv3), start, end, mateStart,
+                                mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft5, maxReadLength/2.0,
+                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svinvrend3 = end;
                         getLastSVStructure(svStructures.svrinv3).disc++;
 
@@ -1963,9 +2135,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                             sclip.varsCount = 0;
                             svStructures.svrinv5.add(sclip);
                         }
-                        addSV(getLastSVStructure(svStructures.svrinv5), start, end, mstart,
-                                mend, dirNum, rlen2, mlen, soft5, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                        addSV(getLastSVStructure(svStructures.svrinv5), start, end, mateStart,
+                                mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft5, maxReadLength/2.0,
+                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svinvrend5 = end;
                         getLastSVStructure(svStructures.svrinv5).disc++;
                     }
@@ -1987,14 +2159,14 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             }
         } else { // Inter-chr translocation
             // to be implemented
-            String mchr = getMateReferenceName(record);
+            final String mchr = getMateReferenceName(record);
             if (record.getStringAttribute(SAMTag.MC.name()) != null
                     && MC_Z_NUM_S_ANY_NUM_S.matcher(record.getStringAttribute(SAMTag.MC.name())).find()) {
                 // Ignore those with mates mapped with softcliping at both ends
             } else if (record.getIntegerAttribute(SAMTag.MQ.name()) != null
                     && record.getIntegerAttribute(SAMTag.MQ.name()) < 15) {
                 // Ignore those with mate mapping quality less than 15
-            } else if (dirNum == 1) {
+            } else if (readDirNum == 1) {
                 if (svStructures.svffus.get(mchr) == null
                         || start - svStructures.svfusfend.get(mchr) > Configuration.MINSVCDIST * maxReadLength) {
                     Sclip sclip = new Sclip();
@@ -2004,9 +2176,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     svStructures.svffus.put(mchr, sclips);
                 }
                 int svn = svStructures.svffus.get(mchr).size() - 1;
-                addSV(svStructures.svffus.get(mchr).get(svn), start, end, mstart,
-                        mend, dirNum, rlen2, 0, soft3, maxReadLength/2.0,
-                        queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                addSV(svStructures.svffus.get(mchr).get(svn), start, end, mateStart,
+                        mend, readDirNum, totalLengthIncludingSoftClipped, 0, soft3, maxReadLength/2.0,
+                        queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                 svStructures.svfusfend.put(mchr, end);
                 svStructures.svffus.get(mchr).get(svn).disc++;
             } else {
@@ -2019,9 +2191,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     svStructures.svrfus.put(mchr, sclips);
                 }
                 int svn = svStructures.svrfus.get(mchr).size() - 1;
-                addSV(svStructures.svrfus.get(mchr).get(svn), start, end, mstart,
-                        mend, dirNum, rlen2, 0, soft5, maxReadLength/2.0,
-                        queryQuality.charAt(15) - 33, record.getMappingQuality(), nm);
+                addSV(svStructures.svrfus.get(mchr).get(svn), start, end, mateStart,
+                        mend, readDirNum, totalLengthIncludingSoftClipped, 0, soft5, maxReadLength/2.0,
+                        queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
                 svStructures.svfusrend.put(mchr, end);
                 svStructures.svrfus.get(mchr).get(svn).disc++;
             }
@@ -2055,19 +2227,19 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * Add discordant count
      * @param svref
      */
-    private static void adddisccnt(Sclip svref) {
+    private void adddisccnt(Sclip svref) {
         svref.disc++;
     }
 
-    private static Sclip getLastSVStructure(List<Sclip> svStructure) {
+    private Sclip getLastSVStructure(List<Sclip> svStructure) {
         return svStructure.get(svStructure.size() - 1);
     }
 
     /**
-     * Add structural variant to current structural variant structure and update
+     * Add possible structural variant to current structural variant structure and update
      * @param sdref current structural variant structure
      */
-    private  static void addSV (Sclip sdref,
+    private  void addSV(Sclip sdref,
                               int start_s,
                               int end_e,
                               int mateStart_ms,
@@ -2125,7 +2297,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * @param record current SAMRecord from the parsed BAM
      * @return base quality string contains only values less then MAX_PHRED_SCORE
      */
-    static String getBaseQualityString(SAMRecord record) {
+    String getBaseQualityString(SAMRecord record) {
         try {
             return record.getBaseQualityString();
         } catch(IllegalArgumentException iae) {
@@ -2140,6 +2312,20 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 qsChar[i] = (char)(q + 33);
             }
             return new String(qsChar);
+        }
+    }
+
+    class Offset {
+        int offset; //$offset
+        String sequence; //$ss
+        String qualitySequence; //$q
+        Integer offsetNumberOfMismatches; //$tnm
+
+        public Offset(int offset, String sequence, String qualitySequence, Integer offsetNumberOfMismatches) {
+            this.offset = offset;
+            this.sequence = sequence;
+            this.qualitySequence = qualitySequence;
+            this.offsetNumberOfMismatches = offsetNumberOfMismatches;
         }
     }
 }

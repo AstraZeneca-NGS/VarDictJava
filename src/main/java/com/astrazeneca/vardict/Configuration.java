@@ -3,10 +3,15 @@ package com.astrazeneca.vardict;
 import com.astrazeneca.vardict.printers.PrinterType;
 import htsjdk.samtools.ValidationStringency;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-
 public class Configuration {
+    public static final String HG19 = "/ngs/reference_data/genomes/Hsapiens/hg19/seq/hg19.fa";
+    public static final String HG38 = "/ngs/reference_data/genomes/Hsapiens/hg38/seq/hg38.fa";
+    public static final String MM10 = "/ngs/reference_data/genomes/Mmusculus/mm10/seq/mm10.fa";
+
     /**
      * Print a header row describing columns
      */
@@ -25,7 +30,7 @@ public class Configuration {
     public int numberNucleotideToExtend; // -x
     /**
      * Indicate whether is zero-based coordinates, as IGV does
-     * When use -R option, it is set to false TODO: is it so? In perl it doesn't changed
+     * When use -R option, it is set to false
      */
     public Boolean zeroBased; // -z
     /**
@@ -205,7 +210,7 @@ public class Configuration {
     /**
      * The adaptor size
      */
-    public static final int adseed = 6;
+    public static final int ADSEED = 6;
     /**
      *
      * Indicate to turn off chimeric reads filtering.  Chimeric reads are artifacts from library construction,
@@ -280,6 +285,20 @@ public class Configuration {
      * Maximum of exception to continue work
      */
     public static int MAX_EXCEPTION_COUNT = 10;
+
+    /**
+     * List of adaptor sequences
+     */
+    public List<String> adaptor = new ArrayList<>();
+
+    /**
+     * In CRISPR mode, the minimum amount in bp that a read needs to overlap with cutting site.
+     */
+    public int crisprFilteringBp = 0;
+    /**
+     * The genomic position that CRISPR/Cas9 suppose to cut, typically 3bp from the PAM NGG site and within the guide.
+     */
+    public int crisprCuttingSite = 0;
 
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;

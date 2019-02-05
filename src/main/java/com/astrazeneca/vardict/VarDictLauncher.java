@@ -24,23 +24,28 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.astrazeneca.vardict.Utils.*;
 import static com.astrazeneca.vardict.data.Patterns.SAMPLE_PATTERN;
 import static com.astrazeneca.vardict.data.Patterns.SAMPLE_PATTERN2;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
-import static com.astrazeneca.vardict.Utils.join;
-import static com.astrazeneca.vardict.Utils.toInt;
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.INTEGER_ONLY;
 
+/**
+ * Class starts the Vardict for current run
+ */
 public class VarDictLauncher {
     private List<List<Region>> segments;
-
-    ReferenceResource referenceResource;
+    private ReferenceResource referenceResource;
 
     public VarDictLauncher(ReferenceResource referenceResource) {
         this.referenceResource = referenceResource;
     }
 
+    /**
+     * Initialize resources and starts the needed VarDict mode (amplicon/simple/somatic).
+     * @param config
+     */
     public void start(Configuration config) {
         initResources(config);
 
@@ -61,6 +66,11 @@ public class VarDictLauncher {
             mode.parallel();
     }
 
+    /**
+     * Initializes resources:read sample names, chromosome names and lengths from BAM file, read segments
+     * from BED file or region (-R option) and initialize GlobalREadOnlyScope.
+     * @param conf Vardict Configuration (parameters from command line)
+     */
     private void initResources(Configuration conf) {
         try {
             Map<String, Integer> chrLengths = readChr(conf.bam.getBamX());
@@ -88,8 +98,20 @@ public class VarDictLauncher {
                     segments = builder.buildRegions(segraw, zeroBased);
                 }
             }
-
-            GlobalReadOnlyScope.init(conf, chrLengths, samples._1, samples._2, ampliconBasedCalling);
+            //Fill adaptor maps
+            Map<String, Integer> adaptorForward = new HashMap<>();
+            Map<String, Integer> adaptorReverse = new HashMap<>();
+            if (!conf.adaptor.isEmpty()) {
+                for(String sequence : conf.adaptor) {
+                    for (int i = 0; i <= 6 && i + Configuration.ADSEED < sequence.length(); i++) {
+                        String forwardSeed = substr(sequence, i, Configuration.ADSEED);
+                        String reverseSeed = complement(reverse(forwardSeed));
+                        adaptorForward.put(forwardSeed, i + 1);
+                        adaptorReverse.put(reverseSeed, i + 1);
+                    }
+                }
+            }
+            GlobalReadOnlyScope.init(conf, chrLengths, samples._1, samples._2, ampliconBasedCalling, adaptorForward, adaptorReverse);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -103,7 +125,7 @@ public class VarDictLauncher {
      * and list of lines from BED file
      * @throws IOException
      */
-    private static Tuple.Tuple3<String, Boolean, List<String>> readBedFile(Configuration conf) throws IOException {
+    private Tuple.Tuple3<String, Boolean, List<String>> readBedFile(Configuration conf) throws IOException {
         String ampliconParameters = conf.ampliconBasedCalling;
         Boolean zeroBased = conf.zeroBased;
         List<String> segraw = new ArrayList<>();
@@ -170,7 +192,13 @@ public class VarDictLauncher {
         }
     }
 
-    private static Tuple.Tuple2<String, String> getSampleNames(Configuration conf) {
+    /**
+     * Fills the sample name for simple and amplicon modes.
+     * If sample name wasn't set with command line parameter -N, it will be set to pattern contains name of BAM file.
+     * @param conf configuration of Vardict
+     * @return tuple of sample for the BAM and empty sample for the second (absent) BAM
+     */
+    private Tuple.Tuple2<String, String> getSampleNames(Configuration conf) {
         String sample = null;
         String samplem = "";
 
@@ -199,7 +227,13 @@ public class VarDictLauncher {
         return tuple(sample, samplem);
     }
 
-    private static Tuple.Tuple2<String, String> getSampleNamesSomatic(Configuration conf) {
+    /**
+     * Fills the sample name for somatic modes.
+     * If sample name wasn't set with command line parameter -N, it will be set to pattern contains name of BAM file.
+     * @param conf configuration of Vardict
+     * @return tuple of sample for the first BAM and sample for the second BAM
+     */
+    private Tuple.Tuple2<String, String> getSampleNamesSomatic(Configuration conf) {
         Tuple.Tuple2<String, String> samples = getSampleNames(conf);
         String sample = samples._1;
         String samplem = samples._2;

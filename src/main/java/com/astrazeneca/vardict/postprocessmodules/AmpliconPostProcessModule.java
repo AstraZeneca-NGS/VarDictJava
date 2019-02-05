@@ -25,74 +25,79 @@ public class AmpliconPostProcessModule {
      * Method processed Vars for each amplicon on position.
      * @param rg region
      * @param vars result of calling toVarsBuilder
-     * @param positions map of positon =&gt; (list of (region number, region))
+     * @param ampliconsOnPositions map of position =&gt; (list of (region number, region))
      * @param splice set of strings representing spliced regions
      * @param variantPrinter specific variant printer where output must be print
      */
-    public void process(Region rg, List<Map<Integer, Vars>> vars, Map<Integer, List<Tuple.Tuple2<Integer, Region>>> positions,
-                               final Set<String> splice, VariantPrinter variantPrinter) {
+    public void process(Region rg, List<Map<Integer, Vars>> vars,
+                        Map<Integer, List<Tuple.Tuple2<Integer, Region>>> ampliconsOnPositions,
+                        final Set<String> splice, VariantPrinter variantPrinter) {
 
-        List<Integer> pp = new ArrayList<>(positions.keySet());
-        Collections.sort(pp);
+        List<Integer> positions = new ArrayList<>(ampliconsOnPositions.keySet());
+        Collections.sort(positions);
         int lastPosition = 0;
-        for (Integer p : pp) {
+        for (Integer position : positions) {
             try {
-                lastPosition = p;
-                final List<Tuple.Tuple2<Integer, Region>> v = positions.get(p);
+                lastPosition = position;
+                final List<Tuple.Tuple2<Integer, Region>> ampliconRegions = ampliconsOnPositions.get(position);
                 // good variants
                 List<Tuple.Tuple2<Variant, String>> gvs = new ArrayList<>();
                 //reference variants
                 List<Variant> ref = new ArrayList<>();
-                double maxaf = 0;
-                // vartype may take values SNV (Single Nucleotide Variant), Complex (or MNV (Multiple Nucleotide Variant)), Insertion, Deletion
-                Variant vref;
+
                 List<Variant> vrefList = new ArrayList<>();
-                //DNA sequencing coverage
-                int nocov = 0;
-                //max DNA sequencing coverage (max depth)
-                int maxcov = 0;
                 //good amplicon
                 Set<String> goodmap = new HashSet<>();
                 List<Integer> vcovs = new ArrayList<>();
                 //Contains list of good variants on each amplicon in position
                 Map<Integer, List<Variant>> goodVariantsOnAmp = new LinkedHashMap<>();
-                for (Tuple.Tuple2<Integer, Region> amps : v) {
-                    final int amp = amps._1;
+
+                //DNA sequencing coverage
+                int nocov = 0;
+                //max DNA sequencing coverage (max depth)
+                int maxcov = 0;
+                double maxaf = 0;
+
+                for (Tuple.Tuple2<Integer, Region> amps : ampliconRegions) {
+                    final int ampliconNumber = amps._1;
                     //chromosome name
                     final String chr = amps._2.chr;
                     //start index
-                    final int S = amps._2.start;
+                    final int start = amps._2.start;
                     //end index
-                    final int E = amps._2.end;
+                    final int end = amps._2.end;
 
-                    Vars vtmp = vars.get(amp).get(p);
-                    List<Variant> l = vtmp == null ? null : vtmp.variants;
-                    Variant refAmpP = vtmp == null ? null : vtmp.referenceVariant;
-                    if (l != null && !l.isEmpty()) {
+                    Vars vtmp = vars.get(ampliconNumber).get(position);
+                    List<Variant> variantsOnAmplicon = vtmp == null ? null : vtmp.variants;
+                    Variant refAmplicon = vtmp == null ? null : vtmp.referenceVariant;
+
+                    if (variantsOnAmplicon != null && !variantsOnAmplicon.isEmpty()) {
                         List<Variant> goodVars = new ArrayList<>();
-                        for (Variant tv : l) {
+                        for (Variant tv : variantsOnAmplicon) {
                             vcovs.add(tv.totalPosCoverage);
                             if (tv.totalPosCoverage > maxcov) {
                                 maxcov = tv.totalPosCoverage;
                             }
+                            // vartype may take values SNV (Single Nucleotide Variant),
+                            // Complex (or MNV (Multiple Nucleotide Variant)), Insertion, Deletion
                             tv.vartype = tv.varType();
-                            if (tv.isGoodVar(refAmpP, tv.vartype, splice)) {
-                                gvs.add(tuple(tv, chr + ":" + S + "-" + E));
+                            if (tv.isGoodVar(refAmplicon, tv.vartype, splice)) {
+                                gvs.add(tuple(tv, chr + ":" + start + "-" + end));
                                 goodVars.add(tv);
-                                goodVariantsOnAmp.put(amp, goodVars);
+                                goodVariantsOnAmp.put(ampliconNumber, goodVars);
                                 if (tv.frequency > maxaf) {
                                     maxaf = tv.frequency;
                                 }
-                                goodmap.add(format("%s-%s-%s", amp, tv.refallele, tv.varallele));
+                                goodmap.add(format("%s-%s-%s", ampliconNumber, tv.refallele, tv.varallele));
                             }
                         }
-                    } else if (refAmpP != null) {
-                        vcovs.add(refAmpP.totalPosCoverage);
+                    } else if (refAmplicon != null) {
+                        vcovs.add(refAmplicon.totalPosCoverage);
                     } else {
                         vcovs.add(0);
                     }
-                    if (refAmpP != null) {
-                        ref.add(refAmpP);
+                    if (refAmplicon != null) {
+                        ref.add(refAmplicon);
                     }
                 }
 
@@ -111,13 +116,13 @@ public class AmpliconPostProcessModule {
                     Collections.sort(ref, VAR_TCOV_COMPARATOR);
                 }
 
-                if (gvs.isEmpty()) { // Only referenece
+                if (gvs.isEmpty()) { // Only reference
                     if (instance().conf.doPileup) {
                         if (!ref.isEmpty()) {
                             //vref = ref.get(0);
                             vrefList.add(ref.get(0));
                         } else {
-                            AmpliconOutputVariant outputVariant = new AmpliconOutputVariant(null, rg, null, null, p, 0, nocov, false);
+                            AmpliconOutputVariant outputVariant = new AmpliconOutputVariant(null, rg, null, null, position, 0, nocov, false);
                             variantPrinter.print(outputVariant);
                             continue;
                         }
@@ -131,12 +136,12 @@ public class AmpliconPostProcessModule {
 
                 List<Tuple.Tuple2<Variant, String>> goodVariants = gvs;
                 for (int i = 0; i < vrefList.size(); i++) {
-                    vref = vrefList.get(i);
+                    Variant vref = vrefList.get(i);
                     if (flag) { // different good variants detected in different amplicons
                         String gdnt = gvs.get(0)._1.descriptionString;
                         List<Tuple.Tuple2<Variant, String>> gcnt = new ArrayList<>();
-                        for (Tuple.Tuple2<Integer, Region> amps : v) {
-                            final Vars vtmp = vars.get(amps._1).get(p);
+                        for (Tuple.Tuple2<Integer, Region> amps : ampliconRegions) {
+                            final Vars vtmp = vars.get(amps._1).get(position);
                             final Variant variant = vtmp == null ? null : vtmp.varDescriptionStringToVariants.get(gdnt);
                             if (variant != null && variant.isGoodVar(vtmp.referenceVariant, null, splice)) {
                                 gcnt.add(tuple(variant, amps._2.chr + ":" + amps._2.start + "-" + amps._2.end));
@@ -152,22 +157,21 @@ public class AmpliconPostProcessModule {
                     int currentGvscnt = initialGvscnt;
                     //bad variants
                     List<Tuple.Tuple2<Variant, String>> badVariants = new ArrayList<>();
-                    if (initialGvscnt != v.size() || flag) {
-                        for (Tuple.Tuple2<Integer, Region> amps : v) {
+                    if (initialGvscnt != ampliconRegions.size() || flag) {
+                        for (Tuple.Tuple2<Integer, Region> amps : ampliconRegions) {
                             int amp = amps._1;
                             Region reg = amps._2;
                             if (goodmap.contains(format("%s-%s-%s", amp, vref.refallele, vref.varallele))) {
                                 continue;
                             }
-                            // my $tref = $vars[$amp]->{ $p }->{ VAR }->[0]; ???
                             if (vref.startPosition >= reg.insertStart && vref.endPosition <= reg.insertEnd) {
 
                                 String regStr = reg.chr + ":" + reg.start + "-" + reg.end;
 
-                                if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).variants.size() > 0) {
-                                    badVariants.add(tuple(vars.get(amp).get(p).variants.get(0), regStr));
-                                } else if (vars.get(amp).containsKey(p) && vars.get(amp).get(p).referenceVariant != null) {
-                                    badVariants.add(tuple(vars.get(amp).get(p).referenceVariant, regStr));
+                                if (vars.get(amp).containsKey(position) && vars.get(amp).get(position).variants.size() > 0) {
+                                    badVariants.add(tuple(vars.get(amp).get(position).variants.get(0), regStr));
+                                } else if (vars.get(amp).containsKey(position) && vars.get(amp).get(position).referenceVariant != null) {
+                                    badVariants.add(tuple(vars.get(amp).get(position).referenceVariant, regStr));
                                 } else {
                                     badVariants.add(tuple(null, regStr));
                                 }
@@ -185,7 +189,7 @@ public class AmpliconPostProcessModule {
                     if (vref.vartype.equals("Complex")) {
                         vref.adjComplex();
                     }
-                    AmpliconOutputVariant outputVariant = new AmpliconOutputVariant(vref, rg, goodVariants, badVariants, p, currentGvscnt, nocov, flag);
+                    AmpliconOutputVariant outputVariant = new AmpliconOutputVariant(vref, rg, goodVariants, badVariants, position, currentGvscnt, nocov, flag);
                     variantPrinter.print(outputVariant);
                 }
             } catch (Exception exception) {
@@ -199,12 +203,12 @@ public class AmpliconPostProcessModule {
      * @param goodVariantsOnAmp map of amplicons and lists of variants
      * @return number of amplicons
      */
-    private static int countVariantOnAmplicons(Variant vref, Map<Integer, List<Variant>> goodVariantsOnAmp) {
+    private int countVariantOnAmplicons(Variant vref, Map<Integer, List<Variant>> goodVariantsOnAmp) {
         int gvscnt = 0;
         for (Map.Entry<Integer, List<Variant>> entry: goodVariantsOnAmp.entrySet()) {
             List<Variant> variants = entry.getValue();
             for(Variant variant : variants) {
-                if (variant.equals(vref)) {
+                if (variant.refallele.equals(vref.refallele) && variant.varallele.equals(vref.varallele)) {
                     gvscnt++;
                 }
             }
@@ -218,16 +222,16 @@ public class AmpliconPostProcessModule {
      * @param gvs good variants per start-end
      * @param vrefList list of variants on all amplicons in position
      */
-    private static void fillVrefList(List<Tuple.Tuple2<Variant, String>> gvs, List<Variant> vrefList) {
+    private void fillVrefList(List<Tuple.Tuple2<Variant, String>> gvs, List<Variant> vrefList) {
         for (Tuple.Tuple2<Variant, String> goodVariant : gvs) {
             boolean variantWasAdded = false;
+            Variant variantToAdd = goodVariant._1;
             for (Variant var : vrefList) {
-                if (var.varallele.equals(goodVariant._1.varallele)
-                        && var.refallele.equals(goodVariant._1.refallele)) {
+                if (var.varallele.equals(goodVariant._1.varallele) && var.refallele.equals(goodVariant._1.refallele)) {
                     variantWasAdded = true;
                 }
             }
-            if (!variantWasAdded) vrefList.add(goodVariant._1);
+            if (!variantWasAdded) vrefList.add(variantToAdd);
         }
     }
     /**
@@ -237,20 +241,26 @@ public class AmpliconPostProcessModule {
      * @param goodVariantsOnAmp map amplicons on list of its variants.
      * @return true if variants are differ, false if not
      */
-    private static boolean isAmpBiasFlag(Map<Integer, List<Variant>> goodVariantsOnAmp) {
+    private boolean isAmpBiasFlag(Map<Integer, List<Variant>> goodVariantsOnAmp) {
         if (goodVariantsOnAmp.isEmpty()) return false;
-        for (int i = goodVariantsOnAmp.keySet().iterator().next(); i < goodVariantsOnAmp.keySet().size() - 1; i++) {
-            List<Variant> goodVariantListFirst = goodVariantsOnAmp.get(i);
-            List<Variant> goodVariantListSecond = goodVariantsOnAmp.get(i + 1);
+        List<Integer> ampliconList = new ArrayList<>(goodVariantsOnAmp.keySet());
+        Collections.sort(ampliconList);
+        int ampliconLength = ampliconList.size() - 1;
 
-            if (goodVariantListSecond == null || goodVariantListFirst.size() != goodVariantListSecond.size()) {
+        for (int i = 0; i < ampliconLength; i++) {
+            int currentAmplicon = ampliconList.get(i);
+            int nextAmplicon = ampliconList.get(i + 1);
+            List<Variant> goodVariantListCurrentAmp = goodVariantsOnAmp.get(currentAmplicon);
+            List<Variant> goodVariantListNextAmp = goodVariantsOnAmp.get(nextAmplicon);
+
+            if (goodVariantListNextAmp == null || goodVariantListCurrentAmp.size() != goodVariantListNextAmp.size()) {
                 return true;
             }
-            Collections.sort(goodVariantListFirst, VAR_TCOV_COMPARATOR);
-            Collections.sort(goodVariantListSecond, VAR_TCOV_COMPARATOR);
-            for (int j = 0; j < goodVariantListFirst.size(); j++) {
-                Variant var1 = goodVariantListFirst.get(j);
-                Variant var2 = goodVariantListSecond.get(j);
+            Collections.sort(goodVariantListCurrentAmp, VAR_TCOV_COMPARATOR);
+            Collections.sort(goodVariantListNextAmp, VAR_TCOV_COMPARATOR);
+            for (int j = 0; j < goodVariantListCurrentAmp.size(); j++) {
+                Variant var1 = goodVariantListCurrentAmp.get(j);
+                Variant var2 = goodVariantListNextAmp.get(j);
                 if (!var1.descriptionString.equals(var2.descriptionString)) {
                     return true;
                 }
@@ -258,5 +268,4 @@ public class AmpliconPostProcessModule {
         }
         return false;
     }
-
 }

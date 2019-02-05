@@ -103,13 +103,11 @@ time $VARDICTJAVA \
 	| grep -v -f $CONFIRMED_DIFFERENCES_FILE \
 	> $VARDICT_OUT_SORT_JAVA
 
-# Note: The '-F 0x504' flag can be deleted after Perl fix for filter unmapped reads by default
 echo Running VarDict perl
 time $VARDICTPERL \
 		-G $FASTA_PATH \
 		$PARAMETERS \
 		-b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
-		-F 0x504 \
 		$BED_SPLIT_PATH \
 	| tee $VARDICT_OUT_PERL \
 	| sort \

@@ -10,11 +10,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The data after CigarParser step in pipeline. Used for creating process Variation in
- * Variation Realigner and Structural Variants analysis..
+ * The data created after CigarParser step in pipeline. Used for process Variation in
+ * Variation Realigner and Structural Variants analysis (realign it and searching for structural variants).
  */
 public class VariationData {
-
     public Map<Integer, VariationMap<String, Variation>> nonInsertionVariants;
     public Map<Integer, VariationMap<String, Variation>> insertionVariants;
     public Map<Integer, Map<String, Integer>> positionToInsertionCount;
@@ -28,8 +27,6 @@ public class VariationData {
     public Map<Integer, Map<String, Integer>> mnp;
     public Map<String, int[]> spliceCount;
     public double duprate;
-
-    public VariationData() {}
 
 }
 

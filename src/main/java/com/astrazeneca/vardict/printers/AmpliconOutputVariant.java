@@ -10,6 +10,9 @@ import java.util.List;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.join;
 
+/**
+ * Variant created in Amplicon mode. Must contains 38 total fields.
+ */
 public class AmpliconOutputVariant extends OutputVariant {
     private int totalCoverage;
     private int variantCoverage;
@@ -29,9 +32,6 @@ public class AmpliconOutputVariant extends OutputVariant {
     private double hifreq;
     private double extrafreq;
 
-    private int shift3;
-    private double msi;
-    private int msint;
     private double nm;
     private int hicnt;
     private int hicov;
@@ -108,9 +108,7 @@ public class AmpliconOutputVariant extends OutputVariant {
     }
 
     @Override
-    public String outputString(String delimiter) {
-        this.delimiter = delimiter;
-
+    public String toString() {
         // 38 columns
         String outputVariant = join(delimiter,
                 sample,
@@ -159,6 +157,12 @@ public class AmpliconOutputVariant extends OutputVariant {
         return outputVariant;
     }
 
+    /**
+     * The line will appear in output if -D (debug mode) is enabled. It contains information about variant on each amplicon
+     * @param delm delimiter to split the data, default is space.
+     * @param variant initial variant to print
+     * @return variant information
+     */
     public String debugAmpVariant(String delm, Variant variant) {
         return join(delm,
                 variant.totalPosCoverage,

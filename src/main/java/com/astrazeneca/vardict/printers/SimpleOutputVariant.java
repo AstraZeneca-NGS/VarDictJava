@@ -7,7 +7,9 @@ import java.text.DecimalFormat;
 
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.join;
-
+/**
+ * Variant created in Simple mode. Must contains 36 total fields.
+ */
 public class SimpleOutputVariant extends OutputVariant {
     public int totalCoverage;
     public int variantCoverage;
@@ -27,14 +29,12 @@ public class SimpleOutputVariant extends OutputVariant {
     public double hifreq;
     public double extrafreq;
 
-    public int shift3;
-    public double msi;
-    public int msint;
     public double nm;
     public int hicnt;
     public int hicov;
 
     public double duprate;
+    public int crispr;
     public String sv;
 
     public SimpleOutputVariant(Variant variant, Region region, String sv, int position) {
@@ -77,6 +77,7 @@ public class SimpleOutputVariant extends OutputVariant {
             this.rightSequence = variant.rightseq.isEmpty() ? "0" : variant.rightseq;
             this.varType = variant.vartype;
             this.duprate = variant.duprate;
+            this.crispr = variant.crispr;
             this.DEBUG = variant.DEBUG;
         }
         this.region = region.chr + ":" + region.start + "-" + region.end;
@@ -84,8 +85,7 @@ public class SimpleOutputVariant extends OutputVariant {
     }
 
     @Override
-    public String outputString(String delimiter) {
-        this.delimiter = delimiter;
+    public String toString() {
         // 36 columns
         String outputVariant = join(delimiter,
                 sample,
@@ -126,6 +126,10 @@ public class SimpleOutputVariant extends OutputVariant {
                 duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate),
                 sv
         );
+
+        if (instance().conf.crisprCuttingSite != 0) {
+            outputVariant = join(delimiter, outputVariant, crispr);
+        }
         if (instance().conf.debug) {
             outputVariant = join(delimiter, outputVariant, DEBUG);
         }

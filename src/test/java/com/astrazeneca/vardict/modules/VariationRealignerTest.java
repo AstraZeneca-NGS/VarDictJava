@@ -1,14 +1,14 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
-import com.astrazeneca.vardict.collection.Tuple;
+import com.astrazeneca.vardict.data.Match35;
 import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.astrazeneca.vardict.modules.VariationRealigner.find35match;
+import java.util.HashMap;
 
 public class VariationRealignerTest {
 
@@ -28,48 +28,36 @@ public class VariationRealignerTest {
 
     @Test
     public void testIsMatch() {
-        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "");
+        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "", new HashMap<>(), new HashMap<>());
 
-        Assert.assertTrue(VariationRealigner.ismatch("AAAAAAAAA","AAAAAAAAA", 1));
-        Assert.assertTrue(VariationRealigner.ismatch("AAAAAAAAA","AAAAAAAAA", -1));
-        Assert.assertTrue(VariationRealigner.ismatch("ACGTACGTACGTACGT","AAGTACTTACGTACGT", 1));
-        Assert.assertTrue(VariationRealigner.ismatch("ACGTACGTACGTACGT", "AAGTACTTACGTACGT", 1));
-        Assert.assertTrue(VariationRealigner.ismatch("ACGTACGTACGTACGT","AAGTACTTACGT", 1));
+        Assert.assertTrue(new VariationRealigner().ismatch("AAAAAAAAA","AAAAAAAAA", 1));
+        Assert.assertTrue(new VariationRealigner().ismatch("AAAAAAAAA","AAAAAAAAA", -1));
+        Assert.assertTrue(new VariationRealigner().ismatch("ACGTACGTACGTACGT","AAGTACTTACGTACGT", 1));
+        Assert.assertTrue(new VariationRealigner().ismatch("ACGTACGTACGTACGT", "AAGTACTTACGTACGT", 1));
+        Assert.assertTrue(new VariationRealigner().ismatch("ACGTACGTACGTACGT","AAGTACTTACGT", 1));
 
-        Assert.assertFalse(VariationRealigner.ismatch("ACGTACGTACGT","AAGTACTTACGT", 1));
-        Assert.assertFalse(VariationRealigner.ismatch("ACGTCAGCAT","ACGACTGACT", 1));
+        Assert.assertFalse(new VariationRealigner().ismatch("ACGTACGTACGT","AAGTACTTACGT", 1));
+        Assert.assertFalse(new VariationRealigner().ismatch("ACGTCAGCAT","ACGACTGACT", 1));
     }
 
         @DataProvider(name = "find35MatchTestDataProvider")
     public Object[][] find35MatchTestDataProvoder() {
         return new Object[][] {
-                {"ACGTACGTACGTACGTACGTACGT", "TGCATGCATGCATGCATGCATGCA", new ExpectedMatchInfo(1, 0, 24)},
-                {"ACGTACGTACGTACGTACGTACGT", "TGCATGCATGCCTGCATGCATGCA", new ExpectedMatchInfo(1, 0, 23)},
-                {"ACGTACGTACGTACGTACGTACGT", "TGCATGCATGCATGGGTGCATGCA", new ExpectedMatchInfo(1, 0, 22)},
-                {"ACGTACGTACGTACGTACGTACGT", "TGCATGCATGCATGGGTGCAAAAA", new ExpectedMatchInfo(13, 0, 12)},
-                {"ACGTACGTACGTACGTACGTACGT", "AAAATGCATGCATGGGTGCAAAAA", new ExpectedMatchInfo(11, 14, 10)},
+                {"ACGTACGTACGTACGTACGTACGT", "TGCATGCATGCATGCATGCATGCA", new Match35(0, 1, 24)},
+                {"ACGTACGTACGTACGTACGTACGT", "TGCATGCATGCCTGCATGCATGCA", new Match35(0, 1, 23)},
+                {"ACGTACGTACGTACGTACGTACGT", "TGCATGCATGCATGGGTGCATGCA", new Match35(0, 1, 22)},
+                {"ACGTACGTACGTACGTACGTACGT", "TGCATGCATGCATGGGTGCAAAAA", new Match35(0, 13, 12)},
+                {"ACGTACGTACGTACGTACGTACGT", "AAAATGCATGCATGGGTGCAAAAA", new Match35(14, 11, 10)},
         };
     }
 
     @Test(dataProvider = "find35MatchTestDataProvider")
-    public void find35MatchTest(String seq5, String seq3, ExpectedMatchInfo expected) {
-        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "");
-        Tuple.Tuple3<Integer, Integer, Integer> match = find35match(seq5, seq3);
-        Assert.assertEquals(match._1, expected.p3);
-        Assert.assertEquals(match._2, expected.p5);
-        Assert.assertEquals(match._3, expected.match);
+    public void find35MatchTest(String seq5, String seq3, Match35 expected) {
+        GlobalReadOnlyScope.init(new Configuration(), null, null, null, "", new HashMap<>(), new HashMap<>());
+        Match35 match35 = new VariationRealigner().find35match(seq5, seq3);
+        Assert.assertEquals(match35.matched5end, expected.matched5end);
+        Assert.assertEquals(match35.matched3End, expected.matched3End);
+        Assert.assertEquals(match35.maxMatchedLength, expected.maxMatchedLength);
 
-    }
-
-    private class ExpectedMatchInfo {
-        private final Integer p5;
-        private final Integer p3;
-        private final Integer match;
-
-        ExpectedMatchInfo(int p5, int p3, int match) {
-            this.p5 = p5;
-            this.p3 = p3;
-            this.match = match;
-        }
     }
 }

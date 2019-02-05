@@ -1,4 +1,4 @@
-Simple,hs38DH.fa,Count-Depth-With-Ns.bam,chr1,391310,391333,-K -p -r 1 -q 2 -f 0.0
+Simple,hs38DH.fa,Count-Depth-With-Ns.bam,chr1,391310,391333,-K -p -r 1 -q 2 -f 0.0 -k 0
 Count-Depth-With-Ns	testbed	chr1	391333	391333	A	A	3	0	0	3	0	0	A/A	0	0;0	13.0	0	36.0	0	0	6.000	1.0000	0	0	0	0	0	3	3	0	0	chr1:391311-391333		0	0
 Count-Depth-With-Ns	testbed	chr1	391332	391332	C	C	3	0	0	3	0	0	C/C	0	0;0	12.0	0	36.0	0	0	6.000	1.0000	0	0	0	0	0	3	3	0	0	chr1:391311-391333		0	0
 Count-Depth-With-Ns	testbed	chr1	391329	391329	G	G	3	0	0	3	0	0	G/G	0	0;0	9.0	0	36.0	0	0	6.000	1.0000	0	0	0	0	0	3	3	0	0	chr1:391311-391333		0	0

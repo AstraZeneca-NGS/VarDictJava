@@ -1,7 +1,7 @@
 package com.astrazeneca.vardict.data.scopedata;
 
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
+import com.astrazeneca.vardict.data.CurrentSegment;
 import com.astrazeneca.vardict.data.SVStructures;
 import com.astrazeneca.vardict.variations.Sclip;
 import com.astrazeneca.vardict.variations.Variation;
@@ -10,10 +10,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The data after variation realigner and structural variants steps in pipeline. Used for creating Variants from Variations.
+ * The data created after variation realigner and structural variants steps in pipeline.
+ * Used for creating Variants from Variations in toVarsBuilder step.
  */
 public class RealignedVariationData {
-
     public final Map<Integer, VariationMap<String, Variation>> nonInsertionVariants;
     public final Map<Integer, VariationMap<String, Variation>> insertionVariants;
     public final Map<Integer, Sclip> softClips5End;
@@ -22,7 +22,7 @@ public class RealignedVariationData {
     public final Integer maxReadLength;
     public final SVStructures svStructures;
     public final double duprate;
-    public final Tuple.Tuple3<String, Integer, Integer> CURSEG;
+    public final CurrentSegment CURSEG;
     public final Map<Integer, List<Sclip>> SOFTP2SV;
     public final Scope<VariationData> previousScope;
 
@@ -34,7 +34,7 @@ public class RealignedVariationData {
                                   Integer maxReadLength,
                                   double duprate,
                                   SVStructures svStructures,
-                                  Tuple.Tuple3<String, Integer, Integer> CURSEG,
+                                  CurrentSegment CURSEG,
                                   Map<Integer, List<Sclip>> SOFTP2SV,
                                   Scope<VariationData> previousScope) {
         this.softClips3End = softClips3End;
