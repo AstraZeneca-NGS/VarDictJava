@@ -1,10 +1,13 @@
 package com.astrazeneca.vardict;
 
+import com.astrazeneca.vardict.data.Region;
 import htsjdk.samtools.SAMRecord;
 import htsjdk.samtools.util.SequenceUtil;
 
 import java.text.DecimalFormat;
 import java.util.*;
+
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 
 public final class Utils {
 
@@ -244,15 +247,22 @@ public final class Utils {
         return htsjdk.samtools.util.StringUtil.byteToChar(base);
     }
 
-    public static String correctChr(Map<String, Integer> chrs, String chr) {
-        if (!chrs.containsKey(chr)) {
-            if (chr.startsWith("chr")) {
-                chr = chr.substring("chr".length());
-            } else {
-                chr = "chr" + chr;
-            }
+    public static void printExceptionAndContinue(Exception exception, String place, String placeDef, Region region) {
+        String firstPart = "There was Exception while processing " + place + " on " + placeDef;
+        String secondPart = ". The processing will be continued from the next " + place + ".";
+        if (region != null) {
+            System.err.println(firstPart + " on region " + region.printRegion() + secondPart);
+            exception.printStackTrace();
+        } else {
+            System.err.println(firstPart + " but region is undefined" + secondPart);
+            exception.printStackTrace();
         }
-        return chr;
-    }
+        int currentCount = instance().conf.exceptionCounter.incrementAndGet();
 
+        if (currentCount > Configuration.MAX_EXCEPTION_COUNT) {
+            System.err.println("VarDictJava fails (there were " + instance().conf.exceptionCounter.get()
+                    + " continued exceptions during the run).");
+            throw new RuntimeException(exception);
+        }
+    }
 }

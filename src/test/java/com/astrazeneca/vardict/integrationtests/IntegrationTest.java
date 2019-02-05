@@ -1,11 +1,12 @@
 package com.astrazeneca.vardict.integrationtests;
 
 import com.astrazeneca.vardict.Configuration;
+import com.astrazeneca.vardict.data.ReferenceResource;
+import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
 import com.astrazeneca.vardict.integrationtests.utils.CSVReferenceManager;
 import com.astrazeneca.vardict.integrationtests.utils.OutputFileCreator;
 import com.astrazeneca.vardict.integrationtests.utils.VarDictInput;
 import com.astrazeneca.vardict.*;
-import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.ParseException;
 import org.mockito.InjectMocks;
 import org.mockito.Mockito;
@@ -31,7 +32,7 @@ public class IntegrationTest {
     private ReferenceResource referenceResource;
 
     @InjectMocks
-    private VarDict vardict;
+    private VarDictLauncher vardictLauncher;
 
     private static class TestCase {
         VarDictInput input;
@@ -64,6 +65,7 @@ public class IntegrationTest {
 
     @AfterMethod
     public void cleanUpStreams() throws IOException {
+        GlobalReadOnlyScope.clear();
         System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out)));
         outContent.close();
     }
@@ -91,7 +93,7 @@ public class IntegrationTest {
         assertResults(testCase);
     }
 
-    private void assertResults(TestCase testCase) throws IOException {
+    private void assertResults(TestCase testCase) {
         String actualOutput = outContent.toString();
         if(!testCase.output.equals(actualOutput)) {
             File actualJson = OutputFileCreator.fileCreator(testCase.input.toString(), "IntegrationTestActual", actualOutput);
@@ -145,9 +147,9 @@ public class IntegrationTest {
 
 
     private void runVarDict(String[] args) throws ParseException, IOException {
-        Configuration conf = new Main().run(new BasicParser().parse(Main.buildOptions(), args));
-        vardict = new VarDict(conf, referenceResource);
-        vardict.start();
+        Configuration conf = CmdParser.parseParams(args);
+        vardictLauncher = new VarDictLauncher(referenceResource);
+        vardictLauncher.start(conf);
     }
 
     public static File makeBedFile(VarDictInput varDictInput) throws IOException {

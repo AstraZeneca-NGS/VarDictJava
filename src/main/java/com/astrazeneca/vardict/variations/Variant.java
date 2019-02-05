@@ -2,11 +2,13 @@ package com.astrazeneca.vardict.variations;
 
 import com.astrazeneca.vardict.data.Region;
 
-import java.io.PrintStream;
 import java.text.DecimalFormat;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.join;
 import static com.astrazeneca.vardict.data.Patterns.ANY_SV;
 import static com.astrazeneca.vardict.Utils.substr;
@@ -17,7 +19,7 @@ import static com.astrazeneca.vardict.Utils.substr;
 public class Variant {
 
     /**
-     * Variant description string
+     * Variant description string $n
      * Description string format:
      * 1). single letter                   - for SNPs
      * 2). + sequence                      - for insertions
@@ -27,72 +29,72 @@ public class Variant {
      * 6). ... ^ number                    - followed by deletion
      * 7). ... &amp; sequence                  - for insertion/deletion variants followed by matched sequence
      */
-    public String n;
+    public String descriptionString;
 
     /**
-     * Position coverage
+     * Position coverage $ cov
      */
-    public int cov;
+    public int positionCoverage;
 
     /**
-     * Forward strand reads count for variant
+     * Forward strand reads count for variant $fwd
      */
-    public int fwd;
+    public int varsCountOnForward;
 
     /**
-     * Reverse strand reads count for variant
+     * Reverse strand reads count for variant  $rev
      */
-    public int rev;
+    public int varsCountOnReverse;
 
     /**
-     * Strand bias flag (0, 1 or 2)
+     * Strand bias flag (0, 1 or 2) $bias
      */
-    public String bias = "0";
+    public String strandBiasFlag = "0";
 
     /**
-     * Variant frequency
+     * Variant frequency $freq
      */
-    public double freq;
+    public double frequency;
 
     /**
-     * Mean variant position in the read
+     * Mean variant position in the read $pmean
      */
-    public double pmean;
+    public double meanPosition;
 
     /**
-     * Flag that is true when variant is found in at least 2 different positions
+     * Flag that is true when variant is found in at least 2 different positions $pstd
      */
-    public boolean pstd;
+    public boolean isAtLeastAt2Positions;
 
     /**
-     * Mean base quality for variant
+     * Mean base quality for variant $pmean
      */
-    public double qual;
+    public double meanQuality;
 
     /**
-     * Flag that is 1 when variant is read with at least 2 different qualities
+     * Flag that is true when variant is read with at least 2 different qualities $qstd
      */
-    public boolean qstd;
+    public boolean hasAtLeast2DiffQualities;
 
     /**
-     * Mean mapping quality for variant
+     * Mean mapping quality for variant $mapq
      */
-    public double mapq;
+    public double meanMappingQuality;
 
     /**
-     * Ratio of high-quality reads to low-quality reads
+     * Ratio of high-quality reads to low-quality reads $qratio
      */
-    public double qratio;
+    public double highQualityToLowQualityRatio;
 
     /**
-     * Variant frequency for high-quality reads
+     * Variant frequency for high-quality reads $hifreq
      */
-    public double hifreq;
+    public double highQualityReadsFrequency;
 
     /**
-     * Adjusted allele frequency for indels due to local realignment
+     * Adjusted allele frequency for indels due to local realignment $extrafreq
      */
-    public double extrafreq;
+    public double extraFrequency;
 
     /**
      * No. of bases to be shifted to 3' for deletions due to alternative alignment
@@ -110,9 +112,9 @@ public class Variant {
     public int msint;
 
     /**
-     * Average number of mismatches for reads containing variant
+     * Average number of mismatches for reads containing variant $nm
      */
-    public double nm;
+    public double numberOfMismatches;
 
     /**
      * Number of high-quality reads with the variant
@@ -127,37 +129,37 @@ public class Variant {
     /**
      * Preceding reference sequence
      */
-    public String leftseq;
+    public String leftseq = "";
 
     /**
      * Following reference sequence
      */
-    public String rightseq;
+    public String rightseq = "";
 
     /**
-     * Start position
+     * Start position $sp
      */
-    public int sp;
+    public int startPosition;
 
     /**
-     * End position
+     * End position $ep
      */
-    public int ep;
+    public int endPosition;
 
     /**
-     * Reference variant forward strand coverage
+     * Reference variant forward strand coverage $rfc
      */
-    public int rrc;
+    public int refReverseCoverage;
 
     /**
-     * Reference variant reverse strand coverage
+     * Reference variant reverse strand coverage $rrc
      */
-    public int rfc;
+    public int refForwardCoverage;
 
     /**
-     * Total position coverage
+     * Total position coverage $tcov
      */
-    public int tcov;
+    public int totalPosCoverage;
 
     /**
      * Duplication rate
@@ -172,41 +174,40 @@ public class Variant {
     /**
      * Variant allele (to be written to .vcf file)
      */
-    public String varallele;
+    public String varallele = "";
 
     /**
      * Reference allele for variation (to be written to .vcf file)
      */
-    public String refallele;
+    public String refallele = "";
 
-    public String vartype;
+    public String vartype = "";
 
     /**
      * Debug information
      */
-    public String DEBUG;
+    public String DEBUG = "";
 
 
     /**
      * A variant is considered noise if the quality is below <code>goodq</code> and
      * there're no more than 3 reads
-     * @param goodq quality threshold
-     * @param lofreq The minimum allele frequency allowed in normal for a somatic mutation
      * @return Returns true if variance is considered noise if the quality is below <code>goodq</code>
      * and there're no more than 3 reads in coverage
      */
-    public boolean isNoise(double goodq,
-                           double lofreq) {
-        final double qual = this.qual;
-        if (((qual < 4.5d || (qual < 12 && !this.qstd)) && this.cov <= 3)
-                || (qual < goodq && this.freq < 2 * lofreq && this.cov <= 1)) {
+    public boolean isNoise() {
+        final double qual = this.meanQuality;
+        if (((qual < 4.5d || (qual < 12 && !this.hasAtLeast2DiffQualities)) && this.positionCoverage <= 3)
+                || (qual < instance().conf.goodq
+                && this.frequency < 2 * instance().conf.lofreq
+                && this.positionCoverage <= 1)) {
 
-            this.tcov -= this.cov;
-            this.cov = 0;
-            this.fwd = 0;
-            this.rev = 0;
-            this.freq = 0;
-            this.hifreq = 0;
+            this.totalPosCoverage -= this.positionCoverage;
+            this.positionCoverage = 0;
+            this.varsCountOnForward = 0;
+            this.varsCountOnReverse = 0;
+            this.frequency = 0;
+            this.highQualityReadsFrequency = 0;
 
             return true;
 
@@ -230,7 +231,7 @@ public class Variant {
             n++;
         }
         if (n > 0) {
-            this.sp += n;
+            this.startPosition += n;
             this.refallele = substr(refAllele, n);
             this.varallele = substr(varAllele, n);
             this.leftseq += substr(refAllele, 0, n);
@@ -245,185 +246,12 @@ public class Variant {
             n++;
         }
         if (n > 1) {
-            this.ep -= n - 1;
+            this.endPosition -= n - 1;
             this.refallele = substr(refAllele, 0, 1 - n);
             this.varallele = substr(varAllele, 0, 1 - n);
             this.rightseq = substr(refAllele, 1 - n, n - 1) + substr(this.rightseq, 0, 1 - n);
         }
     }
-
-    public void callingSimpleVariant(String sample, Region region, PrintStream out, String sv) {
-        out.println(join("\t",
-                joinSimpleVariant(sample, region),
-                region.chr + ":" + region.start + "-" + region.end,
-                vartype,
-                duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate),
-                sv.equals("") ? 0 : sv
-        ));
-    }
-
-    public String joinSimpleVariant(String sample, Region region) {
-        return join("\t",
-                outputStartOfVariantLine(sample, region),
-
-                joinVar2("\t"),
-
-                shift3,
-                msi == 0 ? 0 : new DecimalFormat("0.000").format(msi),
-                msint,
-                nm > 0 ? new DecimalFormat("0.0").format(nm) : 0,
-                hicnt,
-                hicov,
-                leftseq.isEmpty() ? "0" : leftseq,
-                rightseq.isEmpty() ? "0" : rightseq
-        );
-    }
-
-    public static void callingEmptySimpleVariant(Region region, String sample, PrintStream out,
-                                                 int position) {
-        out.println(join("\t",
-                sample, region.gene, region.chr,
-                position,
-                position,
-                "", "", 0, 0, 0, 0, 0, 0, "", 0, "0;0", 0, 0,
-                0, 0, 0, "", 0, 0, 0, 0, 0, 0, "", "", 0, 0,
-                region.chr + ":" + region.start + "-" + region.end,
-                "", 0, 0
-        ));
-    }
-
-    public void callingOneSample(Region region, String sample,
-                                 PrintStream out, String tvf, String type, String sv, boolean isFirstCover) {
-        String infoVariantWithNM = isFirstCover
-                ? join("\t", tvf, joinVariantWithNM(this))
-                : join("\t", joinVariantWithNM(this), tvf);
-
-        String infoDuprateSV = isFirstCover
-                ? join("\t", 0, 0,
-                duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate), sv.equals("") ? 0 : sv)
-                : join("\t",
-                duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate), sv.equals("") ? 0 : sv, 0, 0);
-
-        out.println(join("\t",
-                outputStartOfVariantLine(sample, region),
-                infoVariantWithNM,
-                outputMiddleOfVariantLine(this),
-                outputEndOfVariantLine(region, type),
-                infoDuprateSV)
-        );
-    }
-
-    public void constructBothSamplesWithoutSecondVariant(Region region, String sample,
-                                                         PrintStream out, String info, String type,
-                                                         Variant variant2,
-                                                         String v1sv, String v2sv) {
-        out.println(join("\t",
-                outputStartOfVariantLine(sample, region),
-                info,
-                outputMiddleOfVariantLine(this),
-                outputEndOfVariantLine(region, type),
-                outputEndOfVariantDuprate(v1sv, v2sv, variant2))
-        );
-    }
-
-    public void constructBothSamplesWithZeroDuprateSecondVariant(Region region, String sample,
-                                                         PrintStream out, String info, String type,
-                                                         String v2sv) {
-        out.println(join("\t",
-                outputStartOfVariantLine(sample, region),
-                info,
-                outputMiddleOfVariantLine(this),
-                outputEndOfVariantLine(region, type),
-                0, 0,
-                duprate == 0 ? 0 : new DecimalFormat("0.000").format(duprate),
-                v2sv.equals("") ? 0 : v2sv
-        ));
-    }
-
-    public void constructBothSamplesWithSecondVariant(Region region, String sample, PrintStream out,
-                                                      String info, Variant variant2, String type,
-                                                      String v1sv, String v2sv) {
-        out.println(join("\t",
-                outputStartOfVariantLine(sample, region),
-                info,
-                outputMiddleOfVariantLine(variant2),
-                outputEndOfVariantLine(region, type),
-                outputEndOfVariantDuprate(v1sv, v2sv, variant2))
-        );
-    }
-
-    private String outputStartOfVariantLine(String sample, Region region) {
-        return join("\t",
-                sample,
-                region.gene,
-                region.chr,
-                sp,
-                ep,
-                refallele,
-                varallele
-        );
-    }
-
-    private String outputMiddleOfVariantLine(Variant variant) {
-        return join("\t",
-                variant.shift3,
-                variant.msi == 0 ? 0 : new DecimalFormat("0.000").format(variant.msi),
-                variant.msint,
-                variant.leftseq.isEmpty() ? "0" : leftseq,
-                variant.rightseq.isEmpty() ? "0" : rightseq
-        );
-    }
-
-    private String outputEndOfVariantLine(Region region, String type) {
-        return join("\t",
-                region.chr + ":" + region.start + "-" + region.end,
-                type,
-                vartype
-        );
-    }
-
-    private String outputEndOfVariantDuprate(String v1sv, String v2sv, Variant variant2) {
-        return join("\t",
-                duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate),
-                v1sv.equals("") ? 0 : v1sv,
-                variant2.duprate == 0 ? 0 : new DecimalFormat("0.0").format(variant2.duprate),
-                v2sv.equals("") ? 0 : v2sv
-        );
-    }
-
-    public String joinVar2(String delm) {
-        return join(delm,
-                tcov,
-                cov,
-                rfc,
-                rrc,
-                fwd,
-                rev,
-                genotype == null ? "0" : genotype,
-                freq == 0 ? 0 : new DecimalFormat("0.0000").format(freq),
-                bias,
-                new DecimalFormat("0.0").format(pmean),
-                pstd ? 1 : 0,
-                new DecimalFormat("0.0").format(qual),
-                qstd ? 1 : 0,
-                new DecimalFormat("0.0").format(mapq),
-                new DecimalFormat("0.000").format(qratio),
-                hifreq == 0 ? 0 : new DecimalFormat("0.0000").format(hifreq),
-                extrafreq == 0 ? 0 : new DecimalFormat("0.0000").format(extrafreq)
-        );
-    }
-
-    public static String joinVariantWithNM(Variant variant) {
-        return join("\t",
-                variant.joinVar2("\t"),
-                variant.nm > 0 ? new DecimalFormat("0.0").format(variant.nm) : 0
-        );
-    }
-
-    public static String joinEmptyVariantWithTcov(int tcov) {
-        return join("\t", tcov, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    }
-
 
     public void debugVariantsContentSimple(List<String> tmp, String n) {
         StringBuilder sb = debugVariantsContent(n);
@@ -440,18 +268,18 @@ public class Variant {
     private StringBuilder debugVariantsContent(String n) {
         StringBuilder sb = new StringBuilder();
         sb.append(n
-                + ":" + (fwd + rev)
-                + ":F-" + fwd
-                + ":R-" + rev
-                + ":" + new DecimalFormat("0.0000").format(freq)
-                + ":" + bias
-                + ":" + new DecimalFormat("0.0").format(pmean)
-                + ":" + (pstd ? "1" : "0")
-                + ":" + new DecimalFormat("0.0").format(qual)
-                + ":" + (qstd ? "1" : "0")
-                + ":" + new DecimalFormat("0.0000").format(hifreq)
-                + ":" + mapq
-                + ":" + new DecimalFormat("0.000").format(qratio));
+                + ":" + (varsCountOnForward + varsCountOnReverse)
+                + ":F-" + varsCountOnForward
+                + ":R-" + varsCountOnReverse
+                + ":" + new DecimalFormat("0.0000").format(frequency)
+                + ":" + strandBiasFlag
+                + ":" + new DecimalFormat("0.0").format(meanPosition)
+                + ":" + (isAtLeastAt2Positions ? "1" : "0")
+                + ":" + new DecimalFormat("0.0").format(meanQuality)
+                + ":" + (hasAtLeast2DiffQualities ? "1" : "0")
+                + ":" + new DecimalFormat("0.0000").format(highQualityReadsFrequency)
+                + ":" + meanMappingQuality
+                + ":" + new DecimalFormat("0.000").format(highQualityToLowQualityRatio));
         return sb;
     }
 
@@ -480,4 +308,102 @@ public class Variant {
         }
         return "Complex";
     }
+
+    /**
+     * Returns true whether a variant meet specified criteria
+     * @param referenceVar reference variant    $rref
+     * @param type Type of variant
+     * @param splice set of strings representing introns in splice
+     * @return true if variant meet specified criteria
+     */
+    public boolean isGoodVar(Variant referenceVar, String type,
+                             Set<String> splice) {
+        if (this == null || this.refallele == null || this.refallele.isEmpty()) {
+            return false;
+        }
+        if (type == null || type.isEmpty()) {
+            type = varType();
+        }
+        if (frequency < instance().conf.freq
+                || hicnt < instance().conf.minr
+                || meanPosition < instance().conf.readPosFilter
+                || meanQuality < instance().conf.goodq) {
+            return false;
+        }
+
+        if (referenceVar != null && referenceVar.hicnt > instance().conf.minr && frequency < 0.25d) {
+            //The reference allele has much better mean mapq than var allele, thus likely false positives
+            double d = meanMappingQuality + refallele.length() + varallele.length();
+            double f = (1 + d) / (referenceVar.meanMappingQuality + 1);
+            if ((d - 2 < 5 && referenceVar.meanMappingQuality > 20)
+                    || f < 0.25d) {
+                return false;
+            }
+        }
+
+        if (type.equals("Deletion") && splice.contains(startPosition + "-" + endPosition)) {
+            return false;
+        }
+        if (highQualityToLowQualityRatio < instance().conf.qratio) {
+            return false;
+        }
+        if (frequency > 0.30d) {
+            return true;
+        }
+        if (meanMappingQuality < instance().conf.mapq) {
+            return false;
+        }
+        if (msi >= 15 && frequency <= 0.25d && msint == 1) {
+            return false;
+        }
+        if (msi >= 12 && frequency <= 0.1d && msint > 1) {
+            return false;
+        }
+        if (strandBiasFlag.equals("2;1") && frequency < 0.20d) {
+            if (type == null || type.equals("SNV") || (refallele.length() < 3 && varallele.length() < 3)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public String toString() {
+        return "Variant{" +
+                "descriptionString='" + descriptionString + '\'' +
+                ", positionCoverage=" + positionCoverage +
+                ", varsCountOnForward=" + varsCountOnForward +
+                ", varsCountOnReverse=" + varsCountOnReverse +
+                ", strandBiasFlag='" + strandBiasFlag + '\'' +
+                ", frequency=" + frequency +
+                ", meanPosition=" + meanPosition +
+                ", isAtLeastAt2Positions=" + isAtLeastAt2Positions +
+                ", meanQuality=" + meanQuality +
+                ", hasAtLeast2DiffQualities=" + hasAtLeast2DiffQualities +
+                ", meanMappingQuality=" + meanMappingQuality +
+                ", highQualityToLowQualityRatio=" + highQualityToLowQualityRatio +
+                ", highQualityReadsFrequency=" + highQualityReadsFrequency +
+                ", extraFrequency=" + extraFrequency +
+                ", shift3=" + shift3 +
+                ", msi=" + msi +
+                ", msint=" + msint +
+                ", numberOfMismatches=" + numberOfMismatches +
+                ", hicnt=" + hicnt +
+                ", hicov=" + hicov +
+                ", leftseq='" + leftseq + '\'' +
+                ", rightseq='" + rightseq + '\'' +
+                ", startPosition=" + startPosition +
+                ", endPosition=" + endPosition +
+                ", refReverseCoverage=" + refReverseCoverage +
+                ", refForwardCoverage=" + refForwardCoverage +
+                ", totalPosCoverage=" + totalPosCoverage +
+                ", duprate=" + duprate +
+                ", genotype='" + genotype + '\'' +
+                ", varallele='" + varallele + '\'' +
+                ", refallele='" + refallele + '\'' +
+                ", vartype='" + vartype + '\'' +
+                ", DEBUG='" + DEBUG + '\'' +
+                '}';
+    }
+
 }

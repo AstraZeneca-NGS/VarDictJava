@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.charAt;
 import static com.astrazeneca.vardict.data.Patterns.B_A7;
 import static com.astrazeneca.vardict.data.Patterns.B_T7;
@@ -43,35 +44,30 @@ public class VariationUtils {
      * Calculate strand bias flag
      * @param forwardCount Variant count for forward strand  $fwd
      * @param reverseCount Variant count for reverse strand  $rev
-     * @param bias the cutoff from configuration
-     * @param minBiasReads minimum reads for bias   $minb
      * @return 0 - small total count, only one of strands, 1 - strand bias, 2 - no strand bias
      */
     public static int strandBias(int forwardCount,
-                                 int reverseCount,
-                                 double bias,
-                                 int minBiasReads) {
+                                 int reverseCount) {
         // using p=0.01, because prop.test(1,12) = 0.01
         if (forwardCount + reverseCount <= 12) {
             return forwardCount * reverseCount > 0 ? 2 : 0;
         }
 
-        return (forwardCount / (double)(forwardCount + reverseCount) >= bias
-                && reverseCount / (double)(forwardCount + reverseCount) >= bias
-                && forwardCount >= minBiasReads
-                && reverseCount >= minBiasReads) ? 2 : 1;
+        return (forwardCount / (double)(forwardCount + reverseCount) >= instance().conf.bias
+                && reverseCount / (double)(forwardCount + reverseCount) >= instance().conf.bias
+                && forwardCount >= instance().conf.minBiasReads
+                && reverseCount >= instance().conf.minBiasReads) ? 2 : 1;
     }
 
     /**
      * Find the consensus sequence in soft-clipped reads. Consensus is called if
      * the matched nucleotides are &gt;90% of all softly clipped nucleotides.
      * @param softClip soft-clipped sequences    $scv
-     * @param conf Configuration for debug and adseed options
-     * @param dir not used no, will be used when adaptor option will be added
+     * @param dir not used now, will be used when adaptor option will be added
      * @return consensus sequence
      */
     public static String findconseq(Sclip softClip,
-                                    Configuration conf, int dir) {
+                                    int dir) {
         if (softClip.sequence != null) {
             return softClip.sequence;
         }
@@ -92,13 +88,13 @@ public class VariationUtils {
                 int ncnt = ent.getValue();
                 tt += ncnt;
                 if (ncnt > max  || (softClip.seq.containsKey(i) && softClip.seq.get(i).containsKey(nt)
-                        && softClip.seq.get(i).get(nt).qmean > maxq)) {
+                        && softClip.seq.get(i).get(nt).meanQuality > maxq)) {
                     max = ncnt;
                     mnt = nt;
-                    maxq = softClip.seq.get(i).get(nt).qmean;
+                    maxq = softClip.seq.get(i).get(nt).meanQuality;
                 }
             }
-            if (i == 3 && softClip.nt.size() >= 6 && tt/(double)softClip.cnt < 0.2 && tt <= 2) {
+            if (i == 3 && softClip.nt.size() >= 6 && tt/(double)softClip.varsCount < 0.2 && tt <= 2) {
                 break;
             }
             if ((tt - max > 2 || max <= tt - max) && max / (double)tt < 0.8) {
@@ -113,7 +109,7 @@ public class VariationUtils {
                 seq.append(mnt);
             }
         }
-        String SEQ = "";
+        String SEQ;
         Integer ntSize = softClip.nt.size();
         if (total != 0
                 && match / (double)total > 0.9
@@ -138,8 +134,8 @@ public class VariationUtils {
         }
         softClip.sequence = SEQ;
 
-        if (conf.y) {
-            System.err.printf("  Candidate consensus: %s Reads: %s M: %s T: %s Final: %s\n", seq, softClip.cnt, match, total, SEQ);
+        if (instance().conf.y) {
+            System.err.printf("  Candidate consensus: %s Reads: %s M: %s T: %s Final: %s\n", seq, softClip.varsCount, match, total, SEQ);
         }
         return SEQ;
     }
@@ -267,12 +263,10 @@ public class VariationUtils {
      * Adjust count. Don't adjust reference
      * @param varToAdd variant to add counts    $vref
      * @param variation variant     $tv
-     * @param conf configuration
      */
     public static void adjCnt(Variation varToAdd,
-                              Variation variation,
-                              Configuration conf) {
-        adjCnt(varToAdd, variation, null, conf);
+                              Variation variation) {
+        adjCnt(varToAdd, variation, null);
     }
 
     /**
@@ -281,42 +275,41 @@ public class VariationUtils {
      * @param varToAdd variant to add counts    $vref
      * @param variant variant    $tv
      * @param referenceVar reference variant  $ref
-     * @param conf configuration
      */
     public static void adjCnt(Variation varToAdd,
                               Variation variant,
-                              Variation referenceVar, Configuration conf) {
-        varToAdd.cnt += variant.cnt;
-        varToAdd.extracnt += variant.cnt;
-        varToAdd.hicnt += variant.hicnt;
-        varToAdd.locnt += variant.locnt;
-        varToAdd.pmean += variant.pmean;
-        varToAdd.qmean += variant.qmean;
-        varToAdd.Qmean += variant.Qmean;
-        varToAdd.nm += variant.nm;
+                              Variation referenceVar) {
+        varToAdd.varsCount += variant.varsCount;
+        varToAdd.extracnt += variant.varsCount;
+        varToAdd.highQualityReadsCount += variant.highQualityReadsCount;
+        varToAdd.lowQualityReadsCount += variant.lowQualityReadsCount;
+        varToAdd.meanPosition += variant.meanPosition;
+        varToAdd.meanQuality += variant.meanQuality;
+        varToAdd.meanMappingQuality += variant.meanMappingQuality;
+        varToAdd.numberOfMismatches += variant.numberOfMismatches;
         varToAdd.pstd = true;
         varToAdd.qstd = true;
         varToAdd.addDir(true, variant.getDir(true));
         varToAdd.addDir(false, variant.getDir(false));
 
-        if (conf.y) {
-            String refCnt = (referenceVar != null && referenceVar.cnt != 0) ? String.valueOf(referenceVar.cnt) : "NA";
+        if (instance().conf.y) {
+            String refCnt = (referenceVar != null && referenceVar.varsCount != 0) ? String.valueOf(referenceVar.varsCount) : "NA";
             System.err.printf("    AdjCnt: '+' %s %s %s %s Ref: %s\n",
-                    varToAdd.cnt, variant.cnt, varToAdd.getDir(false), variant.getDir(false), refCnt);
+                    varToAdd.varsCount, variant.varsCount, varToAdd.getDir(false), variant.getDir(false), refCnt);
             System.err.printf("    AdjCnt: '-' %s %s %s %s Ref: %s\n",
-                    varToAdd.cnt, variant.cnt, varToAdd.getDir(true), variant.getDir(true), refCnt);
+                    varToAdd.varsCount, variant.varsCount, varToAdd.getDir(true), variant.getDir(true), refCnt);
         }
 
         if (referenceVar == null)
             return;
 
-        referenceVar.cnt -= variant.cnt;
-        referenceVar.hicnt -= variant.hicnt;
-        referenceVar.locnt -= variant.locnt;
-        referenceVar.pmean -= variant.pmean;
-        referenceVar.qmean -= variant.qmean;
-        referenceVar.Qmean -= variant.Qmean;
-        referenceVar.nm -= variant.nm;
+        referenceVar.varsCount -= variant.varsCount;
+        referenceVar.highQualityReadsCount -= variant.highQualityReadsCount;
+        referenceVar.lowQualityReadsCount -= variant.lowQualityReadsCount;
+        referenceVar.meanPosition -= variant.meanPosition;
+        referenceVar.meanQuality -= variant.meanQuality;
+        referenceVar.meanMappingQuality -= variant.meanMappingQuality;
+        referenceVar.numberOfMismatches -= variant.numberOfMismatches;
         referenceVar.subDir(true, variant.getDir(true));
         referenceVar.subDir(false, variant.getDir(false));
         correctCnt(referenceVar);
@@ -327,85 +320,23 @@ public class VariationUtils {
      * @param varToCorrect variant   $ref
      */
     public static void correctCnt(Variation varToCorrect) {
-        if (varToCorrect.cnt < 0)
-            varToCorrect.cnt = 0;
-        if (varToCorrect.hicnt < 0)
-            varToCorrect.hicnt = 0;
-        if (varToCorrect.locnt < 0)
-            varToCorrect.locnt = 0;
-        if (varToCorrect.pmean < 0)
-            varToCorrect.pmean = 0;
-        if (varToCorrect.qmean < 0)
-            varToCorrect.qmean = 0;
-        if (varToCorrect.Qmean < 0)
-            varToCorrect.Qmean = 0;
+        if (varToCorrect.varsCount < 0)
+            varToCorrect.varsCount = 0;
+        if (varToCorrect.highQualityReadsCount < 0)
+            varToCorrect.highQualityReadsCount = 0;
+        if (varToCorrect.lowQualityReadsCount < 0)
+            varToCorrect.lowQualityReadsCount = 0;
+        if (varToCorrect.meanPosition < 0)
+            varToCorrect.meanPosition = 0;
+        if (varToCorrect.meanQuality < 0)
+            varToCorrect.meanQuality = 0;
+        if (varToCorrect.meanMappingQuality < 0)
+            varToCorrect.meanMappingQuality = 0;
         if (varToCorrect.getDir(true) < 0)
             varToCorrect.addDir(true, -varToCorrect.getDir(true));
         if (varToCorrect.getDir(false) < 0)
             varToCorrect.addDir(false, -varToCorrect.getDir(false));
     }
-
-    /**
-     * Returns true whether a variant meet specified criteria
-     * @param vref variant
-     * @param referenceVar reference variant    $rref
-     * @param type Type of variant
-     * @param splice set of strings representing introns in splice
-     * @param conf Configuration (contains preferences for min, freq, filter and etc)
-     * @return true if variant meet specified criteria
-     */
-    public static boolean isGoodVar(Variant vref, Variant referenceVar, String type,
-                                    Set<String> splice,
-                                    Configuration conf) {
-        if (vref == null || vref.refallele == null || vref.refallele.isEmpty()) {
-            return false;
-        }
-        if (type == null || type.isEmpty()) {
-            type = vref.varType();
-        }
-        if (vref.freq < conf.freq
-                || vref.hicnt < conf.minr
-                || vref.pmean < conf.readPosFilter
-                || vref.qual < conf.goodq) {
-            return false;
-        }
-
-        if (referenceVar != null && referenceVar.hicnt > conf.minr && vref.freq < 0.25d) {
-            //The reference allele has much better mean mapq than var allele, thus likely false positives
-            double d = vref.mapq + vref.refallele.length() + vref.varallele.length();
-            double f = (1 + d) / (referenceVar.mapq + 1);
-            if ((d - 2 < 5 && referenceVar.mapq > 20)
-                    || f < 0.25d) {
-                return false;
-            }
-        }
-
-        if (type.equals("Deletion") && splice.contains(vref.sp + "-" + vref.ep)) {
-            return false;
-        }
-        if (vref.qratio < conf.qratio) {
-            return false;
-        }
-        if (vref.freq > 0.30d) {
-            return true;
-        }
-        if (vref.mapq < conf.mapq) {
-            return false;
-        }
-        if (vref.msi >= 15 && vref.freq <= 0.25d && vref.msint == 1) {
-            return false;
-        }
-        if (vref.msi >= 12 && vref.freq <= 0.1d && vref.msint > 1) {
-            return false;
-        }
-        if (vref.bias.equals("2;1") && vref.freq < 0.20d) {
-            if (type == null || type.equals("SNV") || (vref.refallele.length() < 3 && vref.varallele.length() < 3)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
 
     /**
      * Returns var from map of vars or null if map doesn't contain such key.
@@ -438,13 +369,13 @@ public class VariationUtils {
                                Object... keys) {
         switch (type) {
             case var:
-                if (vars.var.size() > (Integer)keys[0]) {
-                    return vars.var.get((Integer)keys[0]);
+                if (vars.variants.size() > (Integer)keys[0]) {
+                    return vars.variants.get((Integer)keys[0]);
                 }
             case varn:
-                return vars.varn.get(keys[0]);
+                return vars.varDescriptionStringToVariants.get(keys[0]);
             case ref:
-                return vars.ref;
+                return vars.referenceVariant;
         }
         return null;
     }
@@ -455,8 +386,7 @@ public class VariationUtils {
      * @param position start position of vars
      * @return Vars object on position
      */
-    public static Vars getOrPutVars(Map<Integer, Vars> map,
-                                     int position) {
+    public static Vars getOrPutVars(Map<Integer, Vars> map, int position) {
         Vars vars = map.get(position);
         if (vars == null) {
             vars = new Vars();
