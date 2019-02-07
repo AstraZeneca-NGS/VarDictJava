@@ -259,7 +259,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
         for (Variant v2var : v2.variants) {
             v2var.vartype = v2var.varType();
             if (!v2var.isGoodVar(v2.referenceVariant, v2var.vartype, splice)) {
-                return;
+                continue;
             }
             // potential LOH
             String descriptionString = v2var.descriptionString;
@@ -281,7 +281,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
                 maxReadLength = tpl.maxReadLength;
                 newType = tpl.type;
                 if (FALSE.equals(newType)) {
-                    return;
+                    continue;
                 }
             }
             Variant varForPrint;
