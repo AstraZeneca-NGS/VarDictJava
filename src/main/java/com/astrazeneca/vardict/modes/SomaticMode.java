@@ -44,33 +44,9 @@ public class SomaticMode extends AbstractMode {
 
         for (List<Region> list : segments) {
             for (Region region : list) {
-
                 final Set<String> splice = new ConcurrentHashSet<>();
                 Reference ref = referenceResource.getReference(region);
-                Scope<InitialData> initialScope1 = new Scope<>(
-                        instance().conf.bam.getBam1(),
-                        region, ref, referenceResource,
-                        0,
-                        splice,
-                        variantPrinter,
-                        new InitialData());
-                CompletableFuture<Scope<AlignedVarsData>> bam1VariationsFuture = pipeline(initialScope1, new DirectThreadExecutor());
-
-                Scope<AlignedVarsData> bam1Variations = bam1VariationsFuture.join();
-
-                Scope<InitialData> initialScope2 = new Scope<>(
-                        instance().conf.bam.getBam2(),
-                        region, ref, referenceResource,
-                        bam1Variations.maxReadLength,
-                        splice,
-                        variantPrinter,
-                        new InitialData());
-                CompletableFuture<Scope<AlignedVarsData>> bam2VariationFuture = pipeline(initialScope2, new DirectThreadExecutor());
-
-                CompletableFuture<Void> somaticProcessOutput = bam2VariationFuture.thenAcceptBoth(bam1VariationsFuture,
-                        new SomaticPostProcessModule(referenceResource, variantPrinter));
-
-                somaticProcessOutput.join();
+                processBothBamsInPipeline(variantPrinter, region, splice, ref);
             }
         }
     }
@@ -117,33 +93,41 @@ public class SomaticMode extends AbstractMode {
             PrintStream out = new PrintStream(baos);
             VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
             variantPrinter.setOut(out);
-
-            Scope<InitialData> initialScope1 = new Scope<>(
-                    instance().conf.bam.getBam1(),
-                    region, ref, referenceResource,
-                    0,
-                    splice,
-                    variantPrinter,
-                    new InitialData());
-
-            CompletableFuture<Scope<AlignedVarsData>> bam1VariationFuture = pipeline(initialScope1, new DirectThreadExecutor());
-
-            Scope<InitialData> initialScope2 = new Scope<>(
-                    instance().conf.bam.getBam2(),
-                    region, ref, referenceResource,
-                    0,
-                    splice,
-                    variantPrinter,
-                    new InitialData());
-            CompletableFuture<Scope<AlignedVarsData>> bam2VariationFuture = pipeline(initialScope2, new DirectThreadExecutor());
-
-            CompletableFuture<Void> somaticProcessOutput = bam2VariationFuture.thenAcceptBoth(bam1VariationFuture,
-                    new SomaticPostProcessModule(referenceResource, variantPrinter));
-            somaticProcessOutput.join();
+            processBothBamsInPipeline(variantPrinter, region, splice, ref);
             out.close();
 
             return baos;
         }
+    }
+
+    private void processBothBamsInPipeline(VariantPrinter variantPrinter, Region region, Set<String> splice, Reference ref) {
+        Scope<InitialData> initialScope1 = new Scope<>(
+                instance().conf.bam.getBam1(),
+                region, ref, referenceResource,
+                0,
+                splice,
+                variantPrinter,
+                new InitialData());
+        CompletableFuture<Scope<AlignedVarsData>> bam1VariationsFuture = pipeline(initialScope1, new DirectThreadExecutor());
+
+        Scope<AlignedVarsData> bam1Variations = bam1VariationsFuture.join();
+
+        Scope<InitialData> initialScope2 = new Scope<>(
+                instance().conf.bam.getBam2(),
+                region, ref, referenceResource,
+                bam1Variations.maxReadLength,
+                splice,
+                variantPrinter,
+                new InitialData());
+        CompletableFuture<Scope<AlignedVarsData>> bam2VariationFuture = pipeline(initialScope2, new DirectThreadExecutor());
+
+        CompletableFuture<Void> somaticProcessOutput = bam2VariationFuture
+                .thenAcceptBoth(bam1VariationsFuture, new SomaticPostProcessModule(referenceResource, variantPrinter))
+                .exceptionally(ex -> {
+                    stopVardictWithException(region, ex);
+                    throw new RuntimeException(ex);
+                });
+        somaticProcessOutput.join();
     }
 
     @Override

@@ -22,11 +22,11 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Matcher;
 
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.getMode;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.collection.VariationMap.getSV;
 import static com.astrazeneca.vardict.collection.VariationMap.removeSV;
 import static com.astrazeneca.vardict.data.Patterns.*;
-import static com.astrazeneca.vardict.modes.AbstractMode.partialPipeline;
 import static com.astrazeneca.vardict.modules.CigarParser.getAlignedLength;
 import static com.astrazeneca.vardict.modules.RecordPreprocessor.getChrName;
 import static com.astrazeneca.vardict.data.ReferenceResource.isLoaded;
@@ -1062,7 +1062,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         }
                         Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                        partialPipeline(currentScope, new DirectThreadExecutor());
+                        getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                     }
                 }
                 int dellen = p - bp;
@@ -1274,7 +1274,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         }
                         Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                        partialPipeline(currentScope, new DirectThreadExecutor());
+                        getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                     }
                 }
 
@@ -1665,7 +1665,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         }
                         Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                        partialPipeline(currentScope, new DirectThreadExecutor());
+                        getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                     }
                     if (bi - p > instance().conf.SVMINLEN + 2 * Configuration.SVFLANK) {
                         ins = joinRef(ref, p, p + Configuration.SVFLANK - 1);
@@ -1830,7 +1830,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         }
                         Scope<InitialData> currentScope = new Scope<>(bam, modifiedRegion, reference, referenceResource, maxReadLength, splice,
                                 variantPrinter, new InitialData(nonInsertionVariants, insertionVariants, refCoverage, softClips3End, softClips5End));
-                        partialPipeline(currentScope, new DirectThreadExecutor());
+                        getMode().partialPipeline(currentScope, new DirectThreadExecutor());
                     }
                     int shift5 = 0;
                     while (ref.containsKey(p - 1) && ref.containsKey(bi - 1)

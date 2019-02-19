@@ -15,6 +15,7 @@ import com.astrazeneca.vardict.printers.SystemOutVariantPrinter;
 import com.astrazeneca.vardict.printers.VariantPrinter;
 import com.astrazeneca.vardict.variations.Vars;
 import org.mockito.*;
+import org.testng.Assert;
 import org.testng.annotations.*;
 
 import java.io.ByteArrayOutputStream;
@@ -32,7 +33,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertTrue;
 
 public class PipelineModesTest {
     private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
@@ -41,23 +41,17 @@ public class PipelineModesTest {
     private String bam;
     private VariantPrinter variantPrinter = new SystemOutVariantPrinter();
     private Map<String, Integer> chrLengths;
-    List<List<Region>> segments = new ArrayList<>();
-    List<Region> regions = new ArrayList<>();
+    private List<List<Region>> segments = new ArrayList<>();
+    private List<Region> regions = new ArrayList<>();
 
-    Reference ref;
-    Scope<InitialData> initialScope;
+    private Scope<InitialData> initialScope;
 
     @Spy
     private ReferenceResource referenceResource;
 
-    @InjectMocks
-    SimpleMode simpleMode;
-
-    @InjectMocks
-    SomaticMode somaticMode;
-
-    @InjectMocks
-    AmpliconMode ampliconMode;
+    private SimpleMode simpleMode;
+    private SomaticMode somaticMode;
+    private AmpliconMode ampliconMode;
 
     @BeforeClass
     public void initResources() {
@@ -73,8 +67,10 @@ public class PipelineModesTest {
         instance().conf.freq = 0.001;
         regions.add(region);
         segments.add(regions);
+        System.setErr(new PrintStream(outContent));
 
         MockitoAnnotations.initMocks(this);
+        mockReferenceResource("hg19.fa");
     }
 
     @AfterMethod
@@ -90,8 +86,6 @@ public class PipelineModesTest {
 
     @Test
     public void testSimpleModePipelineNormal() throws ExecutionException, InterruptedException {
-        mockReferenceResource("hg19.fa");
-
         simpleMode = new SimpleMode(segments, referenceResource);
         createScope();
         CompletableFuture<Scope<AlignedVarsData>> pipeline = simpleMode.pipeline(initialScope, new DirectThreadExecutor());
@@ -108,22 +102,19 @@ public class PipelineModesTest {
 
     @Test(expectedExceptions = RuntimeException.class)
     public void testSimpleModePipelineException()  {
-        mockReferenceResource("hg19.fa");
-
         simpleMode = new SimpleMode(segments, referenceResource);
-        System.setErr(new PrintStream(outContent));
-        instance().conf.bam = null;
-        Configuration.MAX_EXCEPTION_COUNT = 5;
+        SimpleMode simpleModeSpy = Mockito.spy(simpleMode);
+        bam = null;
         createScope();
-        CompletableFuture<Scope<AlignedVarsData>> pipeline = simpleMode.pipeline(initialScope, new DirectThreadExecutor());
+
+        Mockito.doNothing().when(simpleModeSpy).stopVardictWithException(any(), any());
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = simpleModeSpy.pipeline(initialScope, new DirectThreadExecutor());
+        Assert.assertTrue(pipeline.isCompletedExceptionally());
         pipeline.join();
-        assertTrue(outContent.toString().contains("NullPointerException"));
     }
 
     @Test
     public void testSomaticModePipelineNormal() throws ExecutionException, InterruptedException {
-        mockReferenceResource("hg19.fa");
-
         somaticMode = new SomaticMode(segments, referenceResource);
         createScope();
         CompletableFuture<Scope<AlignedVarsData>> pipeline = somaticMode.pipeline(initialScope, new DirectThreadExecutor());
@@ -140,16 +131,15 @@ public class PipelineModesTest {
 
     @Test(expectedExceptions = RuntimeException.class)
     public void testSomaticModePipelineException() {
-        mockReferenceResource("hg19.fa");
-
         somaticMode = new SomaticMode(segments, referenceResource);
-        System.setErr(new PrintStream(outContent));
-        instance().conf.bam = null;
-        Configuration.MAX_EXCEPTION_COUNT = 5;
+        SomaticMode somaticModeSpy = Mockito.spy(somaticMode);
+        bam = null;
         createScope();
-        CompletableFuture<Scope<AlignedVarsData>> pipeline = somaticMode.pipeline(initialScope, new DirectThreadExecutor());
+
+        Mockito.doNothing().when(somaticModeSpy).stopVardictWithException(any(), any());
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = somaticModeSpy.pipeline(initialScope, new DirectThreadExecutor());
+        Assert.assertTrue(pipeline.isCompletedExceptionally());
         pipeline.join();
-        assertTrue(outContent.toString().contains("NullPointerException"));
     }
 
     @Test
@@ -158,17 +148,13 @@ public class PipelineModesTest {
         GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, "100:0.95", new HashMap<>(), new HashMap<>());
         instance().conf.bam = new Configuration.BamNames(bam);
         instance().conf.freq = 0.001;
-
-        mockReferenceResource("hg19.fa");
-        createScope();
         ampliconMode = new AmpliconMode(segments, referenceResource);
+        createScope();
 
         CompletableFuture<Scope<AlignedVarsData>> pipeline = ampliconMode.pipeline(initialScope, new DirectThreadExecutor());
-
         Scope<AlignedVarsData> tuple2Scope = pipeline.get();
         Set<Map.Entry<Integer, Vars>> entryVars = tuple2Scope.data.alignedVariants.entrySet();
         List<Vars> actualListOfVars = entryVars.stream().map(Map.Entry::getValue).collect(Collectors.toList());
-
         assertEquals(actualListOfVars.size(), 178);
     }
 
@@ -176,17 +162,14 @@ public class PipelineModesTest {
     public void testAmpliconModePipelineException()  {
         GlobalReadOnlyScope.clear();
         GlobalReadOnlyScope.init(new Configuration(), chrLengths, sample, null, "100:0.95", new HashMap<>(), new HashMap<>());
-        Configuration.MAX_EXCEPTION_COUNT = 5;
-
-        mockReferenceResource("hg19.fa");
-
         ampliconMode = new AmpliconMode(segments, referenceResource);
-        System.setErr(new PrintStream(outContent));
+        AmpliconMode ampliconModeSpy = Mockito.spy(ampliconMode);
         createScope();
-        CompletableFuture<Scope<AlignedVarsData>> pipeline = ampliconMode.pipeline(initialScope, new DirectThreadExecutor());
 
+        Mockito.doNothing().when(ampliconModeSpy).stopVardictWithException(any(), any());
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = ampliconModeSpy.pipeline(initialScope, new DirectThreadExecutor());
+        Assert.assertTrue(pipeline.isCompletedExceptionally());
         pipeline.join();
-        assertTrue(outContent.toString().contains("NullPointerException"));
     }
 
     private void mockReferenceResource(String fastaFileName) {
@@ -196,9 +179,9 @@ public class PipelineModesTest {
         }).when(referenceResource).retrieveSubSeq(any(), anyString(), anyInt(), anyInt());
     }
 
-    public void createScope() {
+    private void createScope() {
         variantPrinter.setOut(new PrintStream(outContent));
-        ref = referenceResource.getReference(region);
+        Reference ref = referenceResource.getReference(region);
         initialScope = new Scope<>(bam, region, ref, referenceResource, 0, new HashSet<>(),
                 variantPrinter, new InitialData());
     }

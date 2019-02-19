@@ -42,25 +42,9 @@ public class SimpleMode extends AbstractMode {
 
         for (List<Region> list : segments) {
             for (Region region : list) {
-                simple(region, variantPrinter);
+                processBamInPipeline(region, variantPrinter);
             }
         }
-    }
-
-    /**
-     * For each segment and region starts the pipeline.
-     * @param region region from BED file/-R option to process.
-     * @param out variant printer used for output
-     */
-    private void simple(Region region, VariantPrinter out) {
-        Reference ref = referenceResource.getReference(region);
-        Scope<InitialData> initialScope = new Scope<>(instance().conf.bam.getBam1(), region,
-                ref, referenceResource, 0, new HashSet<>(),
-                out, new InitialData());
-
-        CompletableFuture<Scope<AlignedVarsData>> pipeline = pipeline(initialScope, new DirectThreadExecutor());
-        CompletableFuture<Void> simpleProcessOutput = pipeline.thenAccept(new SimplePostProcessModule(out));
-        simpleProcessOutput.join();
     }
 
     /**
@@ -99,11 +83,31 @@ public class SimpleMode extends AbstractMode {
             PrintStream out = new PrintStream(baos);
             VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
             variantPrinter.setOut(out);
-            simple(region, variantPrinter);
-
+            processBamInPipeline(region, variantPrinter);
             out.close();
             return baos;
         }
+    }
+
+    /**
+     * For each segment and region starts the pipeline.
+     * @param region region from BED file/-R option to process.
+     * @param out variant printer used for output
+     */
+    private void processBamInPipeline(Region region, VariantPrinter out) {
+        Reference ref = referenceResource.getReference(region);
+        Scope<InitialData> initialScope = new Scope<>(instance().conf.bam.getBam1(), region,
+                ref, referenceResource, 0, new HashSet<>(),
+                out, new InitialData());
+
+        CompletableFuture<Scope<AlignedVarsData>> pipeline = pipeline(initialScope, new DirectThreadExecutor());
+        CompletableFuture<Void> simpleProcessOutput = pipeline
+                .thenAccept(new SimplePostProcessModule(out))
+                .exceptionally(ex -> {
+                    stopVardictWithException(region, ex);
+                    throw new RuntimeException(ex);
+                });
+        simpleProcessOutput.join();
     }
 
     @Override

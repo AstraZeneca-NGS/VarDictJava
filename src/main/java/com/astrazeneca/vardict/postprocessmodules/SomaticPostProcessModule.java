@@ -3,13 +3,9 @@ package com.astrazeneca.vardict.postprocessmodules;
 import com.astrazeneca.vardict.Configuration;
 import com.astrazeneca.vardict.data.ReferenceResource;
 import com.astrazeneca.vardict.collection.DirectThreadExecutor;
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.Reference;
 import com.astrazeneca.vardict.data.Region;
-import com.astrazeneca.vardict.data.scopedata.AlignedVarsData;
-import com.astrazeneca.vardict.data.scopedata.CombineAnalysisData;
-import com.astrazeneca.vardict.data.scopedata.InitialData;
-import com.astrazeneca.vardict.data.scopedata.Scope;
+import com.astrazeneca.vardict.data.scopedata.*;
 import com.astrazeneca.vardict.printers.SomaticOutputVariant;
 import com.astrazeneca.vardict.printers.VariantPrinter;
 import com.astrazeneca.vardict.variations.Variant;
@@ -20,9 +16,8 @@ import java.util.function.BiConsumer;
 
 import static com.astrazeneca.vardict.Utils.printExceptionAndContinue;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
-import static com.astrazeneca.vardict.collection.Tuple.tuple;
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.getMode;
 import static com.astrazeneca.vardict.data.Patterns.MINUS_NUM_NUM;
-import static com.astrazeneca.vardict.modes.AbstractMode.pipeline;
 import static com.astrazeneca.vardict.variations.VariationUtils.VarsType.var;
 import static com.astrazeneca.vardict.variations.VariationUtils.VarsType.varn;
 import static com.astrazeneca.vardict.variations.VariationUtils.*;
@@ -264,7 +259,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
         for (Variant v2var : v2.variants) {
             v2var.vartype = v2var.varType();
             if (!v2var.isGoodVar(v2.referenceVariant, v2var.vartype, splice)) {
-                return;
+                continue;
             }
             // potential LOH
             String descriptionString = v2var.descriptionString;
@@ -286,7 +281,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
                 maxReadLength = tpl.maxReadLength;
                 newType = tpl.type;
                 if (FALSE.equals(newType)) {
-                    return;
+                    continue;
                 }
             }
             Variant varForPrint;
@@ -377,7 +372,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
         Scope<InitialData> currentScope = new Scope<>(config.bam.getBam1() + ":" + config.bam.getBam2(),
                   region, ref, referenceResource, maxReadLength, splice,
                   variantPrinter, new InitialData());
-        AlignedVarsData tpl = pipeline(currentScope, new DirectThreadExecutor()).join().data;
+        AlignedVarsData tpl = getMode().pipeline(currentScope, new DirectThreadExecutor()).join().data;
 
         maxReadLength = tpl.maxReadLength;
         Map<Integer, Vars> vars = tpl.alignedVariants;

@@ -296,8 +296,8 @@ String | Description
 A variant appears in the output if it satisfies the following criteria (in this order):
 1. Frequency of the variant exceeds the threshold set by the `-f` option (default = 1%).
 2. The minimum number of high-quality reads supporting variant is larger than the threshold set by the `-r` option (default = 2).
-3. The mean position of the variant in reads is less than the value set by the `-P` option (default = 5).
-4. The mean base quality (phred score) for the variant is less than the threshold set by the `-q` option (default = 22.5).
+3. The mean position of the variant in reads is larger than the value set by the `-P` option (default = 5).
+4. The mean base quality (phred score) for the variant is larger than the threshold set by the `-q` option (default = 22.5).
 5. Variant frequency is more than 25% or reference allele does not have much better mapping quality than the variant.
 6. Deletion variants are not located in the regions where the reference genome is missing.
 7. The ratio of high-quality reads to low-quality reads is larger than the threshold specified by `-o` option (default=1.5).
