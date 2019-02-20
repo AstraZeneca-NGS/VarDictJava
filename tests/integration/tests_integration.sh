@@ -11,9 +11,6 @@ source $SCRIPT_DIR/config.sh
 JAVA_THREADS=8
 PARAMETERS="-c 1 -S 2 -E 3 -g 4 -f 0.001 -N abc"
 
-# Non-deterministic variants that differ from tun to run in Perl
-CONFIRMED_DIFFERENCES_FILE="$TESTS_DIR/confirmed_differences.txt"
-
 # Output files
 VARDICT_OUT_JAVA="$DIR_OUTPUT/vardict.java.txt"
 VARDICT_OUT_PERL="$DIR_OUTPUT/vardict.perl.txt"
@@ -100,7 +97,6 @@ time $VARDICTJAVA \
 		$BED_SPLIT_PATH \
 	| tee $VARDICT_OUT_JAVA \
 	| sort \
-	| grep -v -f $CONFIRMED_DIFFERENCES_FILE \
 	> $VARDICT_OUT_SORT_JAVA
 
 echo Running VarDict perl
@@ -111,7 +107,6 @@ time $VARDICTPERL \
 		$BED_SPLIT_PATH \
 	| tee $VARDICT_OUT_PERL \
 	| sort \
-	| grep -v -f $CONFIRMED_DIFFERENCES_FILE \
 	> $VARDICT_OUT_SORT_PERL
 
 # Check if var files aren't empty
