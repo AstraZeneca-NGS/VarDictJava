@@ -1021,6 +1021,12 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 if (del.softp != 0) {
                     bp = del.softp;
                 }
+
+                if (!reference.referenceSequences.containsKey(bp)) {
+                    referenceResource.getReference(Region.newModifiedRegion(region, bp - 150, bp + 150),
+                            mlen > 300 ? mlen : 300, reference);
+                }
+
                 final Variation vref = getVariation(nonInsertionVariants, bp, "-" + mlen);
                 vref.varsCount = 0;
                 SV sv = getSV(nonInsertionVariants, bp);
@@ -1078,6 +1084,11 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     continue;
                 }
                 int bp = del.mend + ((maxReadLength / (del.varsCount + 1)) / 2);
+
+                if (!reference.referenceSequences.containsKey(bp)) {
+                    referenceResource.getReference(Region.newModifiedRegion(region, bp - 150, bp + 150),
+                            mlen > 300 ? mlen : 300, reference);
+                }
 
                 final Variation ref = getVariation(nonInsertionVariants, bp, "-" + mlen);
                 ref.varsCount = 0;
@@ -1351,7 +1362,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 int bp = ms - (maxReadLength / cnt) / 2;
                 int pe = end;
 
-                if (!ReferenceResource.isLoaded(region.chr, ms, me, reference)) {
+                if (!isLoaded(region.chr, ms, me, reference)) {
                     if (!ref.containsKey(bp)) {
                         referenceResource.getReference(Region.newModifiedRegion(region, bp - 150, bp + 150), 300, reference);
                     }
@@ -1494,7 +1505,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 int bp = start - (maxReadLength / cnt) / 2;
                 int pe = mlen + bp - 1;
                 int tpe = pe;
-                if (!ReferenceResource.isLoaded(region.chr, ms, me, reference)) {
+                if (!isLoaded(region.chr, ms, me, reference)) {
                     if (!ref.containsKey(pe)) {
                         referenceResource.getReference(Region.newModifiedRegion(region, pe - 150, pe + 150), 300, reference);
                     }
