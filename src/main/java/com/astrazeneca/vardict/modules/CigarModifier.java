@@ -534,7 +534,7 @@ public class CigarModifier {
         int rm = toInt(matcher.group(11));
 
         if (!ov5.isEmpty()) { //If the complex is not at start of CIGAR string
-            refoff += sum(globalFind(ALIGNED_LENGTH_MND, ov5)); // reference position // - 975 -
+            refoff += sum(globalFind(ALIGNED_LENGTH_MND, ov5)); // reference position
             rdoff += sum(globalFind(SOFT_CLIPPED, ov5)); // read position
         }
 
@@ -550,13 +550,21 @@ public class CigarModifier {
         if (tslen <= 0) {
             dlen -= tslen;
             rm += tslen;
-            newCigarStr += dlen + "D" + rm + "M";
             if (dlen == 0) {
                 RDOFF = RDOFF + rm;
                 newCigarStr = RDOFF + "M";
+            } else if (dlen < 0) {
+                tslen = -dlen;
+                rm += dlen;
+                newCigarStr += tslen + "I" + rm + "M";
+            } else {
+                newCigarStr += dlen + "D" + rm + "M";
             }
         } else {
             if (dlen == 0) {
+                newCigarStr += tslen + "I" + rm + "M";
+            } else if (dlen < 0) {
+                rm += dlen;
                 newCigarStr += tslen + "I" + rm + "M";
             } else {
                 newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
