@@ -556,7 +556,11 @@ public class CigarModifier {
                 newCigarStr = RDOFF + "M";
             }
         } else {
-            newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
+            if (dlen == 0) {
+                newCigarStr += tslen + "I" + rm + "M";
+            } else {
+                newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
+            }
         }
         if (mid <= 15) {
             cigarStr = DIGM_D_DI_DIGM_D_DI_DIGM_DI_DIGM.matcher(cigarStr).replaceFirst(newCigarStr);
