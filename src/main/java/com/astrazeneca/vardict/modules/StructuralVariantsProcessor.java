@@ -1024,7 +1024,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
 
                 if (!reference.referenceSequences.containsKey(bp)) {
                     referenceResource.getReference(Region.newModifiedRegion(region, bp - 150, bp + 150),
-                            mlen > 300 ? mlen : 300, reference);
+                            mlen < 1000 ? mlen : 1000, reference);
                 }
 
                 final Variation vref = getVariation(nonInsertionVariants, bp, "-" + mlen);
@@ -1087,7 +1087,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
 
                 if (!reference.referenceSequences.containsKey(bp)) {
                     referenceResource.getReference(Region.newModifiedRegion(region, bp - 150, bp + 150),
-                            mlen > 300 ? mlen : 300, reference);
+                            mlen < 1000 ? mlen : 1000, reference);
                 }
 
                 final Variation ref = getVariation(nonInsertionVariants, bp, "-" + mlen);
