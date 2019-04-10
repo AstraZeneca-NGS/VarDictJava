@@ -158,4 +158,7 @@ public class Patterns {
     public static final jregex.Pattern BEGIN_NUM_S_OR_BEGIN_NUM_H = new jregex.Pattern("^(\\d+)S|^\\d+H");
     public static final jregex.Pattern END_NUM_S_OR_NUM_H = new jregex.Pattern("(\\d+)S$|H$");
 
+    //Exception patterns
+    public static final Pattern UNABLE_FIND_CONTIG = Pattern.compile("Unable to find entry for contig");
+    public static final Pattern WRONG_START_OR_END = Pattern.compile("Malformed query");
 }

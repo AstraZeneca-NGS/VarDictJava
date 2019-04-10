@@ -147,4 +147,13 @@ public abstract class AbstractMode {
      */
     public abstract void printHeader();
 
+    public Reference tryToGetReference(Region region) {
+        Reference reference = new Reference();
+        try {
+            reference = referenceResource.getReference(region);
+        } catch (Exception ex) {
+            stopVardictWithException(region, ex);
+        }
+        return reference;
+    }
 }

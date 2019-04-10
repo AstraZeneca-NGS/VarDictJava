@@ -4,6 +4,7 @@ import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.ReferenceResource;
 import com.astrazeneca.vardict.data.Region;
 import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
+import com.astrazeneca.vardict.exception.RegionMissedSourceException;
 import com.astrazeneca.vardict.modes.*;
 import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMSequenceRecord;
@@ -73,6 +74,9 @@ public class VarDictLauncher {
      */
     private void initResources(Configuration conf) {
         try {
+            if (conf.regionOfInterest == null && conf.bed == null) {
+                throw new RegionMissedSourceException();
+            }
             Map<String, Integer> chrLengths = readChr(conf.bam.getBamX());
             Tuple.Tuple2<String, String> samples;
             if ((conf.regionOfInterest != null) && (conf.bam.hasBam2())) {

@@ -95,9 +95,9 @@ public class SimpleMode extends AbstractMode {
      * @param out variant printer used for output
      */
     private void processBamInPipeline(Region region, VariantPrinter out) {
-        Reference ref = referenceResource.getReference(region);
+        Reference reference = tryToGetReference(region);
         Scope<InitialData> initialScope = new Scope<>(instance().conf.bam.getBam1(), region,
-                ref, referenceResource, 0, new HashSet<>(),
+                reference, referenceResource, 0, new HashSet<>(),
                 out, new InitialData());
 
         CompletableFuture<Scope<AlignedVarsData>> pipeline = pipeline(initialScope, new DirectThreadExecutor());
