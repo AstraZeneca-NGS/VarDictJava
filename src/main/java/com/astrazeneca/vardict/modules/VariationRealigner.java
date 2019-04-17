@@ -2448,13 +2448,14 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         if (instance().conf.y) {
             System.err.printf("    AdjRefFactor: %s %s\n", ref.varsCount, factor_f);
         }
-
+        int oldVarsCount = ref.varsCount;
         ref.varsCount -= (int) (factor_f * ref.varsCount);
         ref.highQualityReadsCount -= (int) (factor_f * ref.highQualityReadsCount);
         ref.lowQualityReadsCount -= (int) (factor_f * ref.lowQualityReadsCount);
-        ref.meanPosition -= factor_f * ref.meanPosition;
-        ref.meanQuality -= factor_f * ref.meanQuality;
-        ref.meanMappingQuality -= factor_f * ref.meanMappingQuality;
+        double factorCnt = oldVarsCount != 0 ? Math.abs((ref.varsCount - oldVarsCount)) / (double) oldVarsCount : 1;
+        ref.meanPosition -= ref.meanPosition * factor_f * factorCnt;
+        ref.meanQuality -= ref.meanQuality * factor_f * factorCnt;
+        ref.meanMappingQuality -= ref.meanMappingQuality * factor_f * factorCnt;
         ref.numberOfMismatches -= factor_f * ref.numberOfMismatches;
         ref.varsCountOnForward -= (int) (factor_f * ref.varsCountOnForward);
         ref.varsCountOnReverse -= (int) (factor_f * ref.varsCountOnReverse);
