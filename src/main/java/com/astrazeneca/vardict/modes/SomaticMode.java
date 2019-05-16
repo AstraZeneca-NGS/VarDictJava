@@ -45,7 +45,7 @@ public class SomaticMode extends AbstractMode {
         for (List<Region> list : segments) {
             for (Region region : list) {
                 final Set<String> splice = new ConcurrentHashSet<>();
-                Reference ref = referenceResource.getReference(region);
+                Reference ref = tryToGetReference(region);
                 processBothBamsInPipeline(variantPrinter, region, splice, ref);
             }
         }
@@ -62,7 +62,7 @@ public class SomaticMode extends AbstractMode {
                 for (List<Region> list : segments) {
                     for (Region region : list) {
                         final Set<String> splice = new ConcurrentHashSet<>();
-                        Reference ref1 = referenceResource.getReference(region);
+                        Reference ref1 = tryToGetReference(region);
                         Future<OutputStream> f2 = executor.submit(new SomdictWorker(region, splice, ref1));
                         toPrint.put(f2);
                     }

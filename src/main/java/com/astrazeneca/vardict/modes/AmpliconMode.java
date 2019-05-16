@@ -1,5 +1,6 @@
 package com.astrazeneca.vardict.modes;
 
+import com.astrazeneca.vardict.data.Reference;
 import com.astrazeneca.vardict.data.ReferenceResource;
 import com.astrazeneca.vardict.collection.ConcurrentHashSet;
 import com.astrazeneca.vardict.collection.DirectThreadExecutor;
@@ -58,7 +59,7 @@ public class AmpliconMode extends AbstractMode {
                     list.add(tuple(ampliconNumber, region));
                 }
                 Scope<InitialData> initialScope = new Scope<>(instance().conf.bam.getBam1(), region,
-                        referenceResource.getReference(region), referenceResource, 0, splice,
+                        tryToGetReference(region), referenceResource, 0, splice,
                         variantPrinter, new InitialData());
                 CompletableFuture<Scope<AlignedVarsData>> pipeline = pipeline(initialScope,
                         new DirectThreadExecutor());
@@ -93,8 +94,9 @@ public class AmpliconMode extends AbstractMode {
                             list.add(tuple(j, region));
                         }
                         VariantPrinter variantPrinter = VariantPrinter.createPrinter(instance().printerTypeOut);
+                        Reference reference = tryToGetReference(region);
                         Scope<InitialData> initialScope = new Scope<>(instance().conf.bam.getBam1(), region,
-                                referenceResource.getReference(region), referenceResource, 0, splice,
+                                reference, referenceResource, 0, splice,
                                 variantPrinter, new InitialData());
 
                         CompletableFuture<Scope<AlignedVarsData>> pipeline = pipeline(initialScope, executor);

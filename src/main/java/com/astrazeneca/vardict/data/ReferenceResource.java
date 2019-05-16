@@ -1,6 +1,9 @@
 package com.astrazeneca.vardict.data;
 
 import com.astrazeneca.vardict.Configuration;
+import com.astrazeneca.vardict.exception.RegionBoundariesException;
+import com.astrazeneca.vardict.exception.WrongFastaOrBamException;
+import htsjdk.samtools.SAMException;
 import htsjdk.samtools.reference.IndexedFastaSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequence;
 
@@ -9,6 +12,8 @@ import java.io.FileNotFoundException;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static com.astrazeneca.vardict.data.Patterns.UNABLE_FIND_CONTIG;
+import static com.astrazeneca.vardict.data.Patterns.WRONG_START_OR_END;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.substr;
 
@@ -43,10 +48,20 @@ public class ReferenceResource {
      * @return array of nucleotide bases in the region of fasta
      */
     public String[] retrieveSubSeq(String fasta, String chr, int start, int end) {
-        IndexedFastaSequenceFile idx = fetchFasta(fasta);
-        ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
-        byte[] bases = seq.getBases();
-        return new String[] { ">" + chr + ":" + start + "-" + end, bases != null ? new String(bases) : "" };
+        try {
+            IndexedFastaSequenceFile idx = fetchFasta(fasta);
+            ReferenceSequence seq = idx.getSubsequenceAt(chr, start, end);
+            byte[] bases = seq.getBases();
+            return new String[]{">" + chr + ":" + start + "-" + end, bases != null ? new String(bases) : ""};
+        } catch (SAMException e){
+            if (UNABLE_FIND_CONTIG.matcher(e.getMessage()).find()){
+                throw new WrongFastaOrBamException(chr, e);
+            } else if (WRONG_START_OR_END.matcher(e.getMessage()).find()){
+                throw new RegionBoundariesException(chr, start, end, e);
+            } else {
+                throw e;
+            }
+        }
     }
 
     /**
