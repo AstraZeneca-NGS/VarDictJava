@@ -992,8 +992,14 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             Matcher mm = BEGIN_ATGC_END.matcher(descStringOfInsertionSegment);
             if (mm.find()) {
                 BaseInsertion tpl = adjInsPos(start - 1, descStringOfInsertionSegment.toString(), ref);
-                insertionPosition = tpl.baseInsert;
-                descStringOfInsertionSegment = new StringBuilder(tpl.insertionSequence);
+                int adjustedInsertionPosition = tpl.baseInsert;
+                StringBuilder adjustedDescStringOfInsertionSegment = new StringBuilder(tpl.insertionSequence);
+
+                // check for the index, if it is negative, there can be deletions, will not be adjusted.
+                if (readPositionIncludingSoftClipped - 1 - (start - 1 - adjustedInsertionPosition) > 0) {
+                    insertionPosition = adjustedInsertionPosition;
+                    descStringOfInsertionSegment = adjustedDescStringOfInsertionSegment;
+                }
             }
             //add '+' + s to insertions at inspos
             incCnt(getOrElse(positionToInsertionCount, insertionPosition, new HashMap<>()), "+" + descStringOfInsertionSegment, 1);
@@ -1042,12 +1048,12 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             2). hash contains variant structure for the position
             3). read base at position n-1 matches reference at start-1
              */
-            int index = readPositionIncludingSoftClipped - 1 - (start - 1 - insertionPosition);
-            if (insertionPosition > position && isHasAndEquals(querySequence.charAt(index), ref, insertionPosition)) {
-                Variation tv = getVariationMaybe(nonInsertionVariants, insertionPosition, querySequence.charAt(index));
+            int indexOfInsertionInQuerySequence = readPositionIncludingSoftClipped - 1 - (start - 1 - insertionPosition);
+            if (insertionPosition > position && isHasAndEquals(querySequence.charAt(indexOfInsertionInQuerySequence), ref, insertionPosition)) {
+                Variation tv = getVariationMaybe(nonInsertionVariants, insertionPosition, querySequence.charAt(indexOfInsertionInQuerySequence));
                 //Substract count.
                 if (tv != null) {
-                    subCnt(tv, direction, tp, queryQuality.charAt(index) - 33,
+                    subCnt(tv, direction, tp, queryQuality.charAt(indexOfInsertionInQuerySequence) - 33,
                             mappingQuality, numberOfMismatches - nmoff);
                 }
             }

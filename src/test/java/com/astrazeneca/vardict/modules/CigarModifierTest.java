@@ -1,7 +1,7 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
-import com.astrazeneca.vardict.collection.Tuple;
+import com.astrazeneca.vardict.data.Region;
 import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
 import com.astrazeneca.vardict.variations.Variation;
 import htsjdk.samtools.Cigar;
@@ -16,7 +16,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.astrazeneca.vardict.collection.Tuple.tuple;
+import static com.astrazeneca.vardict.data.Patterns.threeIndelsPattern;
+import static com.astrazeneca.vardict.modules.CigarParser.getInsertionDeletionLength;
 
 public class CigarModifierTest {
     @AfterMethod
@@ -237,7 +238,7 @@ public class CigarModifierTest {
 
     @Test(dataProvider = "cigar")
     public void getInsertionDeletionLengthTest(Object cigar) {
-        Assert.assertEquals(CigarParser.getInsertionDeletionLength((Cigar) cigar), 12);
+        Assert.assertEquals(getInsertionDeletionLength((Cigar) cigar), 12);
     }
 
     @Test(dataProvider = "cigar")
@@ -278,5 +279,53 @@ public class CigarModifierTest {
     @Test(dataProvider = "dataForIsBEGIN_ATGC_AMP_ATGCs_END_Test")
     public void isBEGIN_ATGC_AMP_ATGCs_END(final String s, final boolean result) {
         Assert.assertEquals(new CigarParser(false).isBEGIN_ATGC_AMP_ATGCs_END(s), result);
+    }
+
+    @DataProvider(name = "threeIndelsCigar")
+    public Object[][] threeIndelsCigar() {
+        return new Object[][] {
+                {"15M1I1M1I2M1I27M", "27M3I18M", 3, 1,
+                        "GTGAAAACTGGAAACAAAAAAAAAAAAAAACAGCCTCTTCTTGGAAAG",
+                        "C@@FFFFFHHGDHIJIIJGJJJIIGJJIHD6=3@A;;>;(;ACCCDCB",
+                        "GTGAAAACTGGAAACAAAAAAAAAAAACAGCCTCTTCTTGG" },
+                {"14M3I2M2I2M2D26M1834N23M", "18M2D5I26M1834N23M", 7, 1,
+                        "GACTCTTTTGTAGGTGCTGATCTTCTTAAGAAATTTAAATTTCTAAAAGGTGCTACACTGTGTGTCATCTGC",
+                        "AAAAAEEEEEEEE6EEEEAEEEEEEEEEEE/EEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEEEAE",
+                        "GACTCTTTTGTAGGTGCTNNTCTTAAGAAATTTAAATTTCT" },
+                {"2S2M2I2M2D26M1834N10M", "6S28M1834N10M", 4, 1,
+                        "GCTGATCTTCTTAAGAAATTTAAATTTCTAAAAGGTGCTACACT",
+                        "AAAA6/EAEEEEEEEEEAEEAEE/6AEEE6EEA/EE/EEAA/EE",
+                        "GGTGCTGATCTTAAGAAATTTAAATTTCTAAAAGNNNNNNN" },
+                {"34M3I2M2I2M2D26M1834N4M", "44M3I22M1834N4M", 7,  1,
+                        "GACTCCTTTTGTACCTCTGTGACTCTTTTGTAGGTGCTGATCTTCTTAAGAAATTTAAATTTCTAAAAGGTGC",
+                        "EEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEAAAAA",
+                        "GACTCCTTTTGTACCTCTGTGACTCTTTTGTAGGTGCTGATCTTAAGAAATTTAAATTTCTAAAAGNNNNNNNNNNNNNNNN" },
+                {"11M1I2M1I8M1I51M", "21M3I51M", 3, 1,
+                        "GTTTTTTGTTTCCTTTTTTTTTTTAACCATCTGATACTAAGAAGATGAATTTGCACAGATTTCTCTGCATAATTT",
+                        "AAAAAEEEEEEEEEEEEEEEEEEEEEEEEA<AAEEEAEEEEEE6EE/EEEEE6AEEEAEEEEEA<EEEEEEEEEA",
+                        "GTTTTTTGTTTCCTTTTTTTTAACCATCTGATACTAAGAAGATGAATTTGCACAGATTTCTCTGCATAATTTNNNNNNNNNN" },
+                {"10M2I2M1I8M1I51M", "21M3I50M", 4, 1,
+                        "GTTTTTTGTTTCCTTTTTTTTTTTAACCATCTGATACTAAGAAGATGAATTTGCACAGATTTCTCTGCATAATTT",
+                        "AAAAAEEEEEEEEEEEEEEEEEEEEEEEEA<AAEEEAEEEEEE6EE/EEEEE6AEEEAEEEEEA<EEEEEEEEEA",
+                        "GTTTTTTGTTTCCTTTTTTTTAACCATCTGATACTAAGAAGATGAATTTGCACAGATTTCTCTGCATAATTTNNNNNNNNNN" },
+
+        };
+    }
+
+    @Test(dataProvider = "threeIndelsCigar")
+    public void threeIndels(final String initialCigar, final String expected, final int indel, final int position,
+                            String querySequence, final String queryQuality, String refSequence) {
+        Map<Integer, Character> reference = new HashMap<>();
+        int i = 1;
+        for (String base : refSequence.split("")) {
+            reference.put(i, base.charAt(0));
+            i++;
+        }
+
+        Region region = new Region("chr1", 1, 100, "");
+        CigarModifier cigarModifier = new CigarModifier(position, initialCigar, querySequence,
+                queryQuality, reference, indel, region);
+        String actual = cigarModifier.modifyCigar()._2;
+        Assert.assertEquals(actual, expected);
     }
 }

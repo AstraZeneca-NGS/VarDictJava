@@ -1,0 +1,1 @@
+Simple,hg38.fa,CIGAR_Three_Indels_DLEN.bam,chr9,107331700,107331701,-f 0.001

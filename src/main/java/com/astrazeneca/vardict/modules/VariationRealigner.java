@@ -259,7 +259,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         if (instance().conf.y) {
             System.err.print("Clusters; ");
             clusters.forEach(cluster -> System.err.print(join("; ", cluster.cnt, cluster.start_s, cluster.end_e,
-                    cluster.mateStart_ms, cluster.mateEnd_me)));
+                    cluster.mateStart_ms, cluster.mateEnd_me, "")));
             System.err.println(join("; ", "; out of", mates.size()));
         }
         Cluster firstCluster = clusters.get(0);
