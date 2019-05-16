@@ -52,8 +52,9 @@ To build the project, in the root folder of the project, run the following comma
 ```
 ./gradlew clean installDist
 ```
+Clean will remove all old files from build folder.
 
-To generate Javadoc, in the build/docs/javadoc folder, run the following command:
+To generate Javadoc, in the build/docs/javadoc folder, run the following command. If you want to save content of `build` folder as it is (for example after building the project), run it without `clean` option:
 
 ```
 ./gradlew clean javadoc
