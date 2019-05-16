@@ -11,6 +11,7 @@ import org.testng.annotations.Test;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class AdaptorTest {
     @AfterMethod
@@ -63,20 +64,20 @@ public class AdaptorTest {
     public Sclip initSclip() {
         Sclip sclip = new Sclip();
         sclip.varsCount = 2;
-        sclip.nt.put(0, new HashMap<Character, Integer>() {{ put('C', 2); }} );
-        sclip.nt.put(1, new HashMap<Character, Integer>() {{ put('T', 2); }} );
-        sclip.nt.put(2, new HashMap<Character, Integer>() {{ put('A', 2); }} );
-        sclip.nt.put(3, new HashMap<Character, Integer>() {{ put('A', 2); }} );
-        sclip.nt.put(4, new HashMap<Character, Integer>() {{ put('A', 2); }} );
-        sclip.nt.put(5, new HashMap<Character, Integer>() {{ put('T', 2); }} );
-        sclip.nt.put(6, new HashMap<Character, Integer>() {{ put('C', 2); }} );
-        sclip.seq.put(0, new HashMap<Character, Variation>() {{put('C', new Variation() {{ meanQuality=82.0; }}); }} );
-        sclip.seq.put(1, new HashMap<Character, Variation>() {{put('T', new Variation() {{ meanQuality=82.0; }}); }} );
-        sclip.seq.put(2, new HashMap<Character, Variation>() {{put('A', new Variation() {{ meanQuality=78.0; }}); }} );
-        sclip.seq.put(3, new HashMap<Character, Variation>() {{put('A', new Variation() {{ meanQuality=53.0; }}); }} );
-        sclip.seq.put(4, new HashMap<Character, Variation>() {{put('A', new Variation() {{ meanQuality=78.0; }}); }} );
-        sclip.seq.put(5, new HashMap<Character, Variation>() {{put('T', new Variation() {{ meanQuality=73.0; }}); }} );
-        sclip.seq.put(6, new HashMap<Character, Variation>() {{put('C', new Variation() {{ meanQuality=78.0; }}); }} );
+        sclip.nt.put(0, new TreeMap<Character, Integer>() {{ put('C', 2); }} );
+        sclip.nt.put(1, new TreeMap<Character, Integer>() {{ put('T', 2); }} );
+        sclip.nt.put(2, new TreeMap<Character, Integer>() {{ put('A', 2); }} );
+        sclip.nt.put(3, new TreeMap<Character, Integer>() {{ put('A', 2); }} );
+        sclip.nt.put(4, new TreeMap<Character, Integer>() {{ put('A', 2); }} );
+        sclip.nt.put(5, new TreeMap<Character, Integer>() {{ put('T', 2); }} );
+        sclip.nt.put(6, new TreeMap<Character, Integer>() {{ put('C', 2); }} );
+        sclip.seq.put(0, new TreeMap<Character, Variation>() {{put('C', new Variation() {{ meanQuality=82.0; }}); }} );
+        sclip.seq.put(1, new TreeMap<Character, Variation>() {{put('T', new Variation() {{ meanQuality=82.0; }}); }} );
+        sclip.seq.put(2, new TreeMap<Character, Variation>() {{put('A', new Variation() {{ meanQuality=78.0; }}); }} );
+        sclip.seq.put(3, new TreeMap<Character, Variation>() {{put('A', new Variation() {{ meanQuality=53.0; }}); }} );
+        sclip.seq.put(4, new TreeMap<Character, Variation>() {{put('A', new Variation() {{ meanQuality=78.0; }}); }} );
+        sclip.seq.put(5, new TreeMap<Character, Variation>() {{put('T', new Variation() {{ meanQuality=73.0; }}); }} );
+        sclip.seq.put(6, new TreeMap<Character, Variation>() {{put('C', new Variation() {{ meanQuality=78.0; }}); }} );
         return sclip;
     }
 }

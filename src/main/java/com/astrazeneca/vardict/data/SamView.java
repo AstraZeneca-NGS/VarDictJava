@@ -14,7 +14,7 @@ public class SamView implements AutoCloseable {
     private static ThreadLocal<Map<String, SamReader>> threadLocalSAMReaders = ThreadLocal.withInitial(HashMap::new);
 
     private SAMRecordIterator iterator;
-    private int filter = 0;
+    private int filter;
 
     public SamView(String file, String samfilter, Region region, ValidationStringency stringency) {
         iterator = fetchReader(file, stringency)

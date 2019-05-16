@@ -103,6 +103,9 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
             return;
         }
         for (Variant variant : variants.variants) {
+            if (variant.refallele.equals(variant.varallele)) {
+                continue;
+            }
             SomaticOutputVariant outputVariant;
             variant.vartype = variant.varType();
             if (!variant.isGoodVar(variants.referenceVariant, variant.vartype, splice)) {
@@ -144,6 +147,10 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
                 && v1.variants.get(numberOfProcessedVariation).isGoodVar(v1.referenceVariant,
                 v1.variants.get(numberOfProcessedVariation).varType(), splice)) {
             final Variant vref = v1.variants.get(numberOfProcessedVariation);
+            if (vref.refallele.equals(vref.varallele)) {
+                numberOfProcessedVariation++;
+                continue;
+            }
             final String nt = vref.descriptionString;
             vref.vartype = vref.varType();
             SomaticOutputVariant outputVariant;
@@ -213,6 +220,9 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
                 String nt = v2var.descriptionString;
                 Variant v1nt = getVarMaybe(v1, varn, nt);
                 if (v1nt != null) {
+                    if (v1nt.refallele.equals(v1nt.varallele)) {
+                        continue;
+                    }
                     String type = v1nt.frequency < instance().conf.lofreq ? LIKELY_LOH : GERMLINE;
                     if (COMPLEX.equals(v2var.vartype)) {
                         v1nt.adjComplex();
@@ -222,6 +232,9 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
                     outputVariant = new SomaticOutputVariant(v1nt, v2var, v1nt, v2var, region, v1.sv, v2.sv, type);
                     variantPrinter.print(outputVariant);
                 } else {
+                    if (v2var.refallele.equals(v2var.varallele)) {
+                        continue;
+                    }
                     Variant v1var = getVarMaybe(v1, var, 0);
                     int tcov = v1var != null && v1var.totalPosCoverage != 0 ? v1var.totalPosCoverage : 0;
 
@@ -257,6 +270,9 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
      * */
     private void printVariationsFromSecondSample(Integer position, Vars v1, Vars v2, Region region, Set<String> splice){
         for (Variant v2var : v2.variants) {
+            if (v2var.refallele.equals(v2var.varallele)) {
+                continue;
+            }
             v2var.vartype = v2var.varType();
             if (!v2var.isGoodVar(v2.referenceVariant, v2var.vartype, splice)) {
                 continue;

@@ -1905,9 +1905,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             for (int si = 0; si < numberOfHighQualityBases; si++) {
                 Character ch = querySequence.charAt(readPositionIncludingSoftClipped + si);
                 int idx = si;
-                Map<Character, Integer> cnts = sclip.nt.get(idx);
+                TreeMap<Character, Integer> cnts = sclip.nt.get(idx);
                 if (cnts == null) {
-                    cnts = new HashMap<>();
+                    cnts = new TreeMap<>();
                     sclip.nt.put(idx, cnts);
 
                 }
@@ -1937,9 +1937,9 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             for (int si = cigarElementLength - 1; cigarElementLength - si <= numberOfHighQualityBases; si--) {
                 Character ch = querySequence.charAt(si);
                 int idx = cigarElementLength - 1 - si;
-                Map<Character, Integer> cnts = sclip.nt.get(idx);
+                TreeMap<Character, Integer> cnts = sclip.nt.get(idx);
                 if (cnts == null) {
-                    cnts = new HashMap<>();
+                    cnts = new TreeMap<>();
                     sclip.nt.put(idx, cnts);
                 }
                 incCnt(cnts, ch, 1);
