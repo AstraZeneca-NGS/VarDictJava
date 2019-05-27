@@ -746,7 +746,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                         startPosition++;
                     }
 
-                    if (varallele.equals("<DEL>") && refallele.length() > 1) {
+                    if (varallele.equals("<DEL>") && refallele.length() >= 1) {
                         refallele = ref.containsKey(startPosition) ? ref.get(startPosition).toString() : "";
                         if (refCoverage.containsKey(startPosition - 1)) {
                             totalPosCoverage = refCoverage.get(startPosition - 1);
