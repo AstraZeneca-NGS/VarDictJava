@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * Common scope of data must be storing between steps of VarDict pipeline.
- * @param <T>
+ * @param <T> data of current step of pipeline
  */
 public class Scope<T> {
 

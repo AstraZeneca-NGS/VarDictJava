@@ -287,6 +287,13 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
 
     /**
      * Creates insertion variant from each variation on this position and adds it to the list of aligned variants.
+     * @param duprate duplication rate of insertion
+     * @param position position of the insertion start
+     * @param totalPosCoverage current total position coverage (total depth) that can be updated by extra counts
+     * @param var list of variants at the position to be updated
+     * @param debugLines list of debug lines to be updated
+     * @param hicov position coverage by high quality reads
+     * @return updated total position coverage
      */
     int createInsertion(double duprate, int position, int totalPosCoverage,
                         List<Variant> var, List<String> debugLines, int hicov) {
@@ -371,9 +378,19 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
 
     /**
      * Creates non-insertion variant from each variation on this position and adds it to the list of aligned variants.
+     * @param duprate duplication rate of non-insertion variant
+     * @param alignedVars map of variants for position to get SV info
+     * @param position position of the non-insertion variant start
+     * @param nonInsertionVariations map of description strings and intermediate variations
+     * @param totalPosCoverage current total position coverage (total depth) that can be updated by extra counts
+     * @param var list of variants at the position to be updated
+     * @param debugLines list of debug lines to be updated
+     * @param keys sorted list of variant description strings
+     * @param hicov position coverage by high quality reads
      */
-    void createVariant(double duprate, Map<Integer, Vars> alignedVars, int position, VariationMap<String, Variation> nonInsertionVariations,
-                       int tcov, List<Variant> var, List<String> debugLines, List<String> keys, int hicov) {
+    void createVariant(double duprate, Map<Integer, Vars> alignedVars, int position,
+                       VariationMap<String, Variation> nonInsertionVariations, int totalPosCoverage, List<Variant> var,
+                       List<String> debugLines, List<String> keys, int hicov) {
         //Loop over all variants found for the position except insertions
         for (String descriptionString : keys) {
             if (descriptionString.equals("SV")) {
@@ -404,8 +421,8 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
              # 1). cnt.cnt > tcov                         - variant count is more than position coverage
              # 2). cnt.cnt - tcov < cnt.extracnt          - variant count is no more than position coverage + extracnt
              */
-            int ttcov = tcov;
-            if (cnt.varsCount > tcov && cnt.extracnt > 0 && cnt.varsCount - tcov < cnt.extracnt) { //adjust position coverage if condition holds
+            int ttcov = totalPosCoverage;
+            if (cnt.varsCount > totalPosCoverage && cnt.extracnt > 0 && cnt.varsCount - totalPosCoverage < cnt.extracnt) { //adjust position coverage if condition holds
                 ttcov = cnt.varsCount;
             }
 
