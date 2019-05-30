@@ -97,6 +97,8 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
      * @param variants variations from one BAM
      * @param isFirstCover if the first calling
      * @param varLabel type of variation (LikelyLOH, LikelySomatic, Germline, AFDiff, StrongSomatic)
+     * @param region region from BED file
+     * @param splice set of strings representing introns in splice
      * */
     void callingForOneSample(Vars variants, boolean isFirstCover, String varLabel, Region region, Set<String> splice) {
         if (variants.variants.isEmpty()) {
@@ -125,6 +127,14 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
         }
     }
 
+    /**
+     * Run analysis of variations from BAM1 and BAM2.
+     * @param position position on which analysis is processed
+     * @param v1 variations from BAM1 on target position
+     * @param v2 variations from BAM2 on target position
+     * @param region region from BED file
+     * @param splice set of strings representing introns in splice
+     */
     void callingForBothSamples(Integer position, Vars v1, Vars v2, Region region, Set<String> splice)  {
         if (v1.variants.isEmpty() && v2.variants.isEmpty()) {
             return;
@@ -136,10 +146,12 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
         }
     }
     /**
-     * Analyse variations from BAM1 based on variations from BAM2.
+     * Analyse and print variations from BAM1 based on variations from BAM2.
      * @param position position on which analysis is processed
      * @param v1 variations from BAM1 on target position
      * @param v2 variations from BAM2 on target position
+     * @param region region from BED file
+     * @param splice set of strings representing introns in splice
      */
     private void printVariationsFromFirstSample(Integer position, Vars v1, Vars v2, Region region, Set<String> splice){
         int numberOfProcessedVariation = 0;
@@ -263,11 +275,13 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
     }
 
     /**
-     * Analyse variations from BAM2 based on variations from BAM1.
+     * Analyse and print variations from BAM2 based on variations from BAM1.
      * @param position position on which analysis is processed
      * @param v1 variations from BAM1 on target position
      * @param v2 variations from BAM2 on target position
-     * */
+     * @param region region from BED file
+     * @param splice set of strings representing introns in splice
+     */
     private void printVariationsFromSecondSample(Integer position, Vars v1, Vars v2, Region region, Set<String> splice){
         for (Variant v2var : v2.variants) {
             if (v2var.refallele.equals(v2var.varallele)) {
@@ -326,6 +340,7 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
      * @param variants variations from BAM2
      * @param standardVariant a variation to compare with
      * @param variantToCompare a variation to be compared
+     * @param splice set of strings representing introns in splice
      * @return type of variation (LikelyLOH, LikelySomatic, Germline, AFDiff, StrongSomatic)
      * */
      String determinateType(Vars variants, Variant standardVariant, Variant variantToCompare, Set<String> splice) {
@@ -358,13 +373,11 @@ public class SomaticPostProcessModule implements BiConsumer<Scope<AlignedVarsDat
      * Taken a likely somatic indels and see whether combine two bam files still support somatic status. This is mainly for Indels
      * that softclipping overhang is too short to positively being called in one bam file, but can be called in the other bam file,
      * thus creating false positives
-     *
      * @param variant1 variant 1
      * @param variant2 variant 2
      * @param chrName chromosome
      * @param position position
      * @param descriptionString description string of variant
-     *
      * @param splice set of strings representing introns in splice
      * @param maxReadLength max read length
      * @return (new <code>maxReadLength</code>, "FALSE" | "")
