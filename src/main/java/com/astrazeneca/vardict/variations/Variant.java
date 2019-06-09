@@ -353,10 +353,10 @@ public class Variant {
         if (meanMappingQuality < instance().conf.mapq) {
             return false;
         }
-        if (msi >= 15 && frequency <= 0.25d && msint == 1) {
+        if (msi >= 15 && frequency <= instance().conf.monomerMsiFrequency && msint == 1) {
             return false;
         }
-        if (msi >= 12 && frequency <= 0.1d && msint > 1) {
+        if (msi >= 12 && frequency <= instance().conf.nonMonomerMsiFrequency && msint > 1) {
             return false;
         }
         if (strandBiasFlag.equals("2;1") && frequency < 0.20d) {

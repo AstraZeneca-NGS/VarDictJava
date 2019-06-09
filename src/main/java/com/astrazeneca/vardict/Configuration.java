@@ -300,6 +300,15 @@ public class Configuration {
      */
     public int crisprCuttingSite = 0;
 
+    /**
+     * The variant frequency threshold to determine variant as good in case of monomer MSI
+     */
+    public double monomerMsiFrequency = 0.25d;  // -mfreq
+    /**
+     * The variant frequency threshold to determine variant as good in case of non-monomer MSI
+     */
+    public double nonMonomerMsiFrequency = 0.1d;  // -nmfreq
+
     public boolean isColumnForChromosomeSet() {
         return columnForChromosome >= 0;
     }
