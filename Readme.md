@@ -93,7 +93,7 @@ Currently, the project uses the following third-party libraries:
 standard Java library because its performance is much higher than that of the standard library.
 * Commons CLI (http://commons.apache.org/proper/commons-cli, Apache License) – a library for parsing the command line.
 * HTSJDK (http://smtools.github.io/htsjdk/) is an implementation of a unified Java library for accessing common file formats, such as SAM and VCF.
-* PowerMock and TestNG are the testing frameworks (not included in distribution, used only in tests).
+* Mockito and TestNG are the testing frameworks (not included in distribution, used only in tests).
 
 ### Single sample mode
 
@@ -305,7 +305,7 @@ A variant appears in the output if it satisfies the following criteria (in this 
 8. Variant frequency exceeds 30%.
 9. Mean mapping quality exceeds the threshold set by the `-O` option (default: no filtering)
 10. In the case of an MSI region, the variant size is less than 12 nucleotides for the non-monomer MSI or 15 for the monomer MSI. 
-Variant frequency is more than 10% for the non-monomer MSI and 25% for the monomer MSI.
+Variant frequency is more than 10% for the non-monomer MSI (or set by `--nmfreq` option) and 25% for the monomer MSI (or set by `--mfreq` option).
 11. Variant has not "2;1" bias.
 11. Variant is not SNV and variants refallele or varallele lengths are more then 3 nucleotides when variant frequency less then 20%.
 
@@ -471,6 +471,10 @@ These are only rough classification. You need to examine the p-value (after test
 - `-j CRISPR_filtering_bp`  
     In CRISPR mode, the minimum amount in bp that a read needs to overlap with cutting site.  If a read does not meet the criteria,
     it will not be used for variant calling, since it is likely just a partially amplified PCR.  Default: not set, or no filtering  
+- `--nmfreq`  
+    The variant frequency threshold to determine variant as good in case of non-monomer MSI. Default: 0.1 
+- `--mfreq`  
+    The variant frequency threshold to determine variant as good in case of monomer MSI. Default: 0.25
 ## Output columns
 ### Simple mode:
 1. Sample - sample name
