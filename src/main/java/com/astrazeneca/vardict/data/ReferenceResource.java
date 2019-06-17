@@ -104,7 +104,7 @@ public class ReferenceResource {
 
         // To process ends of chromosomes without decreasing by SEED1
         int siteEnd = len == sequenceEnd ? exon.length() : exon.length() - Configuration.SEED_1;
-        for (int i = 0; i < siteEnd; i++) { // TODO why '<=' in Perl?
+        for (int i = 0; i < siteEnd; i++) {
             // don't process it more than once
             if (ref.referenceSequences.containsKey(i + sequenceStart)) {
                 continue;
