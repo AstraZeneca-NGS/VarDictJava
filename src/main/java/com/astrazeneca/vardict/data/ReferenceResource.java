@@ -111,6 +111,10 @@ public class ReferenceResource {
             }
             ref.referenceSequences.put(i + sequenceStart, exon.charAt(i));
 
+            // Do not create adaptor sequences for the very end of chromosome
+            if (len == sequenceEnd && i > exon.length() - Configuration.SEED_1) {
+                continue;
+            }
             // Fill the seed map by sequences of SEED_1 and SEED_2 length
             String keySequence = substr(exon, i, Configuration.SEED_1);
             ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
