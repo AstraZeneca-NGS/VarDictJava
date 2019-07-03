@@ -1,1 +1,1 @@
-Simple,hg38.fa,adaptor_insertion.bam,chr13,32683877,32684023,-f 0.01 -q 25 -r 2 -UN -y --adaptor AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
+Simple,hg38.fa,adaptor_insertion.bam,chr13,32683877,32684023,-f 0.01 -q 25 -r 2 -UN --adaptor AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
