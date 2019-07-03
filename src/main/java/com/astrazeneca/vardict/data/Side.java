@@ -9,5 +9,9 @@ public enum Side {
     public static Side valueOf(int side) {
         return side == 3 ? _3 : side == 5 ? _5 : UNKNOWN;
     }
+
+    public int valueFrom() {
+        return this.name().equals("_3") ? 3 : this.name().equals("_5") ? 5 : 0;
+    }
 }
 

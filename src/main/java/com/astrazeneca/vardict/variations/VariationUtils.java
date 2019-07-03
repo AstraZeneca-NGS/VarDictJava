@@ -132,7 +132,6 @@ public class VariationUtils {
                 softClip.used = true;
             }
         }
-
         if (!SEQ.isEmpty() && SEQ.length() >= Configuration.ADSEED) {
             if ( dir == 3 ) { // 3'
                 if (instance().adaptorForward.containsKey(substr(SEQ, 0, Configuration.ADSEED))) {

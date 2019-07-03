@@ -346,7 +346,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 if (softClips3End.containsKey(position)) {
                     final Sclip sc3v = softClips3End.get(position);
                     if (!sc3v.used) {
-                        final String seq = findconseq(sc3v, 0);
+                        final String seq = findconseq(sc3v, 3);
                         if (seq.startsWith(mnt)) {
                             if (seq.length() == mnt.length()
                                     || ismatchref(seq.substring(mnt.length()), reference.referenceSequences, position + mnt.length(), 1)) {
@@ -360,7 +360,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 if (softClips5End.containsKey(position + mnt.length())) {
                     final Sclip sc5v = softClips5End.get(position + mnt.length());
                     if (!sc5v.used) {
-                        String seq = findconseq(sc5v, 0);
+                        String seq = findconseq(sc5v, 5);
                         if (!seq.isEmpty() && seq.length() >= mnt.length()) {
                             seq = new StringBuffer(seq).reverse().toString();
                             if (seq.endsWith(mnt)) {
@@ -556,7 +556,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 for (Integer sc5pp : sc5p) {
                     if (softClips5End.containsKey(sc5pp) && !softClips5End.get(sc5pp).used) {
                         Sclip tv = softClips5End.get(sc5pp);
-                        String seq = findconseq(tv, 0);
+                        String seq = findconseq(tv, 5);
                         //Make sure a couple of bogus mapping won't scoop up several fold soft-clip reads
                         if (dcnt <= 2 && tv.varsCount / dcnt > 5) {
                             continue;
@@ -582,7 +582,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 for (Integer sc3pp : sc3p) {
                     if (softClips3End.containsKey(sc3pp) && !softClips3End.get(sc3pp).used) {
                         Sclip tv = softClips3End.get(sc3pp);
-                        String seq = findconseq(tv, 0);
+                        String seq = findconseq(tv, 3);
                         //Make sure a couple of bogus mapping won't scoop up several fold soft-clip reads
                         if (dcnt <= 2 && tv.varsCount / dcnt > 5) {
                             continue;
@@ -839,7 +839,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         System.err.printf("    55: %s %s VN: '%s'  5' seq: ^%s^\n", position, sc5pp, vn, wupseq);
                     }
                     if (tv != null && !tv.used) {
-                        String seq = findconseq(tv, 0);
+                        String seq = findconseq(tv, 5);
                         if (instance().conf.y) {
                             System.err.printf("    ins5: %s %s %s %s VN: %s iCnt: %s vCnt: %s\n", position, sc5pp, seq, wupseq, vn, insertionCount, tv.varsCount);
                         }
@@ -867,7 +867,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                         System.err.printf("    33: %s %s VN: '%s'  3' seq: ^%s^\n", position, sc3pp, vn, sanpseq);
                     }
                     if (tv != null && !tv.used) {
-                        String seq = findconseq(tv, 0);
+                        String seq = findconseq(tv, 3);
                         if (instance().conf.y) {
                             System.err.printf("    ins3: %s %s %s %s VN: %s iCnt: %s vCnt: %s\n", position, sc3pp, seq, sanpseq, vn, insertionCount, tv.varsCount);
                         }
@@ -1618,7 +1618,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 if (sc5v.used) {
                     continue;
                 }
-                String seq = findconseq(sc5v, 0);
+                String seq = findconseq(sc5v, 5);
                 if (seq.isEmpty()) {
                     continue;
                 }
@@ -1781,7 +1781,7 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
                 if (sc3v.used) {
                     continue;
                 }
-                String seq = findconseq(sc3v, 0);
+                String seq = findconseq(sc3v, 3);
                 if (seq.isEmpty()) {
                     continue;
                 }
