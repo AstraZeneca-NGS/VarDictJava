@@ -1,0 +1,1 @@
+Simple,hg38.fa,test-malformed-cigar-and-string-eor.bam,chr4,25001600,25001607,-f 0.001

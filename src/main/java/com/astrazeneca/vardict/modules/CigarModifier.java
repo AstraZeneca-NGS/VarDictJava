@@ -556,7 +556,12 @@ public class CigarModifier {
             } else if (dlen < 0) {
                 tslen = -dlen;
                 rm += dlen;
-                newCigarStr += tslen + "I" + rm + "M";
+                if (rm < 0) {
+                    RDOFF = RDOFF + rm;
+                    newCigarStr = RDOFF + "M" + tslen + "I";
+                } else {
+                    newCigarStr += tslen + "I" + rm + "M";
+                }
             } else {
                 newCigarStr += dlen + "D" + rm + "M";
             }
