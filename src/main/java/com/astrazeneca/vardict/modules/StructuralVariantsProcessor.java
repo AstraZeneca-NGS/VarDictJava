@@ -163,7 +163,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     if (scv.used) {
                         continue;
                     }
-                    String seq = findconseq(scv, 0);
+                    String seq = findconseq(scv, 5);
                     if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                         continue;
                     }
@@ -247,7 +247,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         if (!(i >= del.end - 3 && i - del.end < 3 * maxReadLength)) {
                             continue;
                         }
-                        String seq = findconseq(scv, 0);
+                        String seq = findconseq(scv, 5);
                         if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                             continue;
                         }
@@ -333,7 +333,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     if (scv.used) {
                         continue;
                     }
-                    String seq = findconseq(scv, 0);
+                    String seq = findconseq(scv, 3);
                     if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                         continue;
                     }
@@ -408,7 +408,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         if (!(i <= del.start + 3 && del.start - i < 3 * maxReadLength)) {
                             continue;
                         }
-                        String seq = findconseq(scv, 0);
+                        String seq = findconseq(scv, 3);
                         if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                             continue;
                         }
@@ -534,7 +534,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     if (scv.used) {
                         continue;
                     }
-                    seq = findconseq(scv, 0);
+                    seq = findconseq(scv, side.valueFrom());
                     if (seq.isEmpty()) {
                         continue;
                     }
@@ -561,7 +561,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         if (scv.used) {
                             continue;
                         }
-                        seq = findconseq(scv, 0);
+                        seq = findconseq(scv, side.valueFrom());
                         if (seq.isEmpty()) {
                             continue;
                         }
@@ -705,7 +705,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 if (SOFTP2SV.containsKey(p5) && SOFTP2SV.get(p5).get(0).used) {
                     continue;
                 }
-                String seq = findconseq(sc5v, 0);
+                String seq = findconseq(sc5v, 5);
                 if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                     continue;
                 }
@@ -835,7 +835,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 if (SOFTP2SV.containsKey(p3) && SOFTP2SV.get(p3).get(0).used) {
                     continue;
                 }
-                String seq = findconseq(sc3v, 0);
+                String seq = findconseq(sc3v, 3);
                 if (seq.isEmpty() || seq.length() < Configuration.SEED_2) {
                     continue;
                 }
@@ -1397,7 +1397,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     pmeanf = currentSclip3.meanPosition;
                     nmf = currentSclip3.numberOfMismatches;
 
-                    String seq = findconseq(currentSclip3, 0);
+                    String seq = findconseq(currentSclip3, 5);
                     Match match = findMatch(seq, reference, bp, 1);
                     int tbp = match.basePosition;
                     String EXTRA = match.matchedSequence;
@@ -1537,7 +1537,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     Qmeanr = currentSclip5.meanMappingQuality;
                     pmeanr = currentSclip5.meanPosition;
                     nmr = currentSclip5.numberOfMismatches;
-                    String seq = findconseq(currentSclip5, 0);
+                    String seq = findconseq(currentSclip5, 3);
                     Match match = findMatch(seq, reference, pe, -1);
                     int tbp = match.basePosition;
                     String EXTRA = match.matchedSequence;
@@ -1977,7 +1977,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
             if (sclip.used) {
                 continue;
             }
-            String seq = findconseq(sclip, 0);
+            String seq = findconseq(sclip, 5);
             if (seq.length() > 5) {
                 continue;
             }
@@ -2003,7 +2003,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
             if (sclip.used) {
                 continue;
             }
-            String seq = findconseq(sclip, 0);
+            String seq = findconseq(sclip, 3);
             if (seq.length() > 5) {
                 continue;
             }
@@ -2036,7 +2036,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
             if (sclip_sc.varsCount < instance().conf.minr) {
                 continue;
             }
-            String seq = findconseq(sclip_sc, 0);
+            String seq = findconseq(sclip_sc, 5);
             if (!seq.isEmpty() && seq.length() > Configuration.SEED_2) {
                 seq = new StringBuilder(seq).reverse().toString();
                 System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.varsCount, seq);
@@ -2052,7 +2052,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
             if (sclip_sc.varsCount < instance().conf.minr) {
                 continue;
             }
-            String seq = findconseq(sclip_sc, 0);
+            String seq = findconseq(sclip_sc, 3);
             if (!seq.isEmpty() && seq.length() > Configuration.SEED_2) {
                 System.err.printf("  P: %s Cnt: %s Seq: %s\n", position_p, sclip_sc.varsCount, seq);
             }

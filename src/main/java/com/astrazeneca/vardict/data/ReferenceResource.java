@@ -102,13 +102,19 @@ public class ReferenceResource {
         Reference.LoadedRegion loadedRegion = new Reference.LoadedRegion(region.chr, sequenceStart, sequenceEnd);
         ref.loadedRegions.add(loadedRegion);
 
-        for (int i = 0; i < exon.length() - Configuration.SEED_1; i++) { // TODO why '<=' in Perl?
+        // To process ends of chromosomes without decreasing by SEED1
+        int siteEnd = len == sequenceEnd ? exon.length() : exon.length() - Configuration.SEED_1;
+        for (int i = 0; i < siteEnd; i++) {
             // don't process it more than once
             if (ref.referenceSequences.containsKey(i + sequenceStart)) {
                 continue;
             }
             ref.referenceSequences.put(i + sequenceStart, exon.charAt(i));
 
+            // Do not create adaptor sequences for the very end of chromosome
+            if (len == sequenceEnd && i > exon.length() - Configuration.SEED_1) {
+                continue;
+            }
             // Fill the seed map by sequences of SEED_1 and SEED_2 length
             String keySequence = substr(exon, i, Configuration.SEED_1);
             ref = addPositionsToSeedSequence(ref, sequenceStart, i, keySequence);
