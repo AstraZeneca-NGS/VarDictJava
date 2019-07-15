@@ -166,7 +166,7 @@ public class CigarModifier {
                 cm = DIG_I_DIG_I.matcher(cigarStr);
                 if (cm.find()) {
                     int ilen = toInt(cm.group(1)) + toInt(cm.group(2));
-                    cigarStr = cm.replaceFirst(ilen + "D");
+                    cigarStr = cm.replaceFirst(ilen + "I");
                     flag = true;
                 }
             }
