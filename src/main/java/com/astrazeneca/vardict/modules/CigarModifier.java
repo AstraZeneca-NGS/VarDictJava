@@ -166,7 +166,7 @@ public class CigarModifier {
                 cm = DIG_I_DIG_I.matcher(cigarStr);
                 if (cm.find()) {
                     int ilen = toInt(cm.group(1)) + toInt(cm.group(2));
-                    cigarStr = cm.replaceFirst(ilen + "D");
+                    cigarStr = cm.replaceFirst(ilen + "I");
                     flag = true;
                 }
             }
@@ -556,7 +556,12 @@ public class CigarModifier {
             } else if (dlen < 0) {
                 tslen = -dlen;
                 rm += dlen;
-                newCigarStr += tslen + "I" + rm + "M";
+                if (rm < 0) {
+                    RDOFF = RDOFF + rm;
+                    newCigarStr = RDOFF + "M" + tslen + "I";
+                } else {
+                    newCigarStr += tslen + "I" + rm + "M";
+                }
             } else {
                 newCigarStr += dlen + "D" + rm + "M";
             }
