@@ -56,7 +56,7 @@ public class CSVReferenceManager {
                 if (entry != null) {
                     int csvStart = entry.getKey();
                     String seq = entry.getValue();
-                    int csvEnd = csvStart + seq.length();
+                    int csvEnd = csvStart + seq.length() - 1 ;
                     if (csvEnd >= end) {
                         return new String[]{region, getSubSeq(csvStart, csvEnd, start, end, seq)};
                     }
