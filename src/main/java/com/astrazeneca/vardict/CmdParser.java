@@ -177,6 +177,9 @@ public class CmdParser {
 
         config.crisprCuttingSite = getIntValue(cmd, "J", 0);
         config.crisprFilteringBp = getIntValue(cmd, "j", 0);
+
+        config.monomerMsiFrequency = getDoubleValue(cmd, "mfreq", 0.25d);
+        config.nonMonomerMsiFrequency = getDoubleValue(cmd, "nmfreq", 0.1d);
         return config;
     }
 
@@ -568,6 +571,20 @@ public class CmdParser {
                 .withType(Number.class)
                 .isRequired(false)
                 .create('j'));
+
+        options.addOption(OptionBuilder.withArgName("double")
+                .hasArg(true)
+                .withDescription("The variant frequency threshold to determine variant as good in case of monomer MSI. Default: 0.25")
+                .withType(Number.class)
+                .isRequired(false)
+                .create("mfreq"));
+
+        options.addOption(OptionBuilder.withArgName("double")
+                .hasArg(true)
+                .withDescription("The variant frequency threshold to determine variant as good in case of non-monomer MSI. Default: 0.1")
+                .withType(Number.class)
+                .isRequired(false)
+                .create("nmfreq"));
 
         return options;
     }
