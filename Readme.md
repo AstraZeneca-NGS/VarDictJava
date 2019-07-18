@@ -98,7 +98,7 @@ standard Java library because its performance is much higher than that of the st
 ### Single sample mode
 
 To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 
-(see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl.`
+(see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl`.
 The following is an example command to run in single sample mode:
   
 ```
@@ -276,7 +276,7 @@ into the variants structure. If the variant is already present, VarDict adjusts 
 VarDict also handles complex variants (for example, an insertion that is close to SNV or to deletion) 
 using specialized ad-hoc methods.
 
-Structural Variants are looked after simple variants. VarDict supported DUP, INV and DEL structural variants.
+Structural Variants are looked for after simple variants. VarDict supported DUP, INV and DEL structural variants.
 
 #### Variant Description String
 The description string encodes a variant for VarDict internal use. 
@@ -336,7 +336,7 @@ These are only rough classification. You need to examine the p-value (after test
 - `-i|--splice `
     Output splicing read counts
 - `-p`   
-    Do pileup regardless the frequency
+    Do pileup regardless of the frequency
 - `-C`    
     Indicate the chromosome names are just numbers, such as 1, 2, not chr1, chr2 (deprecated)
 - `-D|--debug`    
@@ -346,11 +346,11 @@ These are only rough classification. You need to examine the p-value (after test
 - `-t|--dedup`   
     Indicate to remove duplicated reads.  Only one pair with identical start positions will be kept
 - `-3`   
-     Indicate to move indels to 3-prime if alternative alignment can be achieved.
+    Indicate to move indels to 3-prime if alternative alignment can be achieved.
 - `-K`
-     Include Ns in the total depth calculation.
+    Include Ns in the total depth calculation.
 - `-F bit`  
-     The hexical to filter reads. Default: `0x504` (filter unmapped reads, 2nd alignments and duplicates).  Use `-F 0` to turn it off.
+    The hexical to filter reads. Default: `0x504` (filter unmapped reads, 2nd alignments and duplicates).  Use `-F 0` to turn it off.
 - `-z 0/1`       
     Indicate whether the BED file contains zero-based coordinates, the same way as the Genome browser IGV does.  -z 1 indicates that coordinates in a BED file start from 0. -z 0 indicates that the coordinates start from 1. Default: `1` for a BED file or amplicon BED file.  Use `0` to turn it off. When using `-R` option, it is set to `0`
 - `-a|--amplicon int:float`    
@@ -416,8 +416,8 @@ These are only rough classification. You need to examine the p-value (after test
 - `-I INT`  
     The indel size.  Default: 50bp. 
     Be cautious with -I option, especially in the amplicon mode, as amplicon sequencing is not a way 
-    to find large indels. Increasing the search size might slow and the false positives may appear in low 
-    complexity regions. Increase it to 200-300 bp would recommend only for hybrid capture sequencing. 
+    to find large indels. Increasing the search size might be slow and false positives may appear in low
+    complexity regions. Increasing it to 200-300 bp is only recommend for hybrid capture sequencing.
 - `-M INT`  
     The minimum matches for a read to be considered.  If, after soft-clipping, the matched bp is less than INT, then the 
     read is discarded.  It's meant for PCR based targeted sequencing where there's no insert and the matching is only the primers.
@@ -453,7 +453,7 @@ These are only rough classification. You need to examine the p-value (after test
 - `-A INT` INSERT_STD_AMT  
    The number of STD. A pair will be considered for DEL if INSERT > INSERT_SIZE + INSERT_STD_AMT * INSERT_STD. Default: 4
 - `-Y|--ref-extension INT`  
-    Extension of bp of reference to build lookup table. Default to 1200 bp. Increase the number will slowdown the program. 
+    Extension of bp of reference to build lookup table. Default to 1200 bp. Increasing the number will slow down the program.
     The main purpose is to call large indels with 1000 bp that can be missed by discordant mate pairs. 
 - `--deldupvar`  
   Turn on deleting of duplicate variants in output that can appear due to VarDict linear work on regions. Variants in this mode are 
@@ -502,8 +502,8 @@ These are only rough classification. You need to examine the p-value (after test
 23. HIFREQ - variant frequency for high-quality reads
 24. EXTRAFR - Adjusted AF for indels due to local realignment
 25. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
-26. MSI - MicroSattelite. > 1 indicates MSI
-27. MSINT - MicroSattelite unit length in bp
+26. MSI - MicroSatellite. > 1 indicates MSI
+27. MSINT - MicroSatellite unit length in bp
 28. NM - average number of mismatches for reads containing the variant
 29. HICNT - number of high-quality reads with the variant
 30. HICOV - position coverage by high quality reads
@@ -514,7 +514,7 @@ These are only rough classification. You need to examine the p-value (after test
 35. DUPRATE - duplication rate in fraction
 36. SV splits-pairs-clusters: Splits - No. of split reads supporting SV, Pairs - No. of pairs supporting SV, 
 Clusters - No. of clusters supporting SV 
-37. CRISPR - only in crispr mode - how close to CRISPR site is variant
+37. CRISPR - only in crispr mode - how close to a CRISPR site is the variant
 
 ### Amplicon mode
 In amplicon mode columns from #35 are changed to:  
@@ -572,8 +572,8 @@ In somatic mode we have information from both samples:
 43. NM - average number of mismatches for reads containing the variant  
     Common fields: 
 44. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
-45. MSI - MicroSattelite. > 1 indicates MSI
-46. MSINT - MicroSattelite unit length in bp
+45. MSI - MicroSatellite. > 1 indicates MSI
+46. MSINT - MicroSatellite unit length in bp
 47. 5pFlankSeq - neighboring reference sequence to 5' end 
 48. 3pFlankSeq - neighboring reference sequence to 3' end
 49. SEGMENT:CHR_START_END - position description
@@ -594,7 +594,7 @@ The 8-column file format is used for targeted DNA deep sequencing analysis (ampl
 the 4-column file format - for single sample analysis.
 
 All lines starting with #, browser, and track in a BED file are skipped. 
-The column delimiter can be specified as the -d option (the default value is a tab “\t“).
+The column delimiter can be specified as the `-d` option (the default value is a tab “\t“).
 
 The 8-column file format involves the following data:
 * Chromosome name
@@ -604,7 +604,7 @@ The 8-column file format involves the following data:
 * Score - not used by VarDict
 * Strand - not used by VarDict
 * Start position – VarDict starts outputting variants from this position
-* End position –VarDict ends outputting variants from this position
+* End position – VarDict ends outputting variants from this position
 
 The 4-column file format involves the following data:
 * Chromosome name
@@ -614,11 +614,11 @@ The 4-column file format involves the following data:
 
 #### FASTA File - Reference Genome
 The reference genome in FASTA format is read using HTSJDK library. 
-For every invocation of the VarDict pipelinen (usually 1 for a region in a BED file) 
+For every invocation of the VarDict pipeline (usually 1 for a region in a BED file)
 and for every BAM file, a part of the reference genome is extracted from the FASTA file. In some cases of Structural Variants finding
 the reference can be reread in other regions. 
 
-Region of FASTA extends and this extension can be regulate by REFEXT variable (option `-Y INT`, default 1200 bp).
+Region of FASTA extends and this extension can be regulated via the REFEXT variable (option `-Y INT`, default 1200 bp).
 
 # Errors and warnings
 Information about some of the errors and their causes is located in [wiki](https://github.com/AstraZeneca-NGS/VarDictJava/wiki)
