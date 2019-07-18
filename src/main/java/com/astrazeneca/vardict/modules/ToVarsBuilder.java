@@ -771,6 +771,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                         if (vref.positionCoverage > totalPosCoverage ){
                             totalPosCoverage = vref.positionCoverage;
                         }
+                        vref.frequency = vref.positionCoverage / (double) totalPosCoverage;
                     }
                 }
 
