@@ -13,6 +13,19 @@ then
 	exit 1
 fi
 
+# Update release notes
+CHANGELOG="changelog.txt"
+# Find all commits from last tag, exclude merge commits and save to temp file
+# sed works bad with long list of commits, so temp file is used
+git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"    - %s"  | grep -v -P "Merge pull request" > tmpfile
+# Add version number to temp file
+sed -i "1s/^/Version $ver\n/" tmpfile
+# Combine temp file with previous release notes and remove temp files
+echo >> tmpfile
+cat tmpfile $CHANGELOG > tmpfile2
+mv tmpfile2 $CHANGELOG
+rm tmpfile
+
 # Update sub-projects
 git submodule foreach git pull origin master
 
