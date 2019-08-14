@@ -410,9 +410,9 @@ These are only rough classification. You need to examine the p-value (after test
 - `-o Qratio`  
     The `Qratio` of `(good_quality_reads)/(bad_quality_reads+0.5)`.  The quality is defined by `-q` option.  Default: `1.5`
 - `-O MapQ`  
-    The reads should have at least mean `MapQ` to be considered a valid variant.  Default: no filtering
+    The variant should has at least mean `MapQ` to be considered a valid variant.  Default: no filtering
 - `-V freq`  
-    The lowest frequency in a normal sample allowed for a putative somatic mutations.  Defaults to `0.05`
+    The lowest frequency in a normal sample allowed for a putative somatic mutations. Used only in paired mode. Defaults to `0.05`
 - `-I INT`  
     The indel size.  Default: 50bp. 
     Be cautious with -I option, especially in the amplicon mode, as amplicon sequencing is not a way 
