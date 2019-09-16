@@ -154,7 +154,7 @@ public class CigarModifier {
                 }
 
                 cm = NOTDIG_DIG_I_DIG_M_DIG_DI_DIGI.matcher(cigarStr);
-                if (cm.find() && !"D".equals(cm.group(1))) {
+                if (cm.find() && !"D".equals(cm.group(1)) && !"H".equals(cm.group(1))) {
                     flag = combineToCloseToOne(cm, flag);
                 }
                 cm = DIG_D_DIG_D.matcher(cigarStr);
