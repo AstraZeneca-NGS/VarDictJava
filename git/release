@@ -13,6 +13,31 @@ then
 	exit 1
 fi
 
+# ---
+# Update release notes
+# ---
+function update_release_notes {
+    # sed does not work well with long list of commits when use "^", so temp file is used
+
+    # Add version number to temp file
+    echo "Version $ver" > tmpfile
+    # Find all commits from last tag, exclude merge commits and save to temp file
+    git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"    - %s"  | grep -v -P "Merge pull request" >> tmpfile
+    echo >> tmpfile
+
+    # Combine temp file with previous release notes and remove temp files
+    CHANGELOG="changelog.txt"
+    cat tmpfile $CHANGELOG > tmpfile2
+    mv tmpfile2 $CHANGELOG
+    rm tmpfile
+
+    # Commit and push changes in release notes
+    git commit -a -m "Updated changelog.txt"
+    git push origin
+}
+
+update_release_notes
+
 # Update sub-projects
 git submodule foreach git pull origin master
 
