@@ -309,6 +309,14 @@ If variant doesn't fit criteria on the step, it will be filtered out and the nex
 Variant frequency is more than 10% for the non-monomer MSI (or set by `--nmfreq` option) and 25% for the monomer MSI (or set by `--mfreq` option).
 11. Variant has not "2;1" bias, variant is not SNV and variants refallele or varallele lengths are more then 3 nucleotides when variant frequency less then 20%.
 
+#### Bias flag explanation
+Bias flag can take values [0-2];[0-2] (i.e. "0;2", "2;1" and separator can be another in paired and single VCF).
+The first value refers to reads that support the reference allele, and the second to reads that support the variant allele.
+
+0 - small total count of reads (less than 12 for the sum of forward and reverse reads)
+1 - strand bias
+2 - no strand bias
+
 #### Variant classification in paired(somatic) analysis
 In paired analysis, VarDict will classify each variant into the following types that are propagated 
 into STATUS info tag after `var2vcf_paired.pl` script.
