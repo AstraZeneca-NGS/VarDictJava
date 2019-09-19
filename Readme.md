@@ -294,7 +294,8 @@ String | Description
 ...&amp;[ATGC]+ | for insertion/deletion variants followed by a matched sequence
 
 #### Variant Filtering
-A variant appears in the output if it satisfies the following criteria (in this order):
+A variant appears in the output if it satisfies the following criteria (in this order). 
+If variant doesn't fit criteria on the step, it will be filtered out and the next steps won't be checked (except for the step 8, read the explanation below):
 1. Frequency of the variant exceeds the threshold set by the `-f` option (default = 1%).
 2. The minimum number of high-quality reads supporting variant is larger than the threshold set by the `-r` option (default = 2).
 3. The mean position of the variant in reads is larger than the value set by the `-P` option (default = 5).
@@ -302,12 +303,11 @@ A variant appears in the output if it satisfies the following criteria (in this 
 5. Variant frequency is more than 25% or reference allele does not have much better mapping quality than the variant.
 6. Deletion variants are not located in the regions where the reference genome is missing.
 7. The ratio of high-quality reads to low-quality reads is larger than the threshold specified by `-o` option (default=1.5).
-8. Variant frequency exceeds 30%.
+8. Variant frequency exceeds 30%. If so, next steps won't be checked and variant considered as "good". Otherwise, other steps will be also checked.
 9. Mean mapping quality exceeds the threshold set by the `-O` option (default: no filtering)
 10. In the case of an MSI region, the variant size is less than 12 nucleotides for the non-monomer MSI or 15 for the monomer MSI. 
 Variant frequency is more than 10% for the non-monomer MSI (or set by `--nmfreq` option) and 25% for the monomer MSI (or set by `--mfreq` option).
-11. Variant has not "2;1" bias.
-11. Variant is not SNV and variants refallele or varallele lengths are more then 3 nucleotides when variant frequency less then 20%.
+11. Variant has not "2;1" bias, variant is not SNV and variants refallele or varallele lengths are more then 3 nucleotides when variant frequency less then 20%.
 
 #### Variant classification in paired(somatic) analysis
 In paired analysis, VarDict will classify each variant into the following types that are propagated 
