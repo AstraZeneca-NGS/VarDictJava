@@ -307,7 +307,7 @@ If variant doesn't fit criteria on the step, it will be filtered out and the nex
 9. Mean mapping quality exceeds the threshold set by the `-O` option (default: no filtering)
 10. In the case of an MSI region, the variant size is less than 12 nucleotides for the non-monomer MSI or 15 for the monomer MSI. 
 Variant frequency is more than 10% for the non-monomer MSI (or set by `--nmfreq` option) and 25% for the monomer MSI (or set by `--mfreq` option).
-11. Variant has not "2;1" bias, variant is not SNV and variants refallele or varallele lengths are more then 3 nucleotides when variant frequency less then 20%.
+11. Variant has not "2;1" bias or variant frequency more then 20%. If both conditions aren't met, then variant mustn't be SNV and any of variants refallele or varallele lengths must be more then 3 nucleotides.
 
 #### Bias flag explanation
 Bias flag can take values [0-2];[0-2] (i.e. "0;2", "2;1" and separator can be another in paired and single VCF).
