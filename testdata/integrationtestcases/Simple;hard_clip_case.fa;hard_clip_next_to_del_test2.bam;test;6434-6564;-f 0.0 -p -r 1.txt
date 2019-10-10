@@ -29,5 +29,5 @@ hard_clip_next_to_del_test2	testbed	test	6520	6520	A	A	1	0	1	0	0	0	A/A	0	0;0	27.
 hard_clip_next_to_del_test2	testbed	test	6521	6524	ATTT	TTTA	1	1	0	0	1	0	TTTATTT/TTTA	1.0000	0;0	23.0	0	90.0	0	60.0	2.000	1.0000	0	2	3.000	1	0	1	1	TCCACACAAAATAAATGAAA	AAAAGACAGATTTTTTTTTT	test:6434-6564	Complex	0	0
 hard_clip_next_to_del_test2	testbed	test	6525	6525	A	A	1	0	1	0	0	0	A/A	0	0;0	22.0	0	90.0	0	60.0	2.000	1.0000	0	0	0	0	0	1	1	0	0	test:6434-6564		0	0
 hard_clip_next_to_del_test2	testbed	test	6526	6526	A	A	1	0	1	0	0	0	A/A	0	0;0	21.0	0	90.0	0	60.0	2.000	1.0000	0	0	0	0	0	1	1	0	0	test:6434-6564		0	0
-hard_clip_next_to_del_test2	testbed	test	6528	6529	AG	GAC	2	1	1	0	1	0	AAG/+4	0.5000	0;0	17.0	0	90.0	0	60.0	2.000	0.5000	0	0	0	0	0	1	2	AAAATAAATGAAAATTTAAA	ACAGATTTTTTTTTTTAGGA	test:6434-6564	Complex	0	0
+hard_clip_next_to_del_test2	testbed	test	6528	6529	AG	GAC	1	1	1	0	1	0	AAG/+4	1.0000	0;0	17.0	0	90.0	0	60.0	2.000	1.0000	0	0	0	0	0	1	1	AAAATAAATGAAAATTTAAA	ACAGATTTTTTTTTTTAGGA	test:6434-6564	Complex	0	0
 

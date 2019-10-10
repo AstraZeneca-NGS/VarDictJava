@@ -153,7 +153,11 @@ public class Patterns {
 
     public static final jregex.Pattern SOFT_CLIPPED = new jregex.Pattern("(\\d+)[MIS]");
     public static final Pattern SA_CIGAR_D_S_5clip = Pattern.compile("^\\d\\d+S");
+    public static final Pattern SA_CIGAR_D_S_5clip_GROUP = Pattern.compile("^(\\d\\d+)S");
+    public static final jregex.Pattern SA_CIGAR_D_S_5clip_GROUP_Repl = new jregex.Pattern("^\\d+S");
     public static final Pattern SA_CIGAR_D_S_3clip = Pattern.compile("\\d\\dS$");
+    public static final Pattern SA_CIGAR_D_S_3clip_GROUP = Pattern.compile("(\\d\\d+)S$");
+    public static final jregex.Pattern SA_CIGAR_D_S_3clip_GROUP_Repl = new jregex.Pattern("\\d\\d+S$");
     public static final Pattern BEGIN_dig_dig_S_ANY_dig_dig_S_END = Pattern.compile("^\\d\\dS.*\\d\\dS$");
     public static final jregex.Pattern BEGIN_NUM_S_OR_BEGIN_NUM_H = new jregex.Pattern("^(\\d+)S|^\\d+H");
     public static final jregex.Pattern END_NUM_S_OR_NUM_H = new jregex.Pattern("(\\d+)S$|H$");

@@ -1,6 +1,7 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
+import com.astrazeneca.vardict.data.Reference;
 import com.astrazeneca.vardict.data.Region;
 import com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope;
 import com.astrazeneca.vardict.variations.Variation;
@@ -325,11 +326,12 @@ public class CigarModifierTest {
             reference.put(i, base.charAt(0));
             i++;
         }
-
+        Reference ref = new Reference();
+        ref.referenceSequences = reference;
         Region region = new Region("chr1", 1, 100, "");
         CigarModifier cigarModifier = new CigarModifier(position, initialCigar, querySequence,
-                queryQuality, reference, indel, region);
-        String actual = cigarModifier.modifyCigar()._2;
+                queryQuality, ref, indel, region, 150);
+        String actual = cigarModifier.modifyCigar().cigar;
         Assert.assertEquals(actual, expected);
     }
 }
