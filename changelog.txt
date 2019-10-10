@@ -1,3 +1,17 @@
+Version 1.6.0
+	- Fixed REF allele for DEL SV: in cases when reference allele length is more than 1 base REF was not the first base in SV region, but the last one.
+	- Fixed genotype field: it could be displayed incorrectly (parts of genotype from different variants united) when several variants appear on one position (i.e. multiallelic). Now genotype is created for each variant separately.
+	- Fixed bug in the paired mode for multiallelic case: if the first variant was filtered out, the next variant skipped. Now next variants are checked also.
+	- Fixed bug when insertion skipped if the only insertion appears on position (and no "refvariant", very rare case in realignment).
+	- Fixed CIGAR modifying in three indels case and in case of possible softclips.
+	- Changed multiplication factor for MAPQ, QUAL and PMEAN field in the realignment of insertions, so now they don't change if the variant coverage wasn't changed by adjustment.
+	- Added additional sorts in algorithm parts for both Perl and Java versions in places that showed non-deterministic behavior: adjustment of MNP, realignment of insertions and deletions, the order of variants processed before output, softclips combining in consensus. 
+	- Added loading the extended part of the reference when DEL SV with discordant pairs is calling (new DEL SV can appear after this change because now these regions also checked).
+	- Extended the algorithm for insertions in less than vext lenth before matched regions.
+	- Added CRISPR, adaptor options and fasta default paths (the same as in Perl version).
+	- Added SNV adjustment changes after SV calling made by Zhongwu.
+	- Refactoring of VarDict classes and methods structure.
+
 Version 1.4
 	- Fixed error #15 and improved local realignment 
 
