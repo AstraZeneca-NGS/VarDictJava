@@ -242,7 +242,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             }
         }
 
-        final String queryQuality = getBaseQualityString(record);
+        String queryQuality = getBaseQualityString(record);
         final boolean isMateReferenceNameEqual = record.getReferenceName().equals(record.getMateReferenceName());
         final int numberOfMismatches = totalNumberOfMismatches;
         boolean direction = record.getReadNegativeStrandFlag();
@@ -264,12 +264,15 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     record.getCigarString(),
                     querySequence,
                     queryQuality,
-                    ref,
+                    reference,
                     insertionDeletionLength,
-                    region);
-            Tuple.Tuple2<Integer, String> modifiedCigar = cigarModifier.modifyCigar();
-            position = modifiedCigar._1;
-            cigar = TextCigarCodec.decode(modifiedCigar._2);
+                    region,
+                    maxReadLength);
+            ModifiedCigar modifiedCigar = cigarModifier.modifyCigar();
+            position = modifiedCigar.position;
+            cigar = TextCigarCodec.decode(modifiedCigar.cigar);
+            querySequence = modifiedCigar.querySequence;
+            queryQuality = modifiedCigar.queryQuality;
         } else {
             position = record.getAlignmentStart();
             cigar = record.getCigar();
@@ -574,7 +577,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 if (!trim) {
                     //If start - qbases + 1 is in region of interest
                     final int pos = start - qbases + 1;
-                    if (pos >= region.start && pos <= region.end) {
+                    if (pos >= region.start && pos <= region.end && !s.contains("N")) {
                         addVariationForMatchingPart(mappingQuality, numberOfMismatches,
                                 direction, readLengthIncludeMatchingAndInsertions, nmoff, s, startWithDeletion,
                                 q, qbases, qibases, ddlen, pos);
@@ -1663,15 +1666,19 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                                                     int rlen1, int nmoff, String s,
                                                     boolean startWithDelition, double q,
                                                     int qbases, int qibases, int ddlen, int pos) {
-        //add variation record for $s
-        Variation hv = getVariation(nonInsertionVariants, pos, s); //reference to variant structure
-        hv.incDir(dir);
-
-        if(isBEGIN_ATGC_AMP_ATGCs_END(s)) {
-            //if s is one base followed by '&' and one or more bases
-            //add variant record for s to mnp
-            increment(mnp, pos, s);
+        Variation hv;
+        if (s.startsWith("+")) {
+            increment(positionToInsertionCount, pos, s);
+            hv = getVariation(insertionVariants, pos, s); //reference to variant structure
+        } else {
+            if(isBEGIN_ATGC_AMP_ATGCs_END(s)) {
+                //if s is one base followed by '&' and one or more bases
+                //add variant record for s to mnp
+                increment(mnp, pos, s);
+            }
+            hv = getVariation(nonInsertionVariants, pos, s); //reference to variant structure
         }
+        hv.incDir(dir);
 
         //increment count
         hv.varsCount++;
@@ -1704,9 +1711,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         } else {
             hv.lowQualityReadsCount++;
         }
+        int shift = (s.startsWith("+") && s.contains("&")) ? 1 : 0;
 
         //increase coverage for bases covered by the variation
-        for (int qi = 1; qi <= qbases; qi++) {
+        for (int qi = 1; qi <= qbases - shift; qi++) {
             incCnt(refCoverage, start - qi + 1, 1);
         }
 
@@ -1792,7 +1800,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         String saDirectionString = saTagArray[2];
         String saCigar = saTagArray[3];
         boolean saDirectionIsForward = saDirectionString.equals("+");
-        Matcher mm = SA_CIGAR_D_S_3clip.matcher(saCigar);;
+        Matcher mm = SA_CIGAR_D_S_3clip.matcher(saCigar);
 
         if (is5Side) {
             mm = SA_CIGAR_D_S_5clip.matcher(saCigar);
@@ -1806,7 +1814,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         if (instance().conf.y && isChimericWithSA) {
             System.err.println(record.getReadName() + " " + record.getReferenceName()
                     + " " + position + " " + record.getMappingQuality()
-                    + " " + record.getCigarString()
+                    + " " + cigar.toString()
                     + " is ignored as chimeric with SA: " +
                     saPosition + "," + saDirectionString + "," + saCigar);
         }
@@ -1988,7 +1996,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         matcher = END_NUM_S_OR_NUM_H.matcher(cigar.toString());
         if (matcher.find() && matcher.group(1) != null) {
             int tt = toInt(matcher.group(1));
-            if (tt != 0 && queryQuality.charAt(record.getReadLength() - tt) - 33 > instance().conf.goodq) {
+            if (tt != 0 && queryQuality.charAt(queryQuality.length() - tt) - 33 > instance().conf.goodq) {
                 soft3 = end;
             }
         }

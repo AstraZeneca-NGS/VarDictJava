@@ -304,6 +304,9 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             Collections.sort(insertionDescriptionStrings);
             //Loop over insertion variants
             for (String descriptionString : insertionDescriptionStrings) {
+                if (descriptionString.contains("&") && refCoverage.containsKey(position + 1)) {
+                    totalPosCoverage = refCoverage.get(position + 1);
+                }
                 // String n = entV.getKey();
                 Variation cnt = insertionVariations.get(descriptionString);
                 //count of variants in forward strand
@@ -346,6 +349,9 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 }
 
                 Variant tvref = new Variant();
+                if (hicov < hicnt) {
+                    hicov = hicnt;
+                }
                 tvref.descriptionString = descriptionString;
                 tvref.positionCoverage = cnt.varsCount;
                 tvref.varsCountOnForward = fwd;
@@ -494,14 +500,14 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                           VariationMap<String, Variation> nonInsertionVariations) {
         int hicov = 0;
         for (Map.Entry<String, Variation> descVariantEntry : nonInsertionVariations.entrySet()) {
-            if (descVariantEntry.getKey().equals("SV")) {
+            if (descVariantEntry.getKey().equals("SV") || descVariantEntry.getKey().startsWith("+")) {
                 continue;
             }
             hicov += descVariantEntry.getValue().highQualityReadsCount;
         }
         if (insertionVariations != null) {
             for (Variation variation : insertionVariations.values()) {
-                hicov += variation.highQualityReadsCount;
+                //hicov += variation.highQualityReadsCount;
             }
         }
         return hicov;

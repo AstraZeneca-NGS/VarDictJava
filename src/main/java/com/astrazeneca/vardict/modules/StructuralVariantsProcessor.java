@@ -152,10 +152,10 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                         .collect(toList());
 
                 int softp = soft.isEmpty() ? 0 : soft.get(0)._1;
+                if (instance().conf.y) {
+                    System.err.printf("%n%nWorking DEL 5' %d mate cluster cnt: %d%n", softp, del.varsCount);
+                }
                 if (softp != 0) {
-                    if (instance().conf.y) {
-                        System.err.printf("%n%nWorking DEL 5' %d mate cluster cnt: %d%n", softp, del.varsCount);
-                    }
                     if (!softClips3End.containsKey(softp)) {
                         continue;
                     }
@@ -1429,7 +1429,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 String ins3 = joinRef(ref, pe - Configuration.SVFLANK + 1, pe);
                 String ins = ins5 + "<dup" + (mlen - 2 * Configuration.SVFLANK) + ">" + ins3;
 
-                final Variation vref = getVariation(nonInsertionVariants, bp, "+" + ins);
+                final Variation vref = getVariation(insertionVariants, bp, "+" + ins);
                 vref.varsCount = 0;
 
                 SV sv = getSV(nonInsertionVariants, bp);
@@ -1564,7 +1564,7 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                 String ins3 = joinRef(ref, pe - Configuration.SVFLANK + 1, pe);
                 String ins = ins5 + "<dup" + (mlen - 2 * Configuration.SVFLANK) + ">" + ins3;
 
-                final Variation vref = getVariation(nonInsertionVariants, bp, "+" + ins);
+                final Variation vref = getVariation(insertionVariants, bp, "+" + ins);
                 vref.varsCount = 0;
 
                 SV sv = getSV(nonInsertionVariants, bp);

@@ -2,10 +2,13 @@ package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
 import com.astrazeneca.vardict.collection.Tuple;
+import com.astrazeneca.vardict.data.ModifiedCigar;
+import com.astrazeneca.vardict.data.Reference;
 import com.astrazeneca.vardict.data.Region;
 import jregex.Replacer;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -13,6 +16,7 @@ import java.util.regex.Matcher;
 import static com.astrazeneca.vardict.Utils.*;
 import static com.astrazeneca.vardict.collection.Tuple.tuple;
 import static com.astrazeneca.vardict.data.Patterns.*;
+import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.variations.VariationUtils.isHasAndEquals;
 import static com.astrazeneca.vardict.variations.VariationUtils.isHasAndNotEquals;
 
@@ -26,26 +30,30 @@ public class CigarModifier {
     private String querySequence;
     private String queryQuality;
     private Map<Integer, Character> reference;
+    private Reference ref;
     private int indel;
+    private int maxReadLength;
     private Region region;
 
     CigarModifier(int position, String cigarStr, String querySequence,
-                  String queryQuality, Map<Integer, Character> reference, int indel, Region region) {
+                  String queryQuality, Reference ref, int indel, Region region, int maxReadLength) {
         this.position = position;
         this.cigarStr = cigarStr;
         this.originalCigar = cigarStr;
         this.querySequence = querySequence;
         this.queryQuality = queryQuality;
-        this.reference = reference;
+        this.ref = ref;
+        this.reference = ref.referenceSequences;
         this.indel = indel;
         this.region = region;
+        this.maxReadLength = maxReadLength;
     }
 
     /**
      * Method modify cigar by applying different matchers.
      * @return modified position and cigar string
      */
-    public Tuple.Tuple2<Integer, String> modifyCigar() {
+    public ModifiedCigar modifyCigar() {
         //flag is set to true if CIGAR string is modified and should be looked at again
         boolean flag = true;
         try {
@@ -72,6 +80,54 @@ public class CigarModifier {
                 Replacer r = END_NUMBER_I.replacer(toInt(mm.group(1)) + "S");
                 cigarStr = r.replace(cigarStr);
             }
+            Matcher sc5_mm = SA_CIGAR_D_S_5clip_GROUP.matcher(cigarStr);
+            Matcher sc3_mm = SA_CIGAR_D_S_3clip_GROUP.matcher(cigarStr);
+            Map<String, List<Integer>> referenceSeedMap = ref.seed;
+            if (sc5_mm.find()) {
+               int cigarElement = toInt(sc5_mm.group(1));
+               if (!instance().conf.chimeric && cigarElement >= Configuration.SEED_2 ) {
+                   String sseq = substr(querySequence, 0, cigarElement);
+                   String sequence = complement(reverse(sseq));
+                   String reverseComplementedSeed = sequence.substring(0, Configuration.SEED_2);
+
+                   if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
+                       List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
+
+                       if (positions.size() == 1 && Math.abs(position - positions.get(0)) < 2 * maxReadLength) {
+                           Replacer r = SA_CIGAR_D_S_5clip_GROUP_Repl.replacer(""); // $a[5] = ~s / ^\d + S//;
+                           cigarStr = r.replace(cigarStr);
+                           querySequence = substr(querySequence, cigarElement);
+                           queryQuality = substr(queryQuality, cigarElement);
+                           if (instance().conf.y) {
+                               System.err.println(sequence + " at 5' is a chimeric at "
+                                       + position + " by SEED " + Configuration.SEED_2);
+                           }
+                       }
+                   }
+               }
+           } else if (sc3_mm.find()) {
+                int cigarElement = toInt(sc3_mm.group(1));
+                if (!instance().conf.chimeric && cigarElement >= Configuration.SEED_2 ) {
+                    String sseq = substr(querySequence, -cigarElement, cigarElement);
+                    String sequence = complement(reverse(sseq));
+                    String reverseComplementedSeed = substr(sequence, -Configuration.SEED_2, Configuration.SEED_2);
+
+                    if (referenceSeedMap.containsKey(reverseComplementedSeed)) {
+                        List<Integer> positions = referenceSeedMap.get(reverseComplementedSeed);
+
+                        if (positions.size() == 1 && Math.abs(position - positions.get(0)) < 2* maxReadLength ) {
+                            Replacer r = SA_CIGAR_D_S_3clip_GROUP_Repl.replacer("");  // $a[5] = ~s /\d\d + S$//;
+                            cigarStr = r.replace(cigarStr);
+                            querySequence = substr(querySequence, 0, querySequence.length() - cigarElement);
+                            queryQuality = substr(queryQuality, 0, queryQuality.length() - cigarElement);
+                            if (instance().conf.y) {
+                                System.err.println(sequence + " at 3' is a chimeric at "
+                                        + position + " by SEED " + Configuration.SEED_2);
+                            }
+                        }
+                   }
+               }
+           }
 
             while (flag && indel > 0) {
                 flag = false;
@@ -184,11 +240,11 @@ public class CigarModifier {
             } else if ((mtch = BEGIN_DIG_M.matcher(cigarStr)).find()) {
                 combineBeginDigM(mtch);
             }
-            return tuple(position, cigarStr);
+            return new ModifiedCigar(position, cigarStr, querySequence, queryQuality);
         } catch (Exception exception) {
             printExceptionAndContinue(exception, "cigar", String.valueOf(position) + " " + originalCigar, region);
         }
-        return tuple(position, cigarStr);
+        return new ModifiedCigar(position, cigarStr, querySequence, queryQuality);
     }
 
     /**

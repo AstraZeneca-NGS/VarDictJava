@@ -1,0 +1,2 @@
+Simple,test.fa,amp_allele_ins_repr.bam,test,147,149,-f 0.0 -p -r 1
+amp_allele_ins_repr	testbed	test	148	148	A	A	1	0	1	0	0	0	A/A	0	0;0	25.0	0	90.0	0	60.0	2.000	1.0000	0	0	0	0	0	1	1	0	0	test:148-149		0	0

@@ -73,7 +73,9 @@ public class ToVarsBuilderTest {
             meanMappingQuality = 7.8;
             numberOfMismatches = 2.0;
             hicnt = 44;
+            hicov = 44;
             highQualityToLowQualityRatio = 1.2571428571428571;
+            highQualityReadsFrequency = 1.0;
         }};
 
         assertEquals(var.get(0).toString(), expectedVariant.toString());
