@@ -1,3 +1,35 @@
+Version 1.7.0
+    - Project updated
+    - Project updated
+    - Project updated
+    - Added distribution files
+    - Update version number
+    - Fixed issue with AMP in allele: hicnt and hicov for many insertions and SV were changed. Total coverage for part of the insertion changed. Added changes for chimeric reads in modify cigar part.
+    - Typo fixes
+    - Fix in description of alleles length filter
+    - Added explanation for bias flag
+    - Fixed inaccuracy in docs
+    - Updated changelog for 1.6.0 version
+    - Added commit and push for modified changelog.txt
+    - Added creation of release notes in release script.
+    - Fixed case when deletion can appear next to hard clip after modifying CIGAR.
+    - Added Trusty to Travis so oracleJdk8 will work.
+    - Fix Readme for -O option
+    - Fix for frequency. Test added.
+    - Fix README typos, grammar and markup.
+    - VCF updated to 4.3. specification version. MQ changed to Integer, AF field to A, BIAS contains 2 numbers.
+    - Also fixed one discrepancy in old part of cigar modifying for 2 insertions.
+    - Fixed issue 243. Cigar modify for 3 indels in case when match on reference if with a big deletion.
+    - Oracle JDK 12 in travis removes, added as openjdk 12
+    - Oracle JDK 12 in travis
+    - Added skipping of adaptor sequences at the end of chromosome.
+    - Added test case with artificial data.
+    - Fixed reference bases at the end of reference.
+    - Readme updated.
+    - Added options for non-monomer (--nmfreq) and monomer (--mfreq) frequency thresholds.
+    - Project updated
+    - Added VCF tests for simple and somatic modes.
+
 Version 1.6.0
 	- Fixed REF allele for DEL SV: in cases when reference allele length is more than 1 base REF was not the first base in SV region, but the last one.
 	- Fixed genotype field: it could be displayed incorrectly (parts of genotype from different variants united) when several variants appear on one position (i.e. multiallelic). Now genotype is created for each variant separately.
