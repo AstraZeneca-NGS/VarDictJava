@@ -406,7 +406,9 @@ These are only rough classification. You need to examine the p-value (after test
 - `-q double`   
     The phred score for a base to be considered a good call.  Default: 22.5 (for Illumina). For PGM, set it to ~15, as PGM tends to underestimate base quality.
 - `-m INT`   
-    If set, reads with mismatches more than `INT` will be filtered and ignored.  Gaps are not counted as mismatches. Valid only for bowtie2/TopHat or BWA aln followed by sampe.  BWA mem is calculated as NM - Indels.  Default: 8, or reads with more than 8 mismatches will not be used.
+    If set, reads with mismatches more than `INT` will be filtered and ignored.  Gaps are not counted as mismatches. 
+    Valid only for bowtie2/TopHat or BWA aln followed by sampe.  BWA mem is calculated as NM - Indels.  For STAR 
+    you have to increase default if nM tag (for "paired" alignment) is presented in reads.Default: 8, or reads with more than 8 mismatches will not be used.
 - `-T|--trim INT`  
     Trim bases after `[INT]` bases in the reads
 - `-X INT`   
