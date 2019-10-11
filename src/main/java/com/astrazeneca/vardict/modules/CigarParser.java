@@ -2015,10 +2015,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             } else if (record.getIntegerAttribute(SAMTag.MQ.name()) != null
                     && record.getIntegerAttribute(SAMTag.MQ.name()) < 15) {
                 // Ignore those with mate mapping quality less than 15
-            } else if (readDirNum * mateDirNum == -1 && (mlen * readDirNum) > 0 ) {
+            } else if (readDirNum * mateDirNum == -1 && (mlen * readDirNum) > 0 && queryQuality.length() > 15) {
                 // deletion candidate
                 mlen = mateStart > start ? mend - start : end - mateStart;
-                if(abs(mlen) > instance().conf.INSSIZE + instance().conf.INSSTDAMT * instance().conf.INSSTD ) {
+                if(abs(mlen) > instance().conf.INSSIZE + instance().conf.INSSTDAMT * instance().conf.INSSTD) {
                     if (readDirNum == 1) {
                         if (svStructures.svfdel.size() == 0
                                 || start - svStructures.svdelfend > Configuration.MINSVCDIST * maxReadLength) {
@@ -2070,7 +2070,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         adddisccnt(getLastSVStructure(svStructures.svrinv3));
                     }
                 }
-            } else if (readDirNum * mateDirNum == -1 && readDirNum * mlen < 0) {
+            } else if (readDirNum * mateDirNum == -1 && readDirNum * mlen < 0 && queryQuality.length() > 15) {
                 //duplication
                 if (readDirNum == 1) {
                     if (svStructures.svfdup.size() == 0
@@ -2121,7 +2121,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 if (!svStructures.svrinv3.isEmpty() && abs(start - svStructures.svinvrend3) <= MIN_D) {
                     adddisccnt(getLastSVStructure(svStructures.svrinv3));
                 }
-            } else if (readDirNum * mateDirNum == 1) { // Inversion
+            } else if (readDirNum * mateDirNum == 1 && queryQuality.length() > 15) { // Inversion
                 if (readDirNum == 1 && mlen != 0 ) {
                     if (mlen < -3 * maxReadLength) {
                         if (svStructures.svfinv3.size() == 0
@@ -2191,7 +2191,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     }
                 }
             }
-        } else { // Inter-chr translocation
+        } else if (queryQuality.length() > 15){ // Inter-chr translocation
             // to be implemented
             final String mchr = getMateReferenceName(record);
             if (record.getStringAttribute(SAMTag.MC.name()) != null
