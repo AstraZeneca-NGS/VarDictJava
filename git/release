@@ -22,7 +22,7 @@ function update_release_notes {
     # Add version number to temp file
     echo "Version $ver" > tmpfile
     # Find all commits from last tag, exclude merge commits and save to temp file
-    git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"    - %s"  | grep -v -P "Merge pull request" >> tmpfile
+    git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"    - %s"  | grep -v "Merge pull request" >> tmpfile
     echo >> tmpfile
 
     # Combine temp file with previous release notes and remove temp files
