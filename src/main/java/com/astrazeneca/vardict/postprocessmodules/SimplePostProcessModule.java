@@ -65,6 +65,11 @@ public class SimplePostProcessModule implements Consumer<Scope<AlignedVarsData>>
                         if (vref.refallele.contains("N")) {
                             continue;
                         }
+                        if (vref.refallele.equals(vref.varallele)) {
+                            if (!conf.doPileup) {
+                                continue;
+                            }
+                        }
                         vref.vartype = vref.varType();
                         if (!vref.isGoodVar(variantsOnPosition.referenceVariant, vref.vartype, mapScope.splice)) {
                             if (!conf.doPileup) {
