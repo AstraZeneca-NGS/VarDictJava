@@ -993,9 +993,19 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         }
     }
 
+    /**
+     * Validate reference allele according to VCF 4.3 specification in case if IUPAC ambiguity codes are present
+     * in reference.
+     * @param refallele sequence of reference bases that covers variant
+     * @return reference allele sequence where IUPAC ambuguity bases are changed to the one that is
+     * first alphabetically.
+     */
     String validateRefallele(String refallele) {
-        if (IUPAC_AMBIGUITY_CODES.containsKey(refallele)){
-            refallele = IUPAC_AMBIGUITY_CODES.get(refallele);
+        for (int i = 0; i < refallele.length(); i++) {
+            String refBase = substr(refallele, i, 1);
+            if (IUPAC_AMBIGUITY_CODES.containsKey(refBase)) {
+                refallele = refallele.replaceFirst(refBase, IUPAC_AMBIGUITY_CODES.get(refBase));
+            }
         }
         return refallele;
     }

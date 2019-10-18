@@ -139,5 +139,14 @@ public class ToVarsBuilderTest {
             validatedAlleles.add(toVarsBuilder.validateRefallele(allele));
         }
         assertEquals(validatedAlleles, expected);
+
+        List<String> alleles_complex = Arrays.asList("ANYCGT", "MRACT", "CCGKBG");
+        List<String> expected_complex = Arrays.asList("ANCCGT", "AAACT", "CCGGCG");
+
+        validatedAlleles = new ArrayList<>();
+        for (String allele: alleles_complex) {
+            validatedAlleles.add(toVarsBuilder.validateRefallele(allele));
+        }
+        assertEquals(validatedAlleles, expected_complex);
     }
 }
