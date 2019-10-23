@@ -47,7 +47,7 @@ public class SimplePostProcessModule implements Consumer<Scope<AlignedVarsData>>
                     }
                 }
 
-                if (variantsOnPosition != null && variantsOnPosition.variants.isEmpty()) {
+                if (variantsOnPosition.variants.isEmpty()) {
                     if (!conf.doPileup) {
                         continue;
                     }
@@ -69,6 +69,16 @@ public class SimplePostProcessModule implements Consumer<Scope<AlignedVarsData>>
                             if (!conf.doPileup) {
                                 continue;
                             }
+                        }
+                        if (vref.startPosition != position && conf.doPileup && vvar.size() == 1) {
+                            Variant refVar = variantsOnPosition.referenceVariant;
+                            if (refVar == null) {
+                                SimpleOutputVariant outputVariant = new SimpleOutputVariant(refVar, mapScope.region, variantsOnPosition.sv, position);
+                                variantPrinter.print(outputVariant);
+                                refVar = new Variant();
+                            }
+                            refVar.vartype = "";
+                            vrefs.add(refVar);
                         }
                         vref.vartype = vref.varType();
                         if (!vref.isGoodVar(variantsOnPosition.referenceVariant, vref.vartype, mapScope.splice)) {
