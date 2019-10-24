@@ -1,7 +1,6 @@
 package com.astrazeneca.vardict.modules;
 
 import com.astrazeneca.vardict.Configuration;
-import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.collection.VariationMap;
 import com.astrazeneca.vardict.data.*;
 import com.astrazeneca.vardict.data.scopedata.Scope;
@@ -222,13 +221,19 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
         Map<Integer, Character> ref = reference.referenceSequences;
 
         final int insertionDeletionLength = getInsertionDeletionLength(cigar);
-        int totalNumberOfMismatches = 0;
-        Integer numberOfMismatchesFromTag = record.getIntegerAttribute(SAMTag.NM.name());
 
-        // Number of mismatches from NM tag. Don't use NM since it includes gaps, which can be from indels
-        if (numberOfMismatchesFromTag != null) {
+        // Number of mismatches from NM tag (or nM for STAR).
+        int totalNumberOfMismatches = 0;
+        Integer numberOfMismatches_NM = record.getIntegerAttribute(SAMTag.NM.name());
+        Integer numberOfMismatches_STAR = record.getIntegerAttribute("nM");
+        if (numberOfMismatches_STAR != null) {
+            numberOfMismatches_NM = numberOfMismatches_STAR;
+        }
+
+        // Don't use NM since it includes gaps, which can be from indels
+        if (numberOfMismatches_NM != null) {
             // Edit distance - indels is the # of mismatches
-            totalNumberOfMismatches = numberOfMismatchesFromTag - insertionDeletionLength;
+            totalNumberOfMismatches = numberOfMismatches_NM - insertionDeletionLength;
             if (totalNumberOfMismatches > instance().conf.mismatch) {
                 return;
             }
@@ -2015,10 +2020,11 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             } else if (record.getIntegerAttribute(SAMTag.MQ.name()) != null
                     && record.getIntegerAttribute(SAMTag.MQ.name()) < 15) {
                 // Ignore those with mate mapping quality less than 15
-            } else if (readDirNum * mateDirNum == -1 && (mlen * readDirNum) > 0 ) {
+            } else if (readDirNum * mateDirNum == -1 && (mlen * readDirNum) > 0
+                    && queryQuality.length() > Configuration.MINMAPBASE) {
                 // deletion candidate
                 mlen = mateStart > start ? mend - start : end - mateStart;
-                if(abs(mlen) > instance().conf.INSSIZE + instance().conf.INSSTDAMT * instance().conf.INSSTD ) {
+                if(abs(mlen) > instance().conf.INSSIZE + instance().conf.INSSTDAMT * instance().conf.INSSTD) {
                     if (readDirNum == 1) {
                         if (svStructures.svfdel.size() == 0
                                 || start - svStructures.svdelfend > Configuration.MINSVCDIST * maxReadLength) {
@@ -2028,7 +2034,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         }
                         addSV(getLastSVStructure(svStructures.svfdel), start, end, mateStart,
                                 mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft3, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                                queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svdelfend = end;
                     } else {
                         if (svStructures.svrdel.size() == 0
@@ -2039,7 +2045,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         }
                         addSV(getLastSVStructure(svStructures.svrdel), start, end, mateStart,
                                 mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft5, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                                queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svdelrend = end;
                     }
 
@@ -2070,7 +2076,8 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         adddisccnt(getLastSVStructure(svStructures.svrinv3));
                     }
                 }
-            } else if (readDirNum * mateDirNum == -1 && readDirNum * mlen < 0) {
+            } else if (readDirNum * mateDirNum == -1 && readDirNum * mlen < 0
+                    && queryQuality.length() > Configuration.MINMAPBASE) {
                 //duplication
                 if (readDirNum == 1) {
                     if (svStructures.svfdup.size() == 0
@@ -2081,7 +2088,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     }
                     addSV(getLastSVStructure(svStructures.svfdup), start, end, mateStart,
                             mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft3, maxReadLength/2.0,
-                            queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                            queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                     svStructures.svdupfend = end;
                 } else {
                     if (svStructures.svrdup.size() == 0
@@ -2092,7 +2099,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     }
                     addSV(getLastSVStructure(svStructures.svrdup), start, end, mateStart,
                             mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft5, maxReadLength/2.0,
-                            queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                            queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                     svStructures.svduprend = end;
                 }
                 if (!svStructures.svfdup.isEmpty()
@@ -2121,7 +2128,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 if (!svStructures.svrinv3.isEmpty() && abs(start - svStructures.svinvrend3) <= MIN_D) {
                     adddisccnt(getLastSVStructure(svStructures.svrinv3));
                 }
-            } else if (readDirNum * mateDirNum == 1) { // Inversion
+            } else if (readDirNum * mateDirNum == 1 && queryQuality.length() > Configuration.MINMAPBASE) { // Inversion
                 if (readDirNum == 1 && mlen != 0 ) {
                     if (mlen < -3 * maxReadLength) {
                         if (svStructures.svfinv3.size() == 0
@@ -2132,7 +2139,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         }
                         addSV(getLastSVStructure(svStructures.svfinv3), start, end, mateStart,
                                 mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft3, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                                queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svinvfend3 = end;
                         getLastSVStructure(svStructures.svfinv3).disc++;
                     } else if (mlen > 3 * maxReadLength) {
@@ -2144,7 +2151,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         }
                         addSV(getLastSVStructure(svStructures.svfinv5), start, end, mateStart,
                                 mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft3, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                                queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svinvfend5 = end;
                         getLastSVStructure(svStructures.svfinv5).disc++;
                     }
@@ -2158,7 +2165,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         }
                         addSV(getLastSVStructure(svStructures.svrinv3), start, end, mateStart,
                                 mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft5, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                                queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svinvrend3 = end;
                         getLastSVStructure(svStructures.svrinv3).disc++;
 
@@ -2171,7 +2178,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                         }
                         addSV(getLastSVStructure(svStructures.svrinv5), start, end, mateStart,
                                 mend, readDirNum, totalLengthIncludingSoftClipped, mlen, soft5, maxReadLength/2.0,
-                                queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                                queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                         svStructures.svinvrend5 = end;
                         getLastSVStructure(svStructures.svrinv5).disc++;
                     }
@@ -2191,7 +2198,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                     }
                 }
             }
-        } else { // Inter-chr translocation
+        } else if (queryQuality.length() > Configuration.MINMAPBASE){ // Inter-chr translocation
             // to be implemented
             final String mchr = getMateReferenceName(record);
             if (record.getStringAttribute(SAMTag.MC.name()) != null
@@ -2212,7 +2219,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 int svn = svStructures.svffus.get(mchr).size() - 1;
                 addSV(svStructures.svffus.get(mchr).get(svn), start, end, mateStart,
                         mend, readDirNum, totalLengthIncludingSoftClipped, 0, soft3, maxReadLength/2.0,
-                        queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                        queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                 svStructures.svfusfend.put(mchr, end);
                 svStructures.svffus.get(mchr).get(svn).disc++;
             } else {
@@ -2227,32 +2234,32 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
                 int svn = svStructures.svrfus.get(mchr).size() - 1;
                 addSV(svStructures.svrfus.get(mchr).get(svn), start, end, mateStart,
                         mend, readDirNum, totalLengthIncludingSoftClipped, 0, soft5, maxReadLength/2.0,
-                        queryQuality.charAt(15) - 33, record.getMappingQuality(), numberOfMismatches);
+                        queryQuality.charAt(Configuration.MINMAPBASE) - 33, record.getMappingQuality(), numberOfMismatches);
                 svStructures.svfusrend.put(mchr, end);
                 svStructures.svrfus.get(mchr).get(svn).disc++;
             }
-            if (!svStructures.svfdel.isEmpty() && start - svStructures.svdelfend <= 25) {
+            if (!svStructures.svfdel.isEmpty() && start - svStructures.svdelfend <= Configuration.MINSVPOS) {
                 adddisccnt(getLastSVStructure(svStructures.svfdel));
             }
-            if (!svStructures.svrdel.isEmpty() && start - svStructures.svdelrend <= 25) {
+            if (!svStructures.svrdel.isEmpty() && start - svStructures.svdelrend <= Configuration.MINSVPOS) {
                 adddisccnt(getLastSVStructure(svStructures.svrdel));
             }
-            if (!svStructures.svfdup.isEmpty() && start - svStructures.svdupfend <= 25) {
+            if (!svStructures.svfdup.isEmpty() && start - svStructures.svdupfend <= Configuration.MINSVPOS) {
                 adddisccnt(getLastSVStructure(svStructures.svfdup));
             }
-            if (!svStructures.svrdup.isEmpty() && start - svStructures.svduprend <= 25) {
+            if (!svStructures.svrdup.isEmpty() && start - svStructures.svduprend <= Configuration.MINSVPOS) {
                 adddisccnt(getLastSVStructure(svStructures.svrdup));
             }
-            if (!svStructures.svfinv5.isEmpty() && start - svStructures.svinvfend5 <= 25) {
+            if (!svStructures.svfinv5.isEmpty() && start - svStructures.svinvfend5 <= Configuration.MINSVPOS) {
                 adddisccnt(getLastSVStructure(svStructures.svfinv5));
             }
-            if (!svStructures.svrinv5.isEmpty() && start - svStructures.svinvrend5 <= 25) {
+            if (!svStructures.svrinv5.isEmpty() && start - svStructures.svinvrend5 <= Configuration.MINSVPOS) {
                 adddisccnt(getLastSVStructure(svStructures.svrinv5));
             }
-            if (!svStructures.svfinv3.isEmpty() && start - svStructures.svinvfend3 <= 25) {
+            if (!svStructures.svfinv3.isEmpty() && start - svStructures.svinvfend3 <= Configuration.MINSVPOS) {
                 adddisccnt(getLastSVStructure(svStructures.svfinv3));
             }
-            if (!svStructures.svrinv3.isEmpty() && start - svStructures.svinvrend3 <= 25) {
+            if (!svStructures.svrinv3.isEmpty() && start - svStructures.svinvrend3 <= Configuration.MINSVPOS) {
                 adddisccnt(getLastSVStructure(svStructures.svrinv3));
             }
         }

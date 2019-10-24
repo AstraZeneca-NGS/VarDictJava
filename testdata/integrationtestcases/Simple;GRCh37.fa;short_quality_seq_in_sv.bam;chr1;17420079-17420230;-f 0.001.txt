@@ -1,0 +1,1 @@
+Simple,GRCh37.fa,short_quality_seq_in_sv.bam,chr1,17420079,17420230,-f 0.001

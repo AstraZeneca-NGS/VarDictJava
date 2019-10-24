@@ -234,6 +234,14 @@ public class Configuration {
      */
     public static final double MINSVCDIST = 1.5;
     /**
+     * The minimum position in read for mapping quality in SV analysis
+     */
+    public static final int MINMAPBASE = 15;
+    /**
+     * The minimum distance between start position and end of SV structure in inter-chr translocation
+     */
+    public static final int MINSVPOS = 25;
+    /**
      * Mean Insert size
      */
     public int INSSIZE = 300; //-w
