@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.*;
@@ -34,6 +36,21 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
     private Map<Integer, VariationMap<String, Variation>> nonInsertionVariants;
     private Map<Integer, Character> ref;
     private Double duprate;
+
+    // Map of IUPAC ambiguity codes that we can observe in reference.
+    // By VCF 4.3 specification they aren't allowed and must be reduced to a first alphabetically base.
+    private Map<String, String> IUPAC_AMBIGUITY_CODES = Stream.of(new String[][] {
+            {"M","A"},
+            {"R","A"},
+            {"W","A"},
+            {"S","C"},
+            {"Y","C"},
+            {"K","G"},
+            {"V","A"},
+            {"H","A"},
+            {"D","A"},
+            {"B","C"},
+    }).collect(Collectors.toMap(key -> key[0], key -> key[1]));
 
     public Map<Integer, VariationMap<String, Variation>> getInsertionVariants() {
         return insertionVariants;
@@ -903,7 +920,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 vref.shift3 = shift3;
                 vref.startPosition = startPosition;
                 vref.endPosition = endPosition;
-                vref.refallele = refallele;
+                vref.refallele = validateRefallele(refallele);
                 vref.varallele = varallele;
                 vref.genotype = genotype;
                 vref.totalPosCoverage = totalPosCoverage;
@@ -954,8 +971,8 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             vref.highQualityReadsFrequency = roundHalfEven("0.0000", vref.highQualityReadsFrequency);
             String referenceBase = ref.containsKey(position) ? ref.get(position).toString() : ""; // $r
             //both refallele and varallele are 1 base from reference string
-            vref.refallele = referenceBase;
-            vref.varallele = referenceBase;
+            vref.refallele = validateRefallele(referenceBase);
+            vref.varallele = validateRefallele(referenceBase);
             vref.genotype = referenceBase + "/" + referenceBase;
             vref.leftseq = "";
             vref.rightseq = "";
@@ -974,6 +991,23 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         } else {
             variationsAtPos.referenceVariant = new Variant();
         }
+    }
+
+    /**
+     * Validate reference allele according to VCF 4.3 specification in case if IUPAC ambiguity codes are present
+     * in reference.
+     * @param refallele sequence of reference bases that covers variant
+     * @return reference allele sequence where IUPAC ambuguity bases are changed to the one that is
+     * first alphabetically.
+     */
+    String validateRefallele(String refallele) {
+        for (int i = 0; i < refallele.length(); i++) {
+            String refBase = substr(refallele, i, 1);
+            if (IUPAC_AMBIGUITY_CODES.containsKey(refBase)) {
+                refallele = refallele.replaceFirst(refBase, IUPAC_AMBIGUITY_CODES.get(refBase));
+            }
+        }
+        return refallele;
     }
 
     /**

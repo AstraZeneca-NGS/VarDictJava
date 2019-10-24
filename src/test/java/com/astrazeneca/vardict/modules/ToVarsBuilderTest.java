@@ -11,10 +11,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static org.testng.Assert.assertEquals;
 
@@ -131,5 +128,25 @@ public class ToVarsBuilderTest {
         }};
 
         assertEquals(var.get(0).toString(), expectedVariant.toString());
+    }
+
+    @Test
+    public void testValidateRefAllele(){
+        List<String> alleles = Arrays.asList("A", "C", "G", "T", "N", "M", "R", "W", "S", "Y", "K", "V", "H", "D", "B");
+        List<String> expected = Arrays.asList("A", "C", "G", "T", "N", "A", "A", "A", "C", "C", "G", "A", "A", "A", "C");
+        List<String> validatedAlleles = new ArrayList<>();
+        for (String allele: alleles) {
+            validatedAlleles.add(toVarsBuilder.validateRefallele(allele));
+        }
+        assertEquals(validatedAlleles, expected);
+
+        List<String> alleles_complex = Arrays.asList("ANYCGT", "MRACT", "CCGKBG");
+        List<String> expected_complex = Arrays.asList("ANCCGT", "AAACT", "CCGGCG");
+
+        validatedAlleles = new ArrayList<>();
+        for (String allele: alleles_complex) {
+            validatedAlleles.add(toVarsBuilder.validateRefallele(allele));
+        }
+        assertEquals(validatedAlleles, expected_complex);
     }
 }
