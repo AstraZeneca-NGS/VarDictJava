@@ -1644,7 +1644,9 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     sv_r.used = true;
                     cnt++;
                     pairs += sv_r.varsCount;
-                    cov += (int) ((sv_r.varsCount * rlen)/(sv_r.end - sv_r.start)) + 1;
+                    if (sv_r.end != sv_r.start) {
+                        cov += (int) ((sv_r.varsCount * rlen)/(sv_r.end - sv_r.start)) + 1;
+                    }
                 }
             }
         }
@@ -1688,7 +1690,9 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
                     sv_r.used = true;
                     cnt++;
                     pairs += sv_r.varsCount;
-                    cov += (int) ((sv_r.varsCount * rlen)/(sv_r.end - sv_r.start)) + 1;
+                    if (sv_r.end != sv_r.start) {
+                        cov += (int) ((sv_r.varsCount * rlen)/(sv_r.end - sv_r.start)) + 1;
+                    }
                 }
             }
         }
@@ -1716,7 +1720,8 @@ public class StructuralVariantsProcessor implements Module<RealignedVariationDat
         positions.sort(Integer::compareTo);
 
         int ins = positions.get(2) - positions.get(1);
-        if (ins/(double)(end1 - start1) > 0.75 && ins/(double)(end2 - start2) > 0.75 ) {
+        if ((end1 != start1) && (end2 != start2)
+                && ins/(double)(end1 - start1) > 0.75 && ins/(double)(end2 - start2) > 0.75 ) {
             return true;
         }
         if (positions.get(1) - positions.get(0) + positions.get(3) - positions.get(2) < 3 * rlen) {
