@@ -1,6 +1,7 @@
 package com.astrazeneca.vardict.printers;
 
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.fishertest.FisherExact;
 import com.astrazeneca.vardict.variations.Variant;
 
 import java.text.DecimalFormat;
@@ -8,34 +9,37 @@ import java.text.DecimalFormat;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.join;
 /**
- * Variant created in Simple mode. Must contains 36 total fields.
+ * Variant created in Simple mode. Must contain 36 total fields if no --fisher.
  */
 public class SimpleOutputVariant extends OutputVariant {
-    public int totalCoverage;
-    public int variantCoverage;
-    public int referenceForwardCount;
-    public int referenceReverseCount;
-    public int variantForwardCount;
-    public int variantReverseCount;
-    public String genotype = "";
-    public double frequency;
-    public String bias = "0;0";
-    public double pmean;
-    public int pstd;
-    public double qual;
-    public int qstd;
-    public double mapq;
-    public double qratio;
-    public double hifreq;
-    public double extrafreq;
+    private int totalCoverage;
+    private int variantCoverage;
+    private int referenceForwardCount;
+    private int referenceReverseCount;
+    private int variantForwardCount;
+    private int variantReverseCount;
+    private String genotype = "";
+    private double frequency;
+    private String bias = "0;0";
+    private double pmean;
+    private int pstd;
+    private double qual;
+    private int qstd;
+    private double mapq;
+    private double qratio;
+    private double hifreq;
+    private double extrafreq;
 
-    public double nm;
-    public int hicnt;
-    public int hicov;
+    private double nm;
+    private int hicnt;
+    private int hicov;
 
-    public double duprate;
-    public int crispr;
-    public String sv;
+    private double duprate;
+    private int crispr;
+    private String sv;
+
+    private double pvalue;
+    private String oddratio = "0";
 
     public SimpleOutputVariant(Variant variant, Region region, String sv, int position) {
         this.sample = instance().sample;
@@ -80,14 +84,131 @@ public class SimpleOutputVariant extends OutputVariant {
             this.crispr = variant.crispr;
             this.DEBUG = variant.DEBUG;
         }
+
+        if (instance().conf.fisher) {
+            FisherExact fisher;
+            if (variant != null) {
+                fisher = new FisherExact(variant.refForwardCoverage, variant.refReverseCoverage,
+                        variant.varsCountOnForward, variant.varsCountOnReverse);
+            } else {
+                fisher = new FisherExact(0, 0, 0, 0);
+            }
+            this.pvalue = fisher.getPValue();
+            this.oddratio = fisher.getOddRatio();
+        }
+
         this.region = region.chr + ":" + region.start + "-" + region.end;
         this.sv = sv.equals("") ? "0" : sv;
     }
 
     @Override
     public String toString() {
-        // 36 columns
-        String outputVariant = join(delimiter,
+        String outputVariant;
+        if (!instance().conf.fisher) {
+            outputVariant = create_simple_variant_36columns();
+        } else {
+            outputVariant = create_simple_variant_38columns();
+        }
+        if (instance().conf.crisprCuttingSite != 0) {
+            outputVariant = join(delimiter, outputVariant, crispr);
+        }
+        if (instance().conf.debug) {
+            outputVariant = join(delimiter, outputVariant, DEBUG);
+        }
+        return outputVariant;
+    }
+
+    /**
+     * 38 columns: oddratio and pvalue added + format as it will be after using R script
+     */
+    private String create_simple_variant_38columns() {
+        String outputVariant;
+        String frequency_f = frequency == Math.round(frequency)
+                ? new DecimalFormat("0").format(frequency)
+                : new DecimalFormat("0.0000").format(frequency).replaceAll("0+$", "");
+        String pmean_f = pmean == Math.round(pmean)
+                ? new DecimalFormat("0").format(pmean)
+                : new DecimalFormat("0.0").format(pmean).replaceAll("0+$", "");
+        String qual_f = qual == Math.round(qual)
+                ? new DecimalFormat("0").format(qual)
+                : new DecimalFormat("0.0").format(qual).replaceAll("0+$", "");
+        String pvalue_f = pvalue == Math.round(pvalue)
+                ? new DecimalFormat("0").format(pvalue)
+                : new DecimalFormat("0.00000").format(pvalue).replaceAll("0+$", "");
+        String mapq_f = mapq == Math.round(mapq)
+                ? new DecimalFormat("0").format(mapq)
+                : new DecimalFormat("0.0").format(mapq).replaceAll("0+$", "");
+        String qratio_f = qratio == Math.round(qratio)
+                ? new DecimalFormat("0").format(qratio)
+                : new DecimalFormat("0.000").format(qratio).replaceAll("0+$", "");
+        String hifreq_f = hifreq == 0
+                ? "0"
+                : new DecimalFormat("0.0000").format(hifreq);
+        String extrafreq_f = extrafreq == Math.round(extrafreq)
+                ? new DecimalFormat("0").format(extrafreq)
+                :  new DecimalFormat("0.0000").format(extrafreq).replaceAll("0+$", "");
+        String msi_f = msi == Math.round(msi)
+                ? new DecimalFormat("0").format(msi)
+                : new DecimalFormat("0.000").format(msi).replaceAll("0+$", "");
+        nm = nm > 0 ? nm : 0;
+        String nm_f = nm == 0
+                ? "0"
+                : new DecimalFormat("0.0").format(nm);
+        String duprate_f = duprate == Math.round(duprate)
+                ? new DecimalFormat("0").format(duprate)
+                : new DecimalFormat("0.0").format(duprate).replaceAll("0+$", "");
+        outputVariant = join(delimiter,
+                sample,
+                gene,
+                chr,
+                startPosition,
+                endPosition,
+                refAllele,
+                varAllele,
+
+                totalCoverage,
+                variantCoverage,
+                referenceForwardCount,
+                referenceReverseCount,
+                variantForwardCount,
+                variantReverseCount,
+                genotype,
+                frequency_f,
+                bias,
+                pmean_f,
+                pstd,
+                qual_f,
+                qstd,
+
+                String.valueOf(pvalue_f),
+                oddratio,
+
+                mapq_f,
+                qratio_f,
+                hifreq_f,
+                extrafreq_f,
+
+                shift3,
+                msi_f,
+                msint,
+                nm_f,
+                hicnt,
+                hicov,
+                leftSequence, rightSequence,
+                region,
+                varType,
+                duprate_f,
+                sv
+        );
+        return outputVariant;
+    }
+
+    /**
+     * 36 columns for simple mode variant: no columns for oddratio and pvalue
+     */
+    private String create_simple_variant_36columns() {
+        String outputVariant;
+        outputVariant = join(delimiter,
                 sample,
                 gene,
                 chr,
@@ -109,6 +230,7 @@ public class SimpleOutputVariant extends OutputVariant {
                 pstd,
                 qual == 0 ? 0 : new DecimalFormat("0.0").format(qual),
                 qstd,
+
                 mapq == 0 ? 0 : new DecimalFormat("0.0").format(mapq),
                 qratio == 0 ? 0 : new DecimalFormat("0.000").format(qratio),
                 hifreq == 0 ? 0 : new DecimalFormat("0.0000").format(hifreq),
@@ -126,13 +248,6 @@ public class SimpleOutputVariant extends OutputVariant {
                 duprate == 0 ? 0 : new DecimalFormat("0.0").format(duprate),
                 sv
         );
-
-        if (instance().conf.crisprCuttingSite != 0) {
-            outputVariant = join(delimiter, outputVariant, crispr);
-        }
-        if (instance().conf.debug) {
-            outputVariant = join(delimiter, outputVariant, DEBUG);
-        }
         return outputVariant;
     }
 }

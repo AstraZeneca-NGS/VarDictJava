@@ -489,6 +489,11 @@ These are only rough classification. You need to examine the p-value (after test
     The variant frequency threshold to determine variant as good in case of non-monomer MSI. Default: 0.1 
 - `--mfreq`  
     The variant frequency threshold to determine variant as good in case of monomer MSI. Default: 0.25
+- `--fisher`  
+    EXPERIMENTAL FEATURE: to exclude R script from the VarDict pipeline we added this option to calculate pvalue and oddratio from Fisher Test. 
+    It will decrease time processing on big samples because R script uses slow `textConnection` function.
+   If you use this, do NOT run `teststrandbias.R` or `testsomatic.R` after Vardict, but use `var2vcf_valid.pl`
+    or `var2vcf_paired.pl` after VarDictJava as usual.
 ## Output columns
 ### Simple mode:
 1. Sample - sample name

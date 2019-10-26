@@ -166,6 +166,8 @@ public class CmdParser {
             config.adaptor.addAll(Arrays.asList(cmd.getOptionValue("adaptor").split(",")));
         }
 
+        config.fisher = cmd.hasOption("fisher");
+
         if (cmd.hasOption("DP")) {
             String defaultPrinter = cmd.getOptionValue("DP", PrinterType.OUT.name());
             switch(defaultPrinter) {
@@ -231,6 +233,7 @@ public class CmdParser {
         options.addOption("UN", false, "Indicate unique mode, which when mate pairs overlap, the overlapping part will be counted only once using first read only.");
         options.addOption("chimeric", false, "Indicate to turn off chimeric reads filtering.");
         options.addOption("deldupvar", false, "Turn on deleting of duplicate variants. Variants in this mode are considered and outputted only if start position of variant is inside the region interest.");
+        options.addOption("fisher", false, "Experimental feature: Changes R script (teststrandbias.R and testsomatic.) to Java implementation of Fisher exact test.");
         options.addOption("U", "nosv", false, "Turn off structural variant calling.");
 
         options.addOption(OptionBuilder.withArgName("bit")
