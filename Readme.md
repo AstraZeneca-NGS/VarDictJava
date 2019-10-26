@@ -99,18 +99,20 @@ standard Java library because its performance is much higher than that of the st
 
 To run VarDictJava in single sample mode, use a BAM file specified without the `|` symbol and perform Steps 3 and 4 
 (see the Program workflow section) using `teststrandbias.R` and `var2vcf_valid.pl`.
-The following is an example command to run in single sample mode:
+The following is an example command to run in single sample mode with BED file.   
+You have to set options `-c`, `-S`, `-E`, `-g` using number of columns in your BED file for chromosome, start, end
+ and gene of region respectively:
   
 ```
 AF_THR="0.01" # minimum allele frequency
-<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N sample_name -b /path/to/my.bam -z -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/teststrandbias.R | VarDict/var2vcf_valid.pl -N sample_name -E -f $AF_THR
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict -G /path/to/hg19.fa -f $AF_THR -N sample_name -b /path/to/my.bam -c 1 -S 2 -E 3 -g 4 /path/to/my.bed | VarDict/teststrandbias.R | VarDict/var2vcf_valid.pl -N sample_name -E -f $AF_THR > vars.vcf
 ```
 
 VarDictJava can also be invoked without a BED file if the region is specified in the command line with `-R` option.
 The following is an example command to run VarDictJava for a region (chromosome 7, position from 55270300 to 55270348, EGFR gene) with `-R` option:
 
 ```
-<path_to_vardict_folder>/build/install/VarDict/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam  -z -R  chr7:55270300-55270348:EGFR | VarDict/teststrandbias.R | VarDict/var2vcf_valid.pl -N sample_name -E -f 0.001 >vars.vcf
+<path_to_vardict_folder>/build/install/VarDict/bin/VarDict  -G /path/to/hg19.fa -f 0.001 -N sample_name -b /path/to/sample.bam -R  chr7:55270300-55270348:EGFR | VarDict/teststrandbias.R | VarDict/var2vcf_valid.pl -N sample_name -E -f 0.001 > vars.vcf
 ```
 
 In single sample mode, output columns contain a description and statistical info for variants in the single sample. 
@@ -124,7 +126,9 @@ To run paired variant calling, use BAM files specified as `BAM1|BAM2` and perfor
 In this mode, the number of statistics columns in the output is doubled: one set of columns is 
 for the first sample, the other - for second sample.
 
-The following is an example command to run in paired mode:
+The following is an example command to run in paired mode.  
+You have to set options `-c`, `-S`, `-E`, `-g` using number of columns in your bed file for chromosome, start, 
+ end and gene of region respectively:
 
 ```
 AF_THR="0.01" # minimum allele frequency
@@ -360,7 +364,7 @@ These are only rough classification. You need to examine the p-value (after test
 - `-F bit`  
     The hexical to filter reads. Default: `0x504` (filter unmapped reads, 2nd alignments and duplicates).  Use `-F 0` to turn it off.
 - `-z 0/1`       
-    Indicate whether the BED file contains zero-based coordinates, the same way as the Genome browser IGV does.  -z 1 indicates that coordinates in a BED file start from 0. -z 0 indicates that the coordinates start from 1. Default: `1` for a BED file or amplicon BED file.  Use `0` to turn it off. When using `-R` option, it is set to `0`
+    Indicate whether the BED file contains zero-based coordinates, the same way as the Genome browser IGV does.  -z 1 indicates that coordinates in a BED file start from 0. -z 0 indicates that the coordinates start from 1. Default: `1` for a BED file or amplicon BED file (0-based).  Use `0` to turn it off. When using `-R` option, it is set to `0`
 - `-a|--amplicon int:float`    
     Indicate it is amplicon based calling.  Reads that do not map to the amplicon will be skipped.  A read pair is considered to belong to the amplicon if the edges are less than int bp to the amplicon, and overlap fraction is at least float.  Default: `10:0.95`
 - `-k 0/1`   
@@ -599,14 +603,16 @@ Clusters - No. of clusters supporting SV from second sample
 ### Input Files
 
 #### BED File – Regions
-VarDict uses 2 types of BED files for specifying regions of interest: 4-column and 8-column. 
-The 8-column file format is used for targeted DNA deep sequencing analysis (amplicon based calling), 
-the 4-column file format - for single sample analysis.
+VarDict uses 2 types of BED files for specifying regions of interest: 8-column and all others. 
+The 8-column file format is used for targeted DNA deep sequencing analysis (amplicon based calling), amplicon analysis will 
+try to start if BED with 8 columns was provided.
+Otherwise you can start single and paired sample analysis by providing options `-c`, `-S`, `-E`, `-g` 
+with number of columns for chromosome, start, end, gene of the region respectively.
 
 All lines starting with #, browser, and track in a BED file are skipped. 
 The column delimiter can be specified as the `-d` option (the default value is a tab “\t“).
 
-The 8-column file format involves the following data:
+The 8-column amplicon BED file format involves the following data:
 * Chromosome name
 * Region start position
 * Region end position
@@ -616,7 +622,8 @@ The 8-column file format involves the following data:
 * Start position – VarDict starts outputting variants from this position
 * End position – VarDict ends outputting variants from this position
 
-The 4-column file format involves the following data:
+For example 4-column BED file format involves the following data and VarDict must be start with `-c 1 -S 2 -E 3 -g 4` to
+recognize it:
 * Chromosome name
 * Region start position
 * Region end position
