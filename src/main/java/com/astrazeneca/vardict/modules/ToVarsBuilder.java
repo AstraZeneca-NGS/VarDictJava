@@ -625,7 +625,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             referenceForwardCoverage = tpref.varsCountOnForward;
             referenceReverseCoverage = tpref.varsCountOnReverse;
         }
-
+        List<Integer> positionsForChangedRefVariant = new ArrayList<>();
         // only reference reads are observed.
         if (variationsAtPos.variants.size() > 0) { //Condition: non-reference variants are found
             //Loop over non-reference variants
@@ -936,60 +936,74 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 }
 
                 adjustVariantCounts(position, vref);
-
-                //Construct debug lines
-                if (instance().conf.debug) {
-                    StringBuilder sb = new StringBuilder();
-                    for (String str : debugLines) {
-                        if (sb.length() > 0) {
-                            sb.append(" & ");
-                        }
-                        sb.append(str);
-                    }
-                    vref.DEBUG = sb.toString();
+                if (startPosition != position && instance().conf.doPileup) {
+                    positionsForChangedRefVariant.add(position);
                 }
+                constructDebugLines(debugLines, vref);
             }
             //TODO: It is a "lazy" solution because current logic in realignment methods can't be changed simply for --nosv option
             if (instance().conf.disableSV) {
                 variationsAtPos.variants.removeIf(vref -> ANY_SV.matcher(vref.varallele).find());
             }
-        } else if (variationsAtPos.referenceVariant != null) {
-            Variant vref = variationsAtPos.referenceVariant; //no variant reads are detected.
-            vref.totalPosCoverage = totalPosCoverage;
-            vref.positionCoverage = 0;
-            vref.frequency = 0;
-            vref.refForwardCoverage = referenceForwardCoverage;
-            vref.refReverseCoverage = referenceReverseCoverage;
-            vref.varsCountOnForward = 0;
-            vref.varsCountOnReverse = 0;
-            vref.msi = 0;
-            vref.msint = 0;
-            vref.strandBiasFlag += ";0";
-            vref.shift3 = 0;
-            vref.startPosition = position;
-            vref.endPosition = position;
-            vref.highQualityReadsFrequency = roundHalfEven("0.0000", vref.highQualityReadsFrequency);
-            String referenceBase = ref.containsKey(position) ? ref.get(position).toString() : ""; // $r
-            //both refallele and varallele are 1 base from reference string
-            vref.refallele = validateRefallele(referenceBase);
-            vref.varallele = validateRefallele(referenceBase);
-            vref.genotype = referenceBase + "/" + referenceBase;
-            vref.leftseq = "";
-            vref.rightseq = "";
-            vref.duprate = duprate;
-            //Construct debug lines
-            if (instance().conf.debug) {
-                StringBuilder sb = new StringBuilder();
-                for (String str : debugLines) {
-                    if (sb.length() > 0) {
-                        sb.append(" & ");
-                    }
-                    sb.append(str);
-                }
-                vref.DEBUG = sb.toString();
-            }
+        } else if (variationsAtPos.referenceVariant != null ) {  //no variant reads are detected
+            Variant vref = variationsAtPos.referenceVariant;
+            updateRefVariant(position, totalPosCoverage, vref, debugLines,
+                    referenceForwardCoverage, referenceReverseCoverage);
         } else {
             variationsAtPos.referenceVariant = new Variant();
+        }
+
+        // Update reference variants if there were indels and start position were changed, so after update
+        // ref variants can be output in pileup
+        if (positionsForChangedRefVariant.contains(position) && variationsAtPos.referenceVariant != null) {
+            Variant vref = variationsAtPos.referenceVariant;
+            updateRefVariant(position, totalPosCoverage, vref, debugLines,
+                    referenceForwardCoverage, referenceReverseCoverage);
+        }
+    }
+
+    private void updateRefVariant(int position, int totalPosCoverage, Variant vref, List<String> debugLines,
+                                  int referenceForwardCoverage, int referenceReverseCoverage) {
+        vref.totalPosCoverage = totalPosCoverage;
+        vref.positionCoverage = 0;
+        vref.frequency = 0;
+        vref.refForwardCoverage = referenceForwardCoverage;
+        vref.refReverseCoverage = referenceReverseCoverage;
+        vref.varsCountOnForward = 0;
+        vref.varsCountOnReverse = 0;
+        vref.msi = 0;
+        vref.msint = 0;
+        vref.strandBiasFlag += ";0";
+        vref.shift3 = 0;
+        vref.startPosition = position;
+        vref.endPosition = position;
+        vref.highQualityReadsFrequency = roundHalfEven("0.0000", vref.highQualityReadsFrequency);
+        String referenceBase = ref.containsKey(position) ? ref.get(position).toString() : ""; // $r
+        //both refallele and varallele are 1 base from reference string
+        vref.refallele = validateRefallele(referenceBase);
+        vref.varallele = validateRefallele(referenceBase);
+        vref.genotype = referenceBase + "/" + referenceBase;
+        vref.leftseq = "";
+        vref.rightseq = "";
+        vref.duprate = duprate;
+
+        constructDebugLines(debugLines, vref);
+    }
+
+    /**
+     * Construct DEBUG lines for the variant
+     */
+    private void constructDebugLines(List<String> debugLines, Variant vref) {
+
+        if (instance().conf.debug) {
+            StringBuilder sb = new StringBuilder();
+            for (String str : debugLines) {
+                if (sb.length() > 0) {
+                    sb.append(" & ");
+                }
+                sb.append(str);
+            }
+            vref.DEBUG = sb.toString();
         }
     }
 
