@@ -33,8 +33,10 @@ public class FisherExact {
     private double PvalueLess;
     private double PvalueGreater;
     private double PvalueTwoSided;
-
     private List<Integer> support;
+
+    // Seems that Java and R have differences with round half even (JDK-8227248 example, it will round value in memory)
+    public static double RESULT_ROUND_R = 1E5;
 
     public FisherExact(int refFwd, int refRev, int altFwd, int altRev) {
         m = refFwd + refRev;
@@ -47,8 +49,8 @@ public class FisherExact {
         for (int j = lo; j <= hi; j++) {
             support.add(j);
         }
-
         logdc = logdcDhyper(m, n, k);
+
         calculatePValue();
     }
 
@@ -66,7 +68,7 @@ public class FisherExact {
             if (value.isNaN()) {
                 value = 0.0;
             }
-            logdc.add(value);
+            logdc.add(roundHalfEven("0.0000000", value));
         }
         return logdc;
     }
@@ -129,14 +131,12 @@ public class FisherExact {
         } else if (oddRatio == Math.round(oddRatio)) {
             return new DecimalFormat("0").format(oddRatio);
         } else {
-            return String.valueOf(roundHalfEven("0.00000", oddRatio));
+            return String.valueOf(round_as_r(oddRatio));
         }
     }
 
     public double getPValue() {
-        double pValue = PvalueTwoSided;
-        double pValueRound = roundHalfEven("0.00000", pValue);
-        return pValueRound == 0.0 ? 0 : (pValueRound == 1.0 ? 1 : pValueRound);
+        return round_as_r(PvalueTwoSided);
     }
 
     public List<Double> getLogdc() {
@@ -145,15 +145,18 @@ public class FisherExact {
     }
 
     public double getPValueGreater() {
-        double pValueGreater = PvalueGreater;
-        double pValueRound = roundHalfEven("0.00000", pValueGreater);
-        return pValueRound == 0.0 ? 0 : (pValueRound == 1.0 ? 1 : pValueRound);
+        return round_as_r(PvalueGreater);
     }
 
     public double getPValueLess() {
-        double pValueLess = PvalueLess;
-        double pValueRound = roundHalfEven("0.00000", pValueLess);
-        return pValueRound == 0.0 ? 0 : (pValueRound == 1.0 ? 1 : pValueRound);
+        return round_as_r(PvalueLess);
+    }
+
+    private double round_as_r(double value) {
+        value = roundHalfEven("0", value * RESULT_ROUND_R);
+        value = value/RESULT_ROUND_R;
+        value = value == 0.0 ? 0 : (value == 1.0 ? 1 : value);
+        return value;
     }
 
     private void calculatePValue() {
