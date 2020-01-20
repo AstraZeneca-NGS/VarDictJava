@@ -6,6 +6,7 @@ import com.astrazeneca.vardict.variations.Variant;
 
 import java.text.DecimalFormat;
 
+import static com.astrazeneca.vardict.Utils.getRoundedValueToPrint;
 import static com.astrazeneca.vardict.Utils.join;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 
@@ -200,76 +201,9 @@ public class SomaticOutputVariant extends OutputVariant {
      */
     private String create_somatic_variant_61columns() {
         String outputVariant;
-        String var1frequency_f = var1frequency == Math.round(var1frequency)
-                ? new DecimalFormat("0").format(var1frequency)
-                : new DecimalFormat("0.0000").format(var1frequency).replaceAll("0+$", "");
-        String var1meanPosition_f = var1meanPosition == Math.round(var1meanPosition)
-                ? new DecimalFormat("0").format(var1meanPosition)
-                : new DecimalFormat("0.0").format(var1meanPosition).replaceAll("0+$", "");
-        String var1meanQuality_f = var1meanQuality == Math.round(var1meanQuality)
-                ? new DecimalFormat("0").format(var1meanQuality)
-                : new DecimalFormat("0.0").format(var1meanQuality).replaceAll("0+$", "");
-        String var1meanMappingQuality_f = var1meanMappingQuality == Math.round(var1meanMappingQuality)
-                ? new DecimalFormat("0").format(var1meanMappingQuality)
-                : new DecimalFormat("0.0").format(var1meanMappingQuality).replaceAll("0+$", "");
-        String var1highQualityToLowQualityRatio_f = var1highQualityToLowQualityRatio == Math.round(var1highQualityToLowQualityRatio)
-                ? new DecimalFormat("0").format(var1highQualityToLowQualityRatio)
-                : new DecimalFormat("0.000").format(var1highQualityToLowQualityRatio).replaceAll("0+$", "");
-        String var1highQualityReadsFrequency_f = var1highQualityReadsFrequency== Math.round(var1highQualityReadsFrequency)
-                ? new DecimalFormat("0").format(var1highQualityReadsFrequency)
-                : new DecimalFormat("0.0000").format(var1highQualityReadsFrequency).replaceAll("0+$", "");
-        String var1extraFrequency_f = var1extraFrequency == Math.round(var1extraFrequency)
-                ? new DecimalFormat("0").format(var1extraFrequency)
-                : new DecimalFormat("0.0000").format(var1extraFrequency).replaceAll("0+$", "");
         var1nm = var1nm > 0 ? var1nm : 0;
-        String var1nm_f = var1nm == Math.round(var1nm)
-                ? new DecimalFormat("0").format(var1nm)
-                : new DecimalFormat("0.0").format(var1nm).replaceAll("0+$", "");
-        String var1pvalue_f = pvalue1 == Math.round(pvalue1)
-                ? new DecimalFormat("0").format(pvalue1)
-                : new DecimalFormat("0.00000").format(pvalue1).replaceAll("0+$", "");
-
-        String var2frequency_f = var2frequency == Math.round(var2frequency)
-                ? new DecimalFormat("0").format(var2frequency)
-                : new DecimalFormat("0.0000").format(var2frequency).replaceAll("0+$", "");
-        String var2meanPosition_f = var2meanPosition == Math.round(var2meanPosition)
-                ? new DecimalFormat("0").format(var2meanPosition)
-                : new DecimalFormat("0.0").format(var2meanPosition).replaceAll("0+$", "");
-        String var2meanQuality_f = var2meanQuality == Math.round(var2meanQuality)
-                ? new DecimalFormat("0").format(var2meanQuality)
-                : new DecimalFormat("0.0").format(var2meanQuality).replaceAll("0+$", "");
-        String var2meanMappingQuality_f = var2meanMappingQuality == Math.round(var2meanMappingQuality)
-                ? new DecimalFormat("0").format(var2meanMappingQuality)
-                : new DecimalFormat("0.0").format(var2meanMappingQuality).replaceAll("0+$", "");
-        String var2highQualityToLowQualityRatio_f = var2highQualityToLowQualityRatio == Math.round(var2highQualityToLowQualityRatio)
-                ? new DecimalFormat("0").format(var2highQualityToLowQualityRatio)
-                : new DecimalFormat("0.000").format(var2highQualityToLowQualityRatio).replaceAll("0+$", "");
-        String var2highQualityReadsFrequency_f = var2highQualityReadsFrequency == Math.round(var2highQualityReadsFrequency)
-                ? new DecimalFormat("0").format(var2highQualityReadsFrequency)
-                : new DecimalFormat("0.0000").format(var2highQualityReadsFrequency).replaceAll("0+$", "");
-        String var2extraFrequency_f = var2extraFrequency == Math.round(var2extraFrequency)
-                ? new DecimalFormat("0").format(var2extraFrequency)
-                :  new DecimalFormat("0.0000").format(var2extraFrequency).replaceAll("0+$", "");
         var2nm = var2nm > 0 ? var2nm : 0;
-        String var2nm_f = var2nm == Math.round(var2nm)
-                ? new DecimalFormat("0").format(var2nm)
-                : new DecimalFormat("0.0").format(var2nm).replaceAll("0+$", "");
-        String var2pvalue_f = pvalue2 == Math.round(pvalue2)
-                ? new DecimalFormat("0").format(pvalue2)
-                : new DecimalFormat("0.00000").format(pvalue2).replaceAll("0+$", "");
-
-        String msi_f = msi == 0
-                ? "0"
-                : new DecimalFormat("0.000").format(msi);
-        String var1duprate_f = var1duprate == Math.round(var1duprate)
-                ? new DecimalFormat("0").format(var1duprate)
-                : new DecimalFormat("0.0").format(var1duprate).replaceAll("0+$", "");
-        String var2duprate_f = var2duprate == Math.round(var2duprate)
-                ? new DecimalFormat("0").format(var2duprate)
-                : new DecimalFormat("0.0").format(var2duprate).replaceAll("0+$", "");
-        String pvalue_f = pvalue == Math.round(pvalue)
-                ? new DecimalFormat("0").format(pvalue)
-                : new DecimalFormat("0.00000").format(pvalue).replaceAll("0+$", "");
+        String msi_f = msi == 0 ? "0" : new DecimalFormat("0.000").format(msi);
 
         outputVariant = join(delimiter,
                 sample,
@@ -287,18 +221,18 @@ public class SomaticOutputVariant extends OutputVariant {
                 var1variantForwardCount,
                 var1variantReverseCount,
                 var1genotype,
-                var1frequency_f,
+                getRoundedValueToPrint("0.0000", var1frequency),
                 var1strandBiasFlag,
-                var1meanPosition_f,
+                getRoundedValueToPrint("0.0", var1meanPosition),
                 var1isAtLeastAt2Position,
-                var1meanQuality_f,
+                getRoundedValueToPrint("0.0", var1meanQuality),
                 var1hasAtLeast2DiffQualities,
-                var1meanMappingQuality_f,
-                var1highQualityToLowQualityRatio_f,
-                var1highQualityReadsFrequency_f,
-                var1extraFrequency_f,
-                var1nm_f,
-                var1pvalue_f,
+                getRoundedValueToPrint("0.0", var1meanMappingQuality),
+                getRoundedValueToPrint("0.000", var1highQualityToLowQualityRatio),
+                getRoundedValueToPrint("0.0000", var1highQualityReadsFrequency),
+                getRoundedValueToPrint("0.0000", var1extraFrequency),
+                getRoundedValueToPrint("0.0", var1nm),
+                getRoundedValueToPrint("0.00000", pvalue1),
                 oddratio1,
 
                 var2totalCoverage,
@@ -308,18 +242,18 @@ public class SomaticOutputVariant extends OutputVariant {
                 var2variantForwardCount,
                 var2variantReverseCount,
                 var2genotype,
-                var2frequency_f,
+                getRoundedValueToPrint("0.0000", var2frequency),
                 var2strandBiasFlag,
-                var2meanPosition_f,
+                getRoundedValueToPrint("0.0", var2meanPosition),
                 var2isAtLeastAt2Position,
-                var2meanQuality_f,
+                getRoundedValueToPrint("0.0", var2meanQuality),
                 var2hasAtLeast2DiffQualities,
-                var2meanMappingQuality_f,
-                var2highQualityToLowQualityRatio_f,
-                var2highQualityReadsFrequency_f,
-                var2extraFrequency_f,
-                var2nm_f,
-                var2pvalue_f,
+                getRoundedValueToPrint("0.0", var2meanMappingQuality),
+                getRoundedValueToPrint("0.000", var2highQualityToLowQualityRatio),
+                getRoundedValueToPrint("0.0000", var2highQualityReadsFrequency),
+                getRoundedValueToPrint("0.0000", var2extraFrequency),
+                getRoundedValueToPrint("0.0", var2nm),
+                getRoundedValueToPrint("0.00000", pvalue2),
                 oddratio2,
 
                 shift3,
@@ -329,11 +263,11 @@ public class SomaticOutputVariant extends OutputVariant {
                 region,
                 varLabel,
                 varType,
-                var1duprate_f,
+                getRoundedValueToPrint("0.0", var1duprate),
                 var1sv,
-                var2duprate_f,
+                getRoundedValueToPrint("0.0", var2duprate),
                 var2sv,
-                pvalue_f,
+                getRoundedValueToPrint("0.00000", pvalue),
                 oddratio
         );
         return outputVariant;
