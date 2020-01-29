@@ -54,6 +54,7 @@ public class FisherExact {
         calculatePValue();
     }
 
+    // Density of the central hypergeometric distribution on its support: store for once as this is needed quite a bit.
     private List<Double> logdcDhyper(int m, int n, int k) {
         List<Double> logdc = new ArrayList<>();
 
@@ -73,6 +74,14 @@ public class FisherExact {
         return logdc;
     }
 
+    // Determine the MLE for ncp by solving E(X) = x, where the expectation is with respect to H.
+    // Note that in general the conditional distribution of x given the marginals is a non-central hypergeometric
+    // distribution H with non-centrality parameter ncp, the odds ratio.
+    // The null conditional independence is equivalent to the hypothesis that the odds ratio equals one. `Exact`
+    // inference can be based on observing that in general, given all marginal totals fixed, the first element of the
+    // contingency table has a non-central hypergeometric distribution with non-centrality parameter given by odds
+    // ratio (Fisher, 1935). The alternative for a one-sided test is based on the odds ratio, so alternative =
+    // 'greater' is a test of the odds ratio being bigger than or = 1.
     private Double mle(double x) {
         double eps = Math.ulp(1.0);
         if (x == lo) return 0.0;
