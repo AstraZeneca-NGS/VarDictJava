@@ -1,16 +1,17 @@
 package com.astrazeneca.vardict.printers;
 
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.fishertest.FisherExact;
 import com.astrazeneca.vardict.variations.Variant;
-import com.astrazeneca.vardict.variations.Vars;
 
 import java.text.DecimalFormat;
 
+import static com.astrazeneca.vardict.Utils.getRoundedValueToPrint;
 import static com.astrazeneca.vardict.Utils.join;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 
 /**
- * Variant created in Somatic mode. Must contains 55 total fields.
+ * Variant created in Somatic mode. Must contains 55 total fields if no --fisher.
  */
 public class SomaticOutputVariant extends OutputVariant {
     private int var1totalCoverage;
@@ -24,6 +25,8 @@ public class SomaticOutputVariant extends OutputVariant {
     private String var1strandBiasFlag = "0";
     private double var1meanPosition;
     private int var1isAtLeastAt2Position;
+    private double pvalue1;
+    private String oddratio1 = "0";
     private double var1meanQuality;
     private int var1hasAtLeast2DiffQualities;
     private double var1meanMappingQuality;
@@ -45,6 +48,8 @@ public class SomaticOutputVariant extends OutputVariant {
     private String var2strandBiasFlag = "0";
     private double var2meanPosition;
     private int var2isAtLeastAt2Position;
+    private double pvalue2;
+    private String oddratio2 = "0";
     private double var2meanQuality;
     private int var2hasAtLeast2DiffQualities;
     private double var2meanMappingQuality;
@@ -56,6 +61,9 @@ public class SomaticOutputVariant extends OutputVariant {
     private String var2sv = "0";
 
     private String varLabel = "";
+
+    private double pvalue;
+    private String oddratio = "0";
 
     public SomaticOutputVariant(Variant beginVariant, Variant endVariant, Variant tumorVariant, Variant normalVariant,
                                 Region region, String sv1, String sv2, String varLabel) {
@@ -127,12 +135,150 @@ public class SomaticOutputVariant extends OutputVariant {
         this.region = region.chr + ":" + region.start + "-" + region.end;
         this.var1sv = sv1.equals("") ? "0" : sv1;
         this.var2sv = sv2.equals("") ? "0" : sv2;
+
+        if (instance().conf.fisher) {
+            calculateFisherSomatic(tumorVariant, normalVariant);
+        }
+    }
+
+    private void calculateFisherSomatic(Variant tumorVariant, Variant normalVariant) {
+        FisherExact fisher;
+
+        if (tumorVariant != null) {
+            fisher = new FisherExact(tumorVariant.refForwardCoverage, tumorVariant.refReverseCoverage,
+                    tumorVariant.varsCountOnForward, tumorVariant.varsCountOnReverse);
+        } else {
+            fisher = new FisherExact(0, 0, 0, 0);
+        }
+        this.pvalue1 = fisher.getPValue();
+        this.oddratio1 = fisher.getOddRatio();
+
+        if (normalVariant != null) {
+            fisher = new FisherExact(normalVariant.refForwardCoverage, normalVariant.refReverseCoverage,
+                    normalVariant.varsCountOnForward, normalVariant.varsCountOnReverse);
+        } else {
+            fisher = new FisherExact(0, 0, 0, 0);
+        }
+        this.pvalue2 = fisher.getPValue();
+        this.oddratio2 = fisher.getOddRatio();
+
+        int tref = this.var1totalCoverage - this.var1variantCoverage;
+        int rref = this.var2totalCoverage - this.var2variantCoverage;
+        if (tref < 0) {
+            tref = 0;
+        }
+        if (rref < 0) {
+            rref = 0;
+        }
+        fisher = new FisherExact(this.var1variantCoverage, tref, this.var2variantCoverage, rref);
+        double pvalue_greater = fisher.getPValueGreater();
+        double pvalue_less = fisher.getPValueLess();
+
+        if (pvalue_less < pvalue_greater) {
+            this.pvalue = pvalue_less;
+        } else {
+            this.pvalue = pvalue_greater;
+        }
+        this.oddratio = fisher.getOddRatio();
     }
 
     @Override
     public String toString() {
-        // 55 columns
-        String outputVariant = join(delimiter,
+        String outputVariant;
+        if (!instance().conf.fisher) {
+            outputVariant = create_somatic_variant_55columns();
+        } else {
+            outputVariant = create_somatic_variant_61columns();
+        }
+        if (instance().conf.debug) {
+            outputVariant = join(delimiter, outputVariant, DEBUG);
+        }
+        return outputVariant;
+    }
+
+    /**
+     * 61 columns: oddratio and pvalue added for each sample and total and format as it will be after using R script
+     */
+    private String create_somatic_variant_61columns() {
+        String outputVariant;
+        var1nm = var1nm > 0 ? var1nm : 0;
+        var2nm = var2nm > 0 ? var2nm : 0;
+        String msi_f = msi == 0 ? "0" : new DecimalFormat("0.000").format(msi);
+
+        outputVariant = join(delimiter,
+                sample,
+                gene,
+                chr,
+                startPosition,
+                endPosition,
+                refAllele,
+                varAllele,
+
+                var1totalCoverage,
+                var1variantCoverage,
+                var1refForwardCoverage,
+                var1refReverseCoverage,
+                var1variantForwardCount,
+                var1variantReverseCount,
+                var1genotype,
+                getRoundedValueToPrint("0.0000", var1frequency),
+                var1strandBiasFlag,
+                getRoundedValueToPrint("0.0", var1meanPosition),
+                var1isAtLeastAt2Position,
+                getRoundedValueToPrint("0.0", var1meanQuality),
+                var1hasAtLeast2DiffQualities,
+                getRoundedValueToPrint("0.0", var1meanMappingQuality),
+                getRoundedValueToPrint("0.000", var1highQualityToLowQualityRatio),
+                getRoundedValueToPrint("0.0000", var1highQualityReadsFrequency),
+                getRoundedValueToPrint("0.0000", var1extraFrequency),
+                getRoundedValueToPrint("0.0", var1nm),
+                getRoundedValueToPrint("0.00000", pvalue1),
+                oddratio1,
+
+                var2totalCoverage,
+                var2variantCoverage,
+                var2refForwardCoverage,
+                var2refReverseCoverage,
+                var2variantForwardCount,
+                var2variantReverseCount,
+                var2genotype,
+                getRoundedValueToPrint("0.0000", var2frequency),
+                var2strandBiasFlag,
+                getRoundedValueToPrint("0.0", var2meanPosition),
+                var2isAtLeastAt2Position,
+                getRoundedValueToPrint("0.0", var2meanQuality),
+                var2hasAtLeast2DiffQualities,
+                getRoundedValueToPrint("0.0", var2meanMappingQuality),
+                getRoundedValueToPrint("0.000", var2highQualityToLowQualityRatio),
+                getRoundedValueToPrint("0.0000", var2highQualityReadsFrequency),
+                getRoundedValueToPrint("0.0000", var2extraFrequency),
+                getRoundedValueToPrint("0.0", var2nm),
+                getRoundedValueToPrint("0.00000", pvalue2),
+                oddratio2,
+
+                shift3,
+                msi_f,
+                msint,
+                leftSequence, rightSequence,
+                region,
+                varLabel,
+                varType,
+                getRoundedValueToPrint("0.0", var1duprate),
+                var1sv,
+                getRoundedValueToPrint("0.0", var2duprate),
+                var2sv,
+                getRoundedValueToPrint("0.00000", pvalue),
+                oddratio
+        );
+        return outputVariant;
+    }
+
+    /**
+     * 55 columns: not oddratio and pvalue columns
+     */
+    private String create_somatic_variant_55columns() {
+        String outputVariant;
+        outputVariant = join(delimiter,
                 sample,
                 gene,
                 chr,
@@ -191,9 +337,6 @@ public class SomaticOutputVariant extends OutputVariant {
                 var2duprate == 0 ? 0 : new DecimalFormat("0.0").format(var2duprate),
                 var2sv
         );
-        if (instance().conf.debug) {
-            outputVariant = join(delimiter, outputVariant, DEBUG);
-        }
         return outputVariant;
     }
 }

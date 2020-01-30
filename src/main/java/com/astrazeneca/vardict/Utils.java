@@ -102,6 +102,12 @@ public final class Utils {
         return Double.parseDouble(new DecimalFormat(pattern).format(value));
     }
 
+    public static String getRoundedValueToPrint(String pattern, double value) {
+        return value == Math.round(value)
+                ? new DecimalFormat("0").format(value)
+                : new DecimalFormat(pattern).format(value).replaceAll("0+$", "");
+    }
+
     /**
      * Method creates substring of string begin from specified idx.
      * If idx is negative, it returns substring, counted from the right end of string.

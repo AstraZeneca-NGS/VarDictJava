@@ -4,7 +4,7 @@ plugins {
     id 'jacoco'
 }
 
-version = '1.7.0'
+version = '1.8.0'
 
 repositories { 
     mavenCentral() 
@@ -23,6 +23,7 @@ afterEvaluate {
 
 dependencies {
     compile 'commons-cli:commons-cli:1.2' 
+    compile 'org.apache.commons:commons-math3:3.6.1'
     compile 'com.edropple.jregex:jregex:1.2_01'
     compile('com.github.samtools:htsjdk:2.8.0') {
         transitive = false

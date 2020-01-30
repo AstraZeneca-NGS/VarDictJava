@@ -2,16 +2,18 @@ package com.astrazeneca.vardict.printers;
 
 import com.astrazeneca.vardict.collection.Tuple;
 import com.astrazeneca.vardict.data.Region;
+import com.astrazeneca.vardict.data.fishertest.FisherExact;
 import com.astrazeneca.vardict.variations.Variant;
 
 import java.text.DecimalFormat;
 import java.util.List;
 
+import static com.astrazeneca.vardict.Utils.getRoundedValueToPrint;
 import static com.astrazeneca.vardict.data.scopedata.GlobalReadOnlyScope.instance;
 import static com.astrazeneca.vardict.Utils.join;
 
 /**
- * Variant created in Amplicon mode. Must contains 38 total fields.
+ * Variant created in Amplicon mode. Must contain 38 total fields if no --fisher.
  */
 public class AmpliconOutputVariant extends OutputVariant {
     private int totalCoverage;
@@ -39,6 +41,9 @@ public class AmpliconOutputVariant extends OutputVariant {
     private int totalVariantsCount;
     private int noCoverage;
     private int ampliconFlag;
+
+    private double pvalue;
+    private String oddratio = "0";
 
     public AmpliconOutputVariant(Variant variant, Region region, List<Tuple.Tuple2<Variant, String>> goodVariants,
                                  List<Tuple.Tuple2<Variant, String>> badVariants, int position, int gvscnt,
@@ -91,7 +96,20 @@ public class AmpliconOutputVariant extends OutputVariant {
             } else {
                 this.region = region.chr + ":" + position + "-" + position;
             }
+
         }
+        if (instance().conf.fisher) {
+            FisherExact fisher;
+            if (variant != null) {
+                fisher = new FisherExact(variant.refForwardCoverage, variant.refReverseCoverage,
+                        variant.varsCountOnForward, variant.varsCountOnReverse);
+            } else {
+                fisher = new FisherExact(0, 0, 0, 0);
+            }
+            this.pvalue = fisher.getPValue();
+            this.oddratio = fisher.getOddRatio();
+        }
+
         if (instance().conf.debug && variant != null) {
             StringBuilder goodOutput = new StringBuilder();
             StringBuilder badOutput = new StringBuilder();
@@ -109,8 +127,85 @@ public class AmpliconOutputVariant extends OutputVariant {
 
     @Override
     public String toString() {
-        // 38 columns
-        String outputVariant = join(delimiter,
+        String outputVariant;
+        if (!instance().conf.fisher) {
+            outputVariant = create_amplicon_variant_38columns();
+        } else {
+            outputVariant = create_amplicon_variant_40columns();
+        }
+        if (instance().conf.debug) {
+            outputVariant = join(delimiter, outputVariant, DEBUG);
+        }
+        return outputVariant;
+    }
+
+    /**
+     * 40 columns: oddratio and pvalue added and format as it will be after using R script
+     */
+    private String create_amplicon_variant_40columns() {
+        String outputVariant;
+        String hifreq_f = hifreq == 0
+                ? "0"
+                : new DecimalFormat("0.0000").format(hifreq);
+        nm = nm > 0 ? nm : 0;
+        String nm_f = nm == 0
+                ? "0"
+                : new DecimalFormat("0.0").format(nm);
+
+        outputVariant = join(delimiter,
+                sample,
+                gene,
+                chr,
+                startPosition,
+                endPosition,
+                refAllele,
+                varAllele,
+
+                totalCoverage,
+                variantCoverage,
+                referenceForwardCount,
+                referenceReverseCount,
+                variantForwardCount,
+                variantReverseCount,
+                genotype,
+                getRoundedValueToPrint("0.0000", frequency),
+                bias,
+                getRoundedValueToPrint("0.0", pmean),
+                pstd,
+                getRoundedValueToPrint("0.0", qual),
+                qstd,
+
+                getRoundedValueToPrint("0.00000", pvalue),
+                oddratio,
+
+                getRoundedValueToPrint("0.0", mapq),
+                getRoundedValueToPrint("0.000", qratio),
+                hifreq_f,
+                getRoundedValueToPrint("0.0000", extrafreq),
+
+                shift3,
+                getRoundedValueToPrint("0.000", msi),
+                msint,
+                nm_f,
+                hicnt,
+                hicov,
+                leftSequence, rightSequence,
+                region,
+                varType,
+                goodVariantsCount,
+                totalVariantsCount,
+                noCoverage,
+                ampliconFlag
+        );
+        return outputVariant;
+    }
+
+    /**
+     * 38 columns: no oddratio and pvalue columns
+     */
+    private String create_amplicon_variant_38columns() {
+        String outputVariant;
+        outputVariant = join(delimiter,
                 sample,
                 gene,
                 chr,
@@ -150,10 +245,7 @@ public class AmpliconOutputVariant extends OutputVariant {
                 totalVariantsCount,
                 noCoverage,
                 ampliconFlag
-                );
-        if (instance().conf.debug) {
-            outputVariant = join(delimiter, outputVariant, DEBUG);
-        }
+        );
         return outputVariant;
     }
 

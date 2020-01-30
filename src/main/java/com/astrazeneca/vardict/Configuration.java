@@ -230,6 +230,11 @@ public class Configuration {
     public boolean deleteDuplicateVariants = false;
 
     /**
+     * Applying Fisher exact test on forward and reverse counts of variant.
+     */
+    public boolean fisher = false;
+
+    /**
      * The minimum distance between two SV clusters in term of read length
      */
     public static final double MINSVCDIST = 1.5;

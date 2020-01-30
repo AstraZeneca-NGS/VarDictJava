@@ -13,8 +13,10 @@ PARAMETERS="-c 1 -S 2 -E 3 -g 4 -f 0.001 -N abc"
 
 # Output files
 VARDICT_OUT_JAVA="$DIR_OUTPUT/vardict.java.txt"
+VARDICT_OUT_JAVA_FISHER="$DIR_OUTPUT/vardict.java.fisher.txt"
 VARDICT_OUT_PERL="$DIR_OUTPUT/vardict.perl.txt"
 VARDICT_OUT_SORT_JAVA="$DIR_OUTPUT/vardict.java.sort.txt"
+VARDICT_OUT_SORT_JAVA_FISHER="$DIR_OUTPUT/vardict.java.sort.fisher.txt"
 VARDICT_OUT_R_JAVA="$DIR_OUTPUT/vardict.java.r.txt"
 VARDICT_OUT_VCF_JAVA="$DIR_OUTPUT/vardict.java.vcf"
 VARDICT_OUT_SORT_PERL="$DIR_OUTPUT/vardict.perl.sort.txt"
@@ -102,6 +104,52 @@ function diff_results {
     fi
 }
 
+#Only for fisher test results from Java
+function diff_results_with_epsilon {
+    TEST_NAME="$1"
+    EXPECTED="$2"
+    RESULTS="$3"
+
+    DIFF_FILE="$DIR_OUTPUT/diff.$TEST_NAME.var"
+    DIFF_FILE_FISHER="$DIR_OUTPUT/diff.fisher.$TEST_NAME.var"
+    EXP_COLUMNS="$DIR_OUTPUT/exp.columns.$TEST_NAME.var"
+    RES_COLUMNS="$DIR_OUTPUT/res.columns.$TEST_NAME.var"
+	COMBINED="$DIR_OUTPUT/combined.$TEST_NAME.var"
+
+    echo "Test $TEST_NAME: Compare results without fisher test, creating diff file '$DIFF_FILE'"
+
+	# Check first all columns except pvalue and oddratio columns, if there are differences, stop with error
+	# Columns in paired mode to exclude:
+	awk '{$26=""; $27=""; $46=""; $47=""; $60=""; $61=""; print $0}' $EXPECTED > $EXP_COLUMNS
+	awk '{$26=""; $27=""; $46=""; $47=""; $60=""; $61=""; print $0}' $RESULTS > $RES_COLUMNS
+    if diff <(sort $EXP_COLUMNS) <(sort $RES_COLUMNS) > $DIFF_FILE
+    then
+	    echo "Test without fisher columns $TEST_NAME: OK";
+    else
+	    echo "Test without fisher columns  $TEST_NAME: ERROR";
+	    exit 1;
+	fi
+
+	# Check epsilon between oddratio and pvalue columns (must be leass then 1E-4)
+	# Combine files to easier compare in awk
+	paste $EXPECTED $RESULTS > $COMBINED
+
+    # Check if differences between columns from both versions aren't more than epsilon
+	awk 'function abs(x) {return ((x < 0.0)?-x : x)} \
+	     eps=1E-4 \
+	     {if((abs($26-$87)>eps) || (abs($27-$88)>eps) || (abs($46-$107)>eps) || \
+	     (abs($47-$108)>eps) || (abs($60-$121)>eps) || (abs($61 - $122) > eps)) print;}' \
+	     $COMBINED > $DIFF_FILE_FISHER
+
+	if [ ! -s "$DIFF_FILE_FISHER" ]
+    then
+	    echo "Test with fisher columns $TEST_NAME: OK";
+    else
+	    echo "Test with fisher columns  $TEST_NAME: ERROR";
+	    exit 1;
+	fi
+}
+
 
 #---
 # Run both vardict versions and compare outputs
@@ -121,6 +169,18 @@ function run_perl_java {
         | tee $VARDICT_OUT_JAVA \
         | sort \
         > $VARDICT_OUT_SORT_JAVA
+
+    echo Running VarDict java with fisher test
+	time $VARDICTJAVA \
+		    -G $FASTA_PATH \
+		    $PARAMETERS \
+		    --fisher \
+		    -th $JAVA_THREADS \
+		    -b "$TUMOR_BAM_PATH|$NORMAL_BAM_PATH" \
+		    $BED_SPLIT_PATH \
+		| tee $VARDICT_OUT_JAVA_FISHER \
+        | sort \
+        > $VARDICT_OUT_SORT_JAVA_FISHER
 
     echo Running VarDict perl
     time $VARDICTPERL \
@@ -149,6 +209,9 @@ function run_perl_java {
         echo "	ERROR: Empty R variant file/s"
         exit 1;
     fi
+
+    echo Running differences perl R and java fisher
+	diff_results_with_epsilon "VAR_JAVA_FISHER_PERL_R"  $VARDICT_OUT_R_PERL $VARDICT_OUT_SORT_JAVA_FISHER
 
     echo Running Var2VCF script
     cat $VARDICT_OUT_R_JAVA | $VARDICTPERL_VAR_PAIRED > $VARDICT_OUT_VCF_JAVA
