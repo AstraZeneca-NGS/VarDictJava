@@ -128,6 +128,11 @@ public class Patterns {
      */
     public static final Pattern ANY_NUMBER_M_NUMBER_S_END = Pattern.compile("^(.*?)(\\d+)M(\\d+)S$");
     /**
+     * Regexp finds number followed by H at the start of string
+     */
+    public static final jregex.Pattern BEGIN_NUMBER_H = new jregex.Pattern("^(\\d+)H");
+    public static final jregex.Pattern END_NUMBER_H = new jregex.Pattern("(\\d+)H$");
+    /**
      * Regexp finds number followed by D at the start of string
      */
     public static final jregex.Pattern BEGIN_NUMBER_D = new jregex.Pattern("^(\\d+)D");

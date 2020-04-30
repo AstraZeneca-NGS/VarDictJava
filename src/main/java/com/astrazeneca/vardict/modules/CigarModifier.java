@@ -57,8 +57,20 @@ public class CigarModifier {
         //flag is set to true if CIGAR string is modified and should be looked at again
         boolean flag = true;
         try {
-            // if CIGAR starts with deletion cut it off
-            jregex.Matcher mm = BEGIN_NUMBER_D.matcher(cigarStr);
+            // if CIGAR starts or ends with hardclipping cut it off before further CIGAR mods
+            jregex.Matcher mm = BEGIN_NUMBER_H.matcher(cigarStr);
+            if (mm.find()) {
+                position += toInt(mm.group(1));
+                Replacer r = BEGIN_NUMBER_H.replacer("");
+                cigarStr = r.replace(cigarStr);
+            }
+            mm = END_NUMBER_H.matcher(cigarStr);
+            if (mm.find()) {
+                Replacer r = END_NUMBER_H.replacer("");
+                cigarStr = r.replace(cigarStr);
+            }
+            // if post-hardclipping removal CIGAR starts with deletion cut it off
+            mm = BEGIN_NUMBER_D.matcher(cigarStr);
             if (mm.find()) {
                 position += toInt(mm.group(1));
                 Replacer r = BEGIN_NUMBER_D.replacer("");
@@ -69,6 +81,7 @@ public class CigarModifier {
                 Replacer r = END_NUMBER_D.replacer("");
                 cigarStr = r.replace(cigarStr);
             }
+
             // replace insertion at the beginning and end with soft clipping
             mm = BEGIN_NUMBER_I.matcher(cigarStr);
             if (mm.find()) {
