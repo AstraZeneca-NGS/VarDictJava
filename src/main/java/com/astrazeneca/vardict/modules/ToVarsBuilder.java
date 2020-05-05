@@ -196,10 +196,10 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
      */
     private MSI proceedVrefIsDeletion(int position, int dellen) {
         //left 70 bases in reference sequence
-        String leftseq = joinRef(ref, (position - 70 > 1 ? position - 70 : 1), position - 1); // left 10 nt
+        String leftseq = joinRef(ref, (Math.max(position - 70, 1)), position - 1); // left 10 nt
         int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
         //right 70 + dellen bases in reference sequence
-        String tseq = joinRef(ref, position, position + dellen + 70 > chr0 ? chr0 : position + dellen + 70);
+        String tseq = joinRef(ref, position, Math.min(position + dellen + 70, chr0));
 
         //Try to adjust for microsatellite instability
         MSI msiData = findMSI(substr(tseq, 0, dellen), substr(tseq, dellen), leftseq);
@@ -232,10 +232,10 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         //variant description string without first symbol '+'
         String tseq1 = vn.substring(1);
         //left 50 bases in reference sequence
-        String leftseq = joinRef(ref, position - 50 > 1 ? position - 50 : 1, position); // left 10 nt
+        String leftseq = joinRef(ref, Math.max(position - 50, 1), position); // left 10 nt
         int x = getOrElse(instance().chrLengths, region.chr, 0);
         //right 70 bases in reference sequence
-        String tseq2 = joinRef(ref, position + 1, (position + 70 > x ? x : position + 70));
+        String tseq2 = joinRef(ref, position + 1, (Math.min(position + 70, x)));
 
         MSI msiData = findMSI(tseq1, tseq2, leftseq);
         double msi = msiData.msi;
@@ -741,9 +741,9 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     }
                 } else { //Not insertion/deletion variant. SNP or MNP
                     //Find MSI adjustment
-                    String tseq1 = joinRef(ref, position - 30 > 1 ? position - 30 : 1, position + 1);
+                    String tseq1 = joinRef(ref, Math.max(position - 30, 1), position + 1);
                     int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
-                    String tseq2 = joinRef(ref, position + 2, position + 70 > chr0 ? chr0 : position + 70);
+                    String tseq2 = joinRef(ref, position + 2, Math.min(position + 70, chr0));
 
                     MSI msiData = findMSI(tseq1, tseq2, null);
                     msi = msiData.msi;
@@ -856,9 +856,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 if (cutSite != 0 && (refallele.length() != varallele.length() && substr(refallele, 0, 1).equals(substr(varallele, 0, 1)))) {
                     if (!(startPosition == cutSite || endPosition == cutSite)) {
                         int n = 0;
-                        int dis = abs(cutSite - startPosition) < abs(cutSite - endPosition)
-                                ? abs(cutSite - startPosition)
-                                : abs(cutSite - endPosition);
+                        int dis = Math.min(abs(cutSite - startPosition), abs(cutSite - endPosition));
                         if (startPosition < cutSite) {
                             while(startPosition + n < cutSite && n < shift3 && endPosition + n != cutSite) {
                                 n++;
@@ -899,10 +897,10 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 }
 
                 //preceding reference sequence
-                vref.leftseq = joinRef(ref, startPosition - 20 < 1 ? 1 : startPosition - 20, startPosition - 1); // left 20 nt
+                vref.leftseq = joinRef(ref, Math.max(startPosition - 20, 1), startPosition - 1); // left 20 nt
                 int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
                 //following reference sequence
-                vref.rightseq = joinRef(ref, endPosition + 1, endPosition + 20 > chr0 ? chr0 : endPosition + 20); // right 20 nt
+                vref.rightseq = joinRef(ref, endPosition + 1, Math.min(endPosition + 20, chr0)); // right 20 nt
                 //genotype description string
                 String genotype = genotype1current + "/" + genotype2;
                 //remove '&' and '#' symbols from genotype string
@@ -959,6 +957,29 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             Variant vref = variationsAtPos.referenceVariant;
             updateRefVariant(position, totalPosCoverage, vref, debugLines,
                     referenceForwardCoverage, referenceReverseCoverage);
+        }
+
+        if (instance().conf.doPileup && variationsAtPos.referenceVariant != null) {
+            Variant refVar = variationsAtPos.referenceVariant;
+            fill_reference_var_in_pileup(position, refVar);
+        }
+    }
+
+    /**
+     * Fill reference variant fields for pileup: positions, varallele and refallele
+     * @param position current position in reference
+     * @param refVar reference Variant
+     */
+    private void fill_reference_var_in_pileup(int position, Variant refVar) {
+        refVar.startPosition = position;
+        refVar.endPosition = position;
+
+        char emptyChar = 0;
+        if (refVar.refallele.equals("")) {
+            refVar.refallele = ref.getOrDefault(position, emptyChar).toString();
+        }
+        if (refVar.varallele.equals("")) {
+            refVar.varallele = ref.getOrDefault(position, emptyChar).toString();
         }
     }
 
