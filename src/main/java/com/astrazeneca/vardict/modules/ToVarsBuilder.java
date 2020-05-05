@@ -961,7 +961,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
 
         if (instance().conf.doPileup && variationsAtPos.referenceVariant != null) {
             Variant refVar = variationsAtPos.referenceVariant;
-            fill_reference_var_in_pileup(position, refVar);
+            fillReferenceVarInPileup(position, refVar);
         }
     }
 
@@ -970,7 +970,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
      * @param position current position in reference
      * @param refVar reference Variant
      */
-    private void fill_reference_var_in_pileup(int position, Variant refVar) {
+    private void fillReferenceVarInPileup(int position, Variant refVar) {
         refVar.startPosition = position;
         refVar.endPosition = position;
 
