@@ -880,6 +880,10 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 
     private boolean isCloserThenVextAndGoodBase(String querySequence, Map<Integer, Character> ref, String queryQuality,
                                                 int ci, int i, StringBuilder ss, CigarOperator cigarOperator) {
+        // Do not adjust complex if we have hard-clips after insertion/deletion
+        if (cigar.numCigarElements() > ci + 2 && cigar.getCigarElement(ci + 2).getOperator() == CigarOperator.H) {
+            return false;
+        }
         return instance().conf.performLocalRealignment && cigarElementLength - i <= instance().conf.vext
                 && cigar.numCigarElements() > ci + 1
                 && cigar.getCigarElement(ci + 1).getOperator() == cigarOperator
