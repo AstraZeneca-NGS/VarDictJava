@@ -30,6 +30,13 @@ import static java.lang.Math.abs;
  * and variants in region.
  */
 public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVarsData> {
+    // Left 20 and right 20 bases in reference to output in VCF file
+    public static final int REF_20_BASES = 20;
+    // Number of bases where to check for MSIs
+    public static final int REF_30_BASES = 30;
+    public static final int REF_50_BASES = 50;
+    public static final int REF_70_BASES = 70;
+
     private Region region;
     private Map<Integer, Integer> refCoverage;
     private Map<Integer, VariationMap<String, Variation>> insertionVariants;
@@ -196,10 +203,10 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
      */
     private MSI proceedVrefIsDeletion(int position, int dellen) {
         //left 70 bases in reference sequence
-        String leftseq = joinRef(ref, (Math.max(position - 70, 1)), position - 1); // left 10 nt
+        String leftseq = joinRef(ref, (Math.max(position - REF_70_BASES, 1)), position - 1); // left 10 nt
         int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
         //right 70 + dellen bases in reference sequence
-        String tseq = joinRef(ref, position, Math.min(position + dellen + 70, chr0));
+        String tseq = joinRef(ref, position, Math.min(position + dellen + REF_70_BASES, chr0));
 
         //Try to adjust for microsatellite instability
         MSI msiData = findMSI(substr(tseq, 0, dellen), substr(tseq, dellen), leftseq);
@@ -223,7 +230,7 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
 
     /**
      * For insertion variant calculates shift3 (number of bases to be shifted to 3' for deletions due to alternative alignment),
-     * msi (which indicates Microsatellite instability) and msint (MicroSattelite unit length in base pairs) fields.
+     * msi (which indicates Microsatellite instability) and msint (MicroSatellite unit length in base pairs) fields.
      * @param position position to seek in reference to get left sequence of variant
      * @param vn variant description string
      * @return tuple of msi, shift3 and msint.
@@ -232,10 +239,10 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         //variant description string without first symbol '+'
         String tseq1 = vn.substring(1);
         //left 50 bases in reference sequence
-        String leftseq = joinRef(ref, Math.max(position - 50, 1), position); // left 10 nt
+        String leftseq = joinRef(ref, Math.max(position - REF_50_BASES, 1), position); // left 10 nt
         int x = getOrElse(instance().chrLengths, region.chr, 0);
         //right 70 bases in reference sequence
-        String tseq2 = joinRef(ref, position + 1, (Math.min(position + 70, x)));
+        String tseq2 = joinRef(ref, position + 1, (Math.min(position + REF_70_BASES, x)));
 
         MSI msiData = findMSI(tseq1, tseq2, leftseq);
         double msi = msiData.msi;
@@ -741,9 +748,9 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                     }
                 } else { //Not insertion/deletion variant. SNP or MNP
                     //Find MSI adjustment
-                    String tseq1 = joinRef(ref, Math.max(position - 30, 1), position + 1);
+                    String tseq1 = joinRef(ref, Math.max(position - REF_30_BASES, 1), position + 1);
                     int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
-                    String tseq2 = joinRef(ref, position + 2, Math.min(position + 70, chr0));
+                    String tseq2 = joinRef(ref, position + 2, Math.min(position + REF_70_BASES, chr0));
 
                     MSI msiData = findMSI(tseq1, tseq2, null);
                     msi = msiData.msi;
@@ -897,10 +904,10 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
                 }
 
                 //preceding reference sequence
-                vref.leftseq = joinRef(ref, Math.max(startPosition - 20, 1), startPosition - 1); // left 20 nt
+                vref.leftseq = joinRef(ref, Math.max(startPosition - REF_20_BASES, 1), startPosition - 1); // left 20 nt
                 int chr0 = getOrElse(instance().chrLengths, region.chr, 0);
                 //following reference sequence
-                vref.rightseq = joinRef(ref, endPosition + 1, Math.min(endPosition + 20, chr0)); // right 20 nt
+                vref.rightseq = joinRef(ref, endPosition + 1, Math.min(endPosition + REF_20_BASES, chr0)); // right 20 nt
                 //genotype description string
                 String genotype = genotype1current + "/" + genotype2;
                 //remove '&' and '#' symbols from genotype string
