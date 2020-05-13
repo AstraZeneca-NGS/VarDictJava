@@ -2452,10 +2452,17 @@ public class VariationRealigner implements Module<VariationData, RealignedVariat
         ref.varsCount -= (int) (factor_f * ref.varsCount);
         ref.highQualityReadsCount -= (int) (factor_f * ref.highQualityReadsCount);
         ref.lowQualityReadsCount -= (int) (factor_f * ref.lowQualityReadsCount);
+
+        // Adjust mean mapping quality, mean quality and mean position only on number of changed counts
         double factorCnt = oldVarsCount != 0 ? Math.abs((ref.varsCount - oldVarsCount)) / (double) oldVarsCount : 1;
-        ref.meanPosition -= ref.meanPosition * factor_f * factorCnt;
-        ref.meanQuality -= ref.meanQuality * factor_f * factorCnt;
-        ref.meanMappingQuality -= ref.meanMappingQuality * factor_f * factorCnt;
+        // Factors must be the same sign
+        if (factor_f < 0 && factorCnt > 0 || factor_f > 0 && factorCnt < 0){
+            factorCnt = -factorCnt;
+        }
+        ref.meanPosition -= ref.meanPosition * factorCnt;
+        ref.meanQuality -= ref.meanQuality * factorCnt;
+        ref.meanMappingQuality -= ref.meanMappingQuality * factorCnt;
+
         ref.numberOfMismatches -= factor_f * ref.numberOfMismatches;
         ref.varsCountOnForward -= (int) (factor_f * ref.varsCountOnForward);
         ref.varsCountOnReverse -= (int) (factor_f * ref.varsCountOnReverse);
