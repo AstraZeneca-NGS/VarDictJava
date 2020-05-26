@@ -952,41 +952,17 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
             }
         } else if (variationsAtPos.referenceVariant != null ) {  //no variant reads are detected
             Variant vref = variationsAtPos.referenceVariant;
-            updateRefVariant(position, totalPosCoverage, vref, debugLines,
-                    referenceForwardCoverage, referenceReverseCoverage);
+            updateRefVariant(position, totalPosCoverage, vref, debugLines, referenceForwardCoverage, referenceReverseCoverage);
         } else {
             variationsAtPos.referenceVariant = new Variant();
         }
 
-        // Update reference variants if there were indels and start position were changed, so after update
-        // ref variants can be output in pileup
-        if (positionsForChangedRefVariant.contains(position) && variationsAtPos.referenceVariant != null) {
+        // Update reference variants if there were indels and start position were changed, or we work with amplicons
+        // so after update ref variants can be output in pileup
+        if (variationsAtPos.referenceVariant != null && instance().conf.doPileup &&
+                (positionsForChangedRefVariant.contains(position)|| instance().ampliconBasedCalling != null)) {
             Variant vref = variationsAtPos.referenceVariant;
-            updateRefVariant(position, totalPosCoverage, vref, debugLines,
-                    referenceForwardCoverage, referenceReverseCoverage);
-        }
-
-        if (instance().conf.doPileup && variationsAtPos.referenceVariant != null) {
-            Variant refVar = variationsAtPos.referenceVariant;
-            fillReferenceVarInPileup(position, refVar);
-        }
-    }
-
-    /**
-     * Fill reference variant fields for pileup: positions, varallele and refallele
-     * @param position current position in reference
-     * @param refVar reference Variant
-     */
-    private void fillReferenceVarInPileup(int position, Variant refVar) {
-        refVar.startPosition = position;
-        refVar.endPosition = position;
-
-        char emptyChar = 0;
-        if (refVar.refallele.equals("")) {
-            refVar.refallele = ref.getOrDefault(position, emptyChar).toString();
-        }
-        if (refVar.varallele.equals("")) {
-            refVar.varallele = ref.getOrDefault(position, emptyChar).toString();
+            updateRefVariant(position, totalPosCoverage, vref, debugLines, referenceForwardCoverage, referenceReverseCoverage);
         }
     }
 
@@ -1001,7 +977,9 @@ public class ToVarsBuilder implements Module<RealignedVariationData, AlignedVars
         vref.varsCountOnReverse = 0;
         vref.msi = 0;
         vref.msint = 0;
-        vref.strandBiasFlag += ";0";
+        if (vref.strandBiasFlag.indexOf(';') == -1) {
+            vref.strandBiasFlag += ";0";
+        }
         vref.shift3 = 0;
         vref.startPosition = position;
         vref.endPosition = position;
