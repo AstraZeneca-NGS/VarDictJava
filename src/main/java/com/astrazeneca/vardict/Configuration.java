@@ -39,6 +39,10 @@ public class Configuration {
      * and overlap fraction is at least float. Default: 10:0.95
      */
     public String ampliconBasedCalling; //-a
+    /**
+     * Indicate we have a single primer design.  Primer may be oriented in either the reverse or forward direction.
+     */
+    public Boolean ampliconSinglePrimer; //-sp
 
     public int columnForChromosome = -1; //-c
 

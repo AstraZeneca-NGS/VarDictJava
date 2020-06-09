@@ -1354,10 +1354,19 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             int te1 = segend < region.end ? segend : region.end;
             // Ignore reads that are more than distance from region of interest
             // and overlap is less than overlap fraction from configuration (-a)
-            // JL: Only have one primer, so we just want to check one side or the other, but not both.
-            if ((abs(segstart - region.start) <= distanceToAmplicon) || (abs(segend - region.end) <= distanceToAmplicon)) {
-                return false;
+            // JL: If ampliconSinglePrimer option has been selected,
+            // just want to check one side or the other, but not both.
+            if (instance().ampliconSinglePrimer == true) {
+                if ((abs(segstart - region.start) <= distanceToAmplicon) || (abs(segend - region.end) <= distanceToAmplicon)) {
+                    return false;
+                }
             }
+            else {
+                if ((abs(segstart - region.start) > distanceToAmplicon || abs(segend - region.end) > distanceToAmplicon) || abs((ts1 - te1) / (double)(segend - segstart)) <= overlapFraction) {
+                    return true;
+                }
+            }
+
         }
         return false;
     }

@@ -75,6 +75,7 @@ public class CmdParser {
             config.zeroBased = 1 == getIntValue(cmd, "z", 1);
         }
         config.ampliconBasedCalling = cmd.getOptionValue("a");
+        config.ampliconSinglePrimer = cmd.getOptionValue("sp");
         config.performLocalRealignment = 1 == getIntValue(cmd, "k", 1);
 
         config.fasta = setFastaFile(cmd);
@@ -235,6 +236,7 @@ public class CmdParser {
         options.addOption("deldupvar", false, "Turn on deleting of duplicate variants. Variants in this mode are considered and outputted only if start position of variant is inside the region interest.");
         options.addOption("fisher", false, "Experimental feature: Changes R script (teststrandbias.R and testsomatic.) to Java implementation of Fisher exact test.");
         options.addOption("U", "nosv", false, "Turn off structural variant calling.");
+        options.addOption("sp", false, "Indicate to turn on single primer amplicon mode.  Must also specify -a.");
 
         options.addOption(OptionBuilder.withArgName("bit")
                 .hasArg(true)
