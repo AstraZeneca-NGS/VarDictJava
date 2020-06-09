@@ -1358,7 +1358,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
 //             if (((abs(segstart - region.start) > distanceToAmplicon) && (ts1 / (double)(segstart) <= overlapFraction)) || ((abs(segend - region.end) > distanceToAmplicon) && (te1 / (double)(segend) <= overlapFraction))) {
 //                 return true;
 //             }
-            if (((abs(segstart - region.start) <= distanceToAmplicon) || ((abs(segend - region.end) <= distanceToAmplicon) {
+            if (((abs(segstart - region.start) <= distanceToAmplicon) || ((abs(segend - region.end) <= distanceToAmplicon)) {
                 return false;
             }
         }
