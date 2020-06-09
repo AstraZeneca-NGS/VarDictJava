@@ -1355,9 +1355,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             // Ignore reads that are more than distance from region of interest
             // and overlap is less than overlap fraction from configuration (-a)
             // JL: Only have one primer, so we just want to check one side or the other, but not both.
-            if (abs(segstart - region.start) <= distanceToAmplicon) && (ts1 / (double)(segstart) > overlapFraction) {
-            } else if (abs(segend - region.end) <= distanceToAmplicon) && (te1 / (double)(segend) > overlapFraction) {
-            } else {
+            if ((abs(segstart - region.start) > distanceToAmplicon) && (ts1 / (double)(segstart) <= overlapFraction)) || ((abs(segend - region.end) > distanceToAmplicon) && (te1 / (double)(segend) <= overlapFraction)) {
                 return true;
             }
         }
