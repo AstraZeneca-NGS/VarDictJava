@@ -1305,7 +1305,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      */
     private boolean parseCigarWithAmpCase(SAMRecord record, boolean isMateReferenceNameEqual) {
         String[] split = instance().ampliconBasedCalling.split(":");
-        boolean sp = instance().ampliconSinglePrimer;
+        boolean sp = instance().conf.ampliconSinglePrimer;
         // Distance to amplicon (specified in -a option)
         int distanceToAmplicon;
         // Overlap fraction (in -a option)
