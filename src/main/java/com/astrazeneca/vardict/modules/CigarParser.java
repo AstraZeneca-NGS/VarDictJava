@@ -1305,6 +1305,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      */
     private boolean parseCigarWithAmpCase(SAMRecord record, boolean isMateReferenceNameEqual) {
         String[] split = instance().ampliconBasedCalling.split(":");
+        boolean sp = instance().ampliconSinglePrimer;
         // Distance to amplicon (specified in -a option)
         int distanceToAmplicon;
         // Overlap fraction (in -a option)
@@ -1356,7 +1357,7 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
             // and overlap is less than overlap fraction from configuration (-a)
             // JL: If ampliconSinglePrimer option has been selected,
             // just want to check one side or the other, but not both.
-            if (instance().ampliconSinglePrimer == true) {
+            if (sp) {
                 if ((abs(segstart - region.start) <= distanceToAmplicon) || (abs(segend - region.end) <= distanceToAmplicon)) {
                     return false;
                 }
