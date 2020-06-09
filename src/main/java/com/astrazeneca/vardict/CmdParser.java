@@ -75,7 +75,7 @@ public class CmdParser {
             config.zeroBased = 1 == getIntValue(cmd, "z", 1);
         }
         config.ampliconBasedCalling = cmd.getOptionValue("a");
-        config.ampliconSinglePrimer = cmd.getBooleanValue("sp", true);
+        config.ampliconSinglePrimer = cmd.hasOption("sp");
         config.performLocalRealignment = 1 == getIntValue(cmd, "k", 1);
 
         config.fasta = setFastaFile(cmd);
