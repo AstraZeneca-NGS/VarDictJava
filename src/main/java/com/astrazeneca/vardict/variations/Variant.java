@@ -291,7 +291,9 @@ public class Variant {
      */
     public String varType() {
         Matcher mm = ANY_SV.matcher(varallele);
-        if (refallele.length() == 1 && varallele.length() == 1) {
+        if (refallele.equals(varallele) && refallele.length() == 1) {
+            return "";
+        } else if (refallele.length() == 1 && varallele.length() == 1) {
             return "SNV";
         } else if (mm.find()) {
             return mm.group(1);

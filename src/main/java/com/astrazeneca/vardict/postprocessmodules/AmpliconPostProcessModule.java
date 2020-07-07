@@ -164,8 +164,10 @@ public class AmpliconPostProcessModule {
                             if (goodmap.contains(format("%s-%s-%s", amp, vref.refallele, vref.varallele))) {
                                 continue;
                             }
+                            if (instance().conf.doPileup && vref.refallele.equals(vref.varallele)) {
+                                continue;
+                            }
                             if (vref.startPosition >= reg.insertStart && vref.endPosition <= reg.insertEnd) {
-
                                 String regStr = reg.chr + ":" + reg.start + "-" + reg.end;
 
                                 if (vars.get(amp).containsKey(position) && vars.get(amp).get(position).variants.size() > 0) {
