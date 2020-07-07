@@ -92,7 +92,7 @@ Currently, the project uses the following third-party libraries:
 * JRegex (http://jregex.sourceforge.net, BSD license) is a regular expressions library that is used instead of the 
 standard Java library because its performance is much higher than that of the standard library.
 * Commons CLI (http://commons.apache.org/proper/commons-cli, Apache License) – a library for parsing the command line.
-* HTSJDK (http://smtools.github.io/htsjdk/) is an implementation of a unified Java library for accessing common file formats, such as SAM and VCF.
+* HTSJDK (http://samtools.github.io/htsjdk/) is an implementation of a unified Java library for accessing common file formats, such as SAM and VCF.
 * Mockito and TestNG are the testing frameworks (not included in distribution, used only in tests).
 
 ### Single sample mode

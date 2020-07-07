@@ -119,7 +119,7 @@ public class RecordPreprocessor {
         }
 
         //Skip not primary alignment reads
-        if (record.getNotPrimaryAlignmentFlag() && !instance().conf.samfilter.equals("0")) {
+        if (record.isSecondaryAlignment() && !instance().conf.samfilter.equals("0")) {
             return false;
         }
         // Skip reads where sequence is not stored in read
