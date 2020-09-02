@@ -1,6 +1,7 @@
 #!/bin/bash -eu
 set -o pipefail
 
+# Needs EBIvariation vcf-validator to be installed on path to validate VCF files
 #---
 # Config variables
 #---
@@ -244,6 +245,10 @@ function vcf_testing {
     echo Running paired mode VCF integration testing
     cat $RAWVARDICT_PAIRED | $VARDICTPERL_R_PAIRED | $VARDICTPERL_VAR_PAIRED > $VARDICT_VCF_PAIRED
     diff_results "VCF_paired" $VARDICT_VCF_PAIRED_EXP  $VARDICT_VCF_PAIRED
+
+    echo Running validation of VCF files
+    $VCF_VALIDATOR -i $VARDICT_VCF_SIMPLE
+    $VCF_VALIDATOR -i $VARDICT_VCF_PAIRED
 }
 
 download_files
