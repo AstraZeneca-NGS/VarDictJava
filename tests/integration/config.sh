@@ -4,6 +4,8 @@ set -o pipefail
 #---
 # Paths
 #---
+# Validation of VCF files with EBIvariation vcf-validator, must be on the PATH
+VCF_VALIDATOR="vcf_validator"
 
 WORKSPACE="$HOME/IdeaProjects"
 WORKSPACE="$HOME/workspace"
