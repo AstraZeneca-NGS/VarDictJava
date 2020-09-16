@@ -1,3 +1,7 @@
+Version 1.8.2
+    - Update Readme.md
+    - Updated integration tests to vcf 4.2
+
 Version 1.8.1
     - Updated version.
     - Added validation of VCF files in integration tests. Fixed flag InDelLikely name in expected file and duplicated Bias filter. Updated submodule.
