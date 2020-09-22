@@ -247,6 +247,7 @@ The VarDictJava program follows the workflow:
       3. Skip a read if it does not overlap with the segment.
       4. Preprocess the CIGAR string for each read (section CIGAR Preprocessing).
       5. For each position, create a variant. If a variant is already present, adjust its count using the adjCnt function.
+      6. Combine SNVs into MNV or SNV with indel to complex if variants are located closer than `-X` option (default <=2 bases) and have good base qualities. 
    2. Find structural variants (optionally can be disabled by option `-U`).
    3. Realign some of the variants using realignment of insertions, deletions, large insertions, and large deletions using unaligned parts of reads 
    (soft-clipped ends). This step is optional and can be disabled using the `-k 0` switch.
@@ -259,7 +260,8 @@ The VarDictJava program follows the workflow:
 3.	Perform a statistical test for strand bias using an R script.  
     **Note**: Use R scripts `teststrandbias.R` or `testsomatic.R` for this step.
 4.	Transform the intermediate tabular format to VCF. Output the variants with filtering and statistical data.  
-     **Note**: Use the Perl scripts `var2vcf_valid.pl` or `var2vcf_paired.pl` for this step.
+     **Note**: Use the Perl scripts `var2vcf_valid.pl` or `var2vcf_paired.pl` for this step. Be aware that `var2vcf_valid.pl` or `var2vcf_paired.pl` by default will output the variant with the highest AF on position: if few variants start at one position, only the highest will be added in VCF. To output all variants use `-A` option with these perl scripts. 
+     
      
 #### CIGAR Preprocessing (Initial Realignment)
 Read alignment is specified in a BAM file as a CIGAR string. VarDict modifies this string (and alignment) in the following special cases:
@@ -281,7 +283,7 @@ mismatched base in the reads. If an SNV is already present in variants, VarDict 
 string into the variants structure. If the variant is already present, VarDict adjusts its count and statistics.
 * Simple Deletion variant. If read alignment shows a deletion at the position, VarDict inserts -NUMBER 
 into the variants structure. If the variant is already present, VarDict adjusts its count and statistics.
-VarDict also handles complex variants (for example, an insertion that is close to SNV or to deletion) 
+* Complex variants: VarDict also handles complex variants (for example, an insertion that is close to SNV or to deletion) 
 using specialized ad-hoc methods.
 
 Structural Variants are looked for after simple variants. VarDict supported DUP, INV and DEL structural variants.
@@ -345,6 +347,7 @@ When only one sample has coverage for the variant:
 
 These are only rough classification. You need to examine the p-value (after testsomatic.R script) to determine whether or not it's significant.
 ## Program Options
+### VarDictJava options
 - `-H|-?`  
     Print help page
 - `-h|--header`   
@@ -498,6 +501,32 @@ These are only rough classification. You need to examine the p-value (after test
     It will decrease time processing on big samples because R script uses slow `textConnection` function.
    If you use this, do NOT run `teststrandbias.R` or `testsomatic.R` after Vardict, but use `var2vcf_valid.pl`
     or `var2vcf_paired.pl` after VarDictJava as usual.
+    
+### Important var2vcf_valid.pl options
+The full list of options in VarDictPerl `var2vcf_valid.pl -h`
+-  `-A`  
+    Indicate to output all variants at the same position.  By default, only the variant with the highest allele frequency is converted to VCF.
+-  `-S`  
+    If set, variants that didn't pass filters will not be present in VCF file.
+-  `-N` string  
+    The sample name to be used directly.
+-  `-f`  float  
+    The minimum allele frequency.  Default to 0.02
+    
+### Important var2vcf_paired.pl options
+The full list of options in VarDictPerl `var2vcf_paired.pl -h`
+-  `-M`  
+    If set, will increase stringency for candidate somatic: flag P0.01Likely and InDelLikely, and add filter P0.05
+-  `-A`  
+    Indicate to output all variants at the same position.  By default, only the variant with the highest allele frequency is converted to VCF.
+-  `-S`  
+    If set, variants that didn't pass filters will not be present in VCF file.
+-  `-N` string  
+    The sample name(s).  If only one name is given, the matched will be simply names as "name-match".  Two names are given separated by "|", such as "tumor|blood".
+-  `-f`  float  
+    The minimum allele frequency.  Default to 0.02
+    
+    
 ## Output columns
 ### Simple mode:
 1. Sample - sample name
