@@ -250,7 +250,7 @@ The VarDictJava program follows the workflow:
    2. Find structural variants (optionally can be disabled by option `-U`).
    3. Realign some of the variants using realignment of insertions, deletions, large insertions, and large deletions using unaligned parts of reads 
    (soft-clipped ends). This step is optional and can be disabled using the `-k 0` switch.
-   4. Calculate statistics for the variant, filter out some bad ones, if any.
+   4. Apply variant filtering rules (hard filters) defined in [Variant filtering](Readme.md#VarFiltering). 
    5. Assign a type to each variant.
    6. Output variants in an intermediate internal format (tabular). Columns of the table are described in the Output Columns section.
 	 
@@ -301,7 +301,7 @@ String | Description
 ...^[0-9]+ | something followed by a deletion
 ...&amp;[ATGC]+ | for insertion/deletion variants followed by a matched sequence
 
-#### Variant Filtering
+#### <a name="VarFiltering"></a>Variant Filtering
 A variant appears in the output if it satisfies the following criteria (in this order). 
 If variant doesn't fit criteria on the step, it will be filtered out and the next steps won't be checked (except for the step 8, read the explanation below):
 1. Frequency of the variant exceeds the threshold set by the `-f` option (default = 1%).
