@@ -546,7 +546,7 @@ The full list of options in VarDictPerl `var2vcf_paired.pl -h`
 15. AF - allele frequency
 16. Bias - strand bias flag
 17. PMean - mean position in read
-18. PStd - flag for read position standard deviation
+18. PStd - flag for read position standard deviation (1 if the variant is covered by at least 2 read segments with different positions, otherwise 0).
 19. QMean - mean base quality
 20. QStd - flag for base quality standard deviation
 21. MAPQ - mapping quality
