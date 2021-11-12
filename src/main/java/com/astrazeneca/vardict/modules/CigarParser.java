@@ -1661,8 +1661,8 @@ public class CigarParser implements Module<RecordPreprocessor, VariationData> {
      * @return true if cigar operator must be skipped, false if not
      */
     private boolean skipIndelNextToIntron(Cigar cigar, int ci) {
-        if ((cigar.numCigarElements() > ci && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.N)
-                || (ci > 1 && cigar.getCigarElement(ci - 1).getOperator() == CigarOperator.N)) {
+        if ((cigar.numCigarElements() > ci + 1 && cigar.getCigarElement(ci + 1).getOperator() == CigarOperator.N)
+                || (ci > 0 && cigar.getCigarElement(ci - 1).getOperator() == CigarOperator.N)) {
             return true;
         }
         return false;
