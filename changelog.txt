@@ -1,3 +1,42 @@
+Version 1.8.3
+    - Updated submodule and version.
+    - Fixed check for introns for the case when deletion is next to insertion.
+    - Added PSTD flag description.
+    - Update Readme.md
+    - Updated changelog.txt
+    - Update Readme.md
+    - Updated integration tests to vcf 4.2
+    - Updated changelog.txt
+    - Updated version.
+    - Added validation of VCF files in integration tests. Fixed flag InDelLikely name in expected file and duplicated Bias filter. Updated submodule.
+    - Updated changelog.txt
+    - add conda and usegalaxy badge
+    - Updated submodule
+    - Removed updated comment
+    - Added fixes to integration tests due to changes in option M in Perl var2vcf_paired.pl.
+    - Added update for pileup amplicon references (only amplicon as somatic and simple are counted correctly) using reference result.
+    - Fixed type for variant in case when ref==alt (for pileup mode).
+    - Updated submodule.
+    - Fix for issue 283. Skip complex adjusting for H bases.
+    - Added constants.
+    - Updated submodule.
+    - Renaming.
+    - Added fix for #285: fill few reference fields to be available in pileup.
+    - Added fix for #288: factor for adjusting of qualities.
+    - Update HTSJDK to a more modern version and fix a typo.
+    - Added docs for fisher test (MLE algorithm). Added version of VarDict to expected files in integration test.
+    - Refactoring of printer variants for simplicity.
+    - Added integration test for fisher option (compare with epsilon value). Fixed scientific notation of numbers in expected VCF.
+    - Added option --fisher: EXPERIMENTAL FEATURE for Fisher test in Java (to exclude slow R step). Uniroot solver implemented from C version of zeroin.
+    - Fixes in documentation: deleted -z option from example (not useful in this case) and added explanation about BED format usage.
+    - Updated test case for mm10 in pileup mode and rebased.
+    - Added fix for issue 265: missed position when insertion/complex occurs
+    - Added fix for issue 272: case when end and start of cluster are equal led to zero deletion exception.
+    - Added IUPAC ambuguity codes fix in REF for complex/deletions .
+    - Added validation of reference allele.
+    - Added NM tag for STAR aligner: if nM is presented, it will be used.
+    - Fixed issue 268: added check for length of query quality sequence to skip very short strings in SV analysis.
+
 Version 1.8.2
     - Update Readme.md
     - Updated integration tests to vcf 4.2
