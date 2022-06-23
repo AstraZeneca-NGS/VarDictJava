@@ -538,10 +538,10 @@ The full list of options in VarDictPerl `var2vcf_paired.pl -h`
 7. Alt - variant sequence
 8. Depth (DP) - total coverage
 9. AltDepth (VD) - variant coverage
-10. RefFwdReads - reference forward strand coverage
-11. RefRevReads - reference reverse strand coverage
-12. AltFwdReads - variant forward strand coverage
-13. AltRevReads - variant reverse strand coverage
+10. RefFwdReads (REFBIAS) - reference forward strand coverage
+11. RefRevReads (REFBIAS) - reference reverse strand coverage
+12. AltFwdReads (VARBIAS) - variant forward strand coverage
+13. AltRevReads (VARBIAS) - variant reverse strand coverage
 14. Genotype - genotype description string
 15. AF - allele frequency
 16. Bias - strand bias flag
@@ -587,10 +587,10 @@ In somatic mode we have information from both samples:
    Fields from first sample:
 8. Depth (DP) - total coverage
 9. AltDepth (VD) - variant coverage
-10. RefFwdReads - reference forward strand coverage
-11. RefRevReads - reference reverse strand coverage
-12. AltFwdReads - variant forward strand coverage
-13. AltRevReads - variant reverse strand coverage
+10. RefFwdReads (REFBIAS) - reference forward strand coverage
+11. RefRevReads (REFBIAS) - reference reverse strand coverage
+12. AltFwdReads (VARBIAS) - variant forward strand coverage
+13. AltRevReads (VARBIAS) - variant reverse strand coverage
 14. Genotype - genotype description string
 15. AF - allele frequency
 16. Bias - strand bias flag
@@ -606,10 +606,10 @@ In somatic mode we have information from both samples:
     Fields from second sample:
 26. Depth - total coverage
 27. AltDepth - variant coverage
-28. RefFwdReads - reference forward strand coverage
-29. RefRevReads - reference reverse strand coverage
-30. AltFwdReads - variant forward strand coverage
-31. AltRevReads - variant reverse strand coverage
+28. RefFwdReads (REFBIAS) - reference forward strand coverage
+29. RefRevReads (REFBIAS) - reference reverse strand coverage
+30. AltFwdReads (VARBIAS) - variant forward strand coverage
+31. AltRevReads (VARBIAS) - variant reverse strand coverage
 32. Genotype - genotype description string
 33. AF - allele frequency
 34. Bias - strand bias flag
