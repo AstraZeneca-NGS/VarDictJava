@@ -536,8 +536,8 @@ The full list of options in VarDictPerl `var2vcf_paired.pl -h`
 5. End - end position of the variation
 6. Ref - reference sequence
 7. Alt - variant sequence
-8. Depth - total coverage
-9. AltDepth - variant coverage
+8. Depth (DP) - total coverage
+9. AltDepth (VD) - variant coverage
 10. RefFwdReads - reference forward strand coverage
 11. RefRevReads - reference reverse strand coverage
 12. AltFwdReads - variant forward strand coverage
@@ -550,29 +550,29 @@ The full list of options in VarDictPerl `var2vcf_paired.pl -h`
 19. QMean - mean base quality
 20. QStd - flag for base quality standard deviation
 21. MAPQ - mapping quality
-22. QRATIO - ratio of high quality reads to low-quality reads
-23. HIFREQ - variant frequency for high-quality reads
-24. EXTRAFR - Adjusted AF for indels due to local realignment
+22. QRATIO (SN) - ratio of high quality reads to low-quality reads
+23. HIFREQ (HIAF) - variant frequency for high-quality reads
+24. EXTRAFR (ADJAF) - Adjusted AF for indels due to local realignment
 25. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
 26. MSI - MicroSatellite. > 1 indicates MSI
-27. MSINT - MicroSatellite unit length in bp
+27. MSILEN - MicroSatellite unit length in bp
 28. NM - average number of mismatches for reads containing the variant
 29. HICNT - number of high-quality reads with the variant
 30. HICOV - position coverage by high quality reads
-31. 5pFlankSeq - neighboring reference sequence to 5' end 
-32. 3pFlankSeq - neighboring reference sequence to 3' end
+31. 5pFlankSeq (LSEQ) - neighboring reference sequence to 5' end 
+32. 3pFlankSeq (RSEQ) - neighboring reference sequence to 3' end
 33. SEGMENT:CHR_START_END - position description
 34. VARTYPE - variant type
 35. DUPRATE - duplication rate in fraction
-36. SV splits-pairs-clusters: Splits - No. of split reads supporting SV, Pairs - No. of pairs supporting SV, 
+36. SV splits-pairs-clusters: Splits (SPLITREAD) - No. of split reads supporting SV, Pairs (SPANPAIR) - No. of pairs supporting SV, 
 Clusters - No. of clusters supporting SV 
 37. CRISPR - only in crispr mode - how close to a CRISPR site is the variant
 
 ### Amplicon mode
 In amplicon mode columns from #35 are changed to:  
-(35) GoodVarCount - number of good variants on amplicon  
-(36) TotalVarCount - number of good and bad variants on amplicon   
-(37) Nocov - number of variants on amplicon that has depth less than 1/50 of the max depth (they will be considered not working and thus not used).  
+(35) GoodVarCount (GDAMP) - number of good variants on amplicon  
+(36) TotalVarCount (TLAMP) - number of good and bad variants on amplicon   
+(37) Nocov (NCAMP) - number of variants on amplicon that has depth less than 1/50 of the max depth (they will be considered not working and thus not used).  
 (38) Ampflag - if there are different good variants on different amplicons, it will be 1.
 
 ### Somatic mode
@@ -585,8 +585,8 @@ In somatic mode we have information from both samples:
 6. Ref - reference sequence  
 7. Alt - variant sequence  
    Fields from first sample:
-8. Depth - total coverage
-9. AltDepth - variant coverage
+8. Depth (DP) - total coverage
+9. AltDepth (VD) - variant coverage
 10. RefFwdReads - reference forward strand coverage
 11. RefRevReads - reference reverse strand coverage
 12. AltFwdReads - variant forward strand coverage
@@ -599,9 +599,9 @@ In somatic mode we have information from both samples:
 19. QMean - mean base quality
 20. QStd - flag for base quality standard deviation
 21. MAPQ - mapping quality
-22. QRATIO - ratio of high quality reads to low-quality reads
-23. HIFREQ - variant frequency for high-quality reads
-24. EXTRAFR - Adjusted AF for indels due to local realignment  
+22. QRATIO (SN) - ratio of high quality reads to low-quality reads
+23. HIFREQ (HIAF) - variant frequency for high-quality reads
+24. EXTRAFR (ADJAF) - Adjusted AF for indels due to local realignment  
 25. NM - average number of mismatches for reads containing the variant  
     Fields from second sample:
 26. Depth - total coverage
@@ -618,16 +618,16 @@ In somatic mode we have information from both samples:
 37. QMean - mean base quality
 38. QStd - flag for base quality standard deviation
 39. MAPQ - mapping quality
-40. QRATIO - ratio of high quality reads to low-quality reads
-41. HIFREQ - variant frequency for high-quality reads
-42. EXTRAFR - Adjusted AF for indels due to local realignment  
+40. QRATIO (SN) - ratio of high quality reads to low-quality reads
+41. HIFREQ (HIAF) - variant frequency for high-quality reads
+42. EXTRAFR (ADJAF) - Adjusted AF for indels due to local realignment  
 43. NM - average number of mismatches for reads containing the variant  
     Common fields: 
 44. SHIFT3 - No. of bases to be shifted to 3 prime for deletions due to alternative alignment
 45. MSI - MicroSatellite. > 1 indicates MSI
-46. MSINT - MicroSatellite unit length in bp
-47. 5pFlankSeq - neighboring reference sequence to 5' end 
-48. 3pFlankSeq - neighboring reference sequence to 3' end
+46. MSILEN - MicroSatellite unit length in bp
+47. 5pFlankSeq (LSEQ) - neighboring reference sequence to 5' end 
+48. 3pFlankSeq (RSEQ) - neighboring reference sequence to 3' end
 49. SEGMENT:CHR_START_END - position description
 50. VarLabel - variant label due to type: StrongLOH, StrongSomatic...
 51. VARTYPE - variant type
