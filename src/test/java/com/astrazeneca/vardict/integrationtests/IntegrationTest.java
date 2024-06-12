@@ -16,6 +16,7 @@ import org.testng.Assert;
 import org.testng.annotations.*;
 
 import java.io.*;
+import java.nio.file.Files;
 import java.util.*;
 
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -153,7 +154,7 @@ public class IntegrationTest {
     }
 
     public static File makeBedFile(VarDictInput varDictInput) throws IOException {
-        File bed = File.createTempFile("tmpbed", ".bed");
+        File bed = Files.createTempFile("tmpbed", ".bed").toFile();
         bed.deleteOnExit();
 
         try (FileWriter bedWriter = new FileWriter(bed)) {
