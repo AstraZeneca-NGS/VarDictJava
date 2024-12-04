@@ -4,7 +4,7 @@ plugins {
     id 'jacoco'
 }
 
-version = '1.8.3'
+version = '1.8.3.1'
 
 repositories { 
     mavenCentral() 
@@ -25,11 +25,18 @@ dependencies {
     compile 'commons-cli:commons-cli:1.2' 
     compile 'org.apache.commons:commons-math3:3.6.1'
     compile 'com.edropple.jregex:jregex:1.2_01'
-    compile('com.github.samtools:htsjdk:2.21.1') {
+    compile('com.github.samtools:htsjdk:3.0.5') {
         transitive = false
     }
+    // explicit commons-compress and snappy-java depenencies to force the use ot vulnerability free
+    // version of this packages.
+    compile 'org.apache.commons:commons-compress:1.26.1'
+    compile 'org.xerial.snappy:snappy-java:1.1.10.7'
+
     testCompile 'org.mockito:mockito-core:2.23.0'
     testCompile 'org.testng:testng:6.9.13.6'
+    // explicit ant dependency added to force upgrade to safe version for this testng dependency.
+    testCompile 'org.apache.ant:ant:1.10.15'
 }
 
 mainClassName = "com.astrazeneca.vardict.Main"

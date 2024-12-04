@@ -1,3 +1,11 @@
+Version 1.8.3.1
+    - Updated htsjdk dependency to 3.0.5
+    - Upgrade transitive dependencies with vulneravilities to safe later versions: 
+      - org.apache.commons:commons-compress (-> 1.26.1)
+      - org.xerial.snappy:snappy-java (-> 1.1.10.7)
+      - org.apache.ant:ant (-> 1.10.15)
+    - Deleted previous release binaries from source tree.
+
 Version 1.8.3
     - Updated submodule and version.
     - Fixed check for introns for the case when deletion is next to insertion.
