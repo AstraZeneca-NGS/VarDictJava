@@ -8,6 +8,7 @@ import com.astrazeneca.vardict.variations.Variation;
 import htsjdk.samtools.Cigar;
 import htsjdk.samtools.CigarElement;
 import htsjdk.samtools.CigarOperator;
+import htsjdk.samtools.TextCigarCodec;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
@@ -333,5 +334,84 @@ public class CigarModifierTest {
                 queryQuality, ref, indel, region, 150);
         String actual = cigarModifier.modifyCigar().cigar;
         Assert.assertEquals(actual, expected);
+    }
+
+    /**
+     * Regression test for a malformed CIGAR produced by the merge logic when a read aligns
+     * inside a long homopolymer with three closely-spaced deletions.
+     *
+     * Reproducer is taken verbatim from a duplex consensus read observed in production:
+     *   read name : duplex_GTGTC-GTCAC_140434267-140434623_817012 (mate2)
+     *   chr/pos   : 7:140434471 (hg19)
+     *   cigar     : 104M1I2M2D1M1D5M1D2M9D27M
+     *
+     * Without a fix, threeDeletions()/captureMisSoftly3Mismatches() let the matching-base
+     * scan run past the read end, producing the malformed intermediate CIGAR
+     *   104M15D12I-1M9D27M
+     * (note the negative -1M operator) and then throwing
+     *   StringIndexOutOfBoundsException: Index 143 out of bounds for length 142
+     * inside VariationUtils.isHasAndNotEquals.
+     *
+     * The expected behaviour is: modifyCigar() must NOT throw, and must return a CIGAR
+     * that htsjdk's TextCigarCodec can decode (i.e. all operator lengths positive).
+     */
+    @Test
+    public void modifyCigarOnHomopolymerThreeDeletionsDoesNotProduceMalformedCigar() {
+        // Read sequence and qualities are 142 nt (the bug reports "Index 143 out of bounds for length 142").
+        final String querySequence =
+                "AATCCTCTGTTTGGAAACCAGCCCGATTCAAGGAGGGTTCTGATGCACTGCGGTGAATTTTTGGCAATGAGCGGGCCAGCAGCTCAATAGAGGCGAGAATCTAC"
+              + "AAAAAAAAAAAAAAAAAAAAGAAAAAAGAAAAAAAAAG";
+        final String queryQuality =
+                "BBFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+              + "=74??44444444FFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
+        Assert.assertEquals(querySequence.length(), 142);
+        Assert.assertEquals(queryQuality.length(), 142);
+
+        // Reference window covering position .. position + cigarRefSpan(154) with a small margin,
+        // taken from human_g1k_v37.fa at chr7:140434471-140434670. Reference is 1-indexed in the test,
+        // so reference position 1 corresponds to the read alignment start.
+        final int position = 1;
+        final String refSequence =
+                "AATCCTCTGTTTGGAAACCAGCCCGATTCAAGGAGGGTTCTGATGCACTGCGGTGAATTTTTGGCAATGAGCGGGCCAGCAGCTCAATAGAGGCGAGAATCTAC"
+              + "AAAAAAAAAAAGAAAAAAAAAAGAAAAAAAAAGAAAAAAGAAAAAAAAAGAAAGAAAGAAAAAGAAAAAACAGAAAGAAGAATGAAAATCTGGGTG";
+
+        Map<Integer, Character> reference = new HashMap<>();
+        for (int i = 0; i < refSequence.length(); i++) {
+            reference.put(i + 1, refSequence.charAt(i));
+        }
+        Reference ref = new Reference();
+        ref.referenceSequences = reference;
+
+        // GlobalReadOnlyScope is required by some merge-helper paths.
+        Configuration config = new Configuration();
+        config.goodq = 23;
+        config.vext = 3;
+        GlobalReadOnlyScope.init(config, null, null, null, "", new HashMap<>(), new HashMap<>());
+
+        Region region = new Region("7", 1, 700, "");
+
+        final String initialCigar = "104M1I2M2D1M1D5M1D2M9D27M";
+
+        CigarModifier cigarModifier = new CigarModifier(
+                position, initialCigar, querySequence, queryQuality,
+                ref, /*indel=*/3, region, /*maxReadLength=*/150);
+
+        String modifiedCigar = cigarModifier.modifyCigar().cigar;
+
+        // Hard requirement #1: htsjdk must be able to decode the result. This currently fails
+        // with "Malformed CIGAR string: 104M15D12I-1M9D27M".
+        try {
+            TextCigarCodec.decode(modifiedCigar);
+        } catch (IllegalArgumentException e) {
+            Assert.fail("modifyCigar() returned a CIGAR htsjdk cannot decode: '"
+                    + modifiedCigar + "' (" + e.getMessage() + ")");
+        }
+
+        // Hard requirement #2: every operator length must be positive.
+        for (CigarElement el : TextCigarCodec.decode(modifiedCigar).getCigarElements()) {
+            Assert.assertTrue(el.getLength() > 0,
+                    "modifyCigar() produced non-positive length for operator "
+                            + el.getOperator() + " in CIGAR '" + modifiedCigar + "'");
+        }
     }
 }

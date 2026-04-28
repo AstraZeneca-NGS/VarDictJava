@@ -479,7 +479,8 @@ public class VariationUtils {
         Character refc = ref.get(index1);
         if (refc == null)
             return false;
-        //if (index2 < 0) index2 = index2 + str.length();
+        if (index2 < 0 || index2 >= str.length())
+            return false;
         return refc.equals(str.charAt(index2));
     }
 
@@ -494,7 +495,8 @@ public class VariationUtils {
         Character refc = ref.get(index1);
         if (refc == null)
             return false;
-        //if (index2 < 0) index2 = index2 + str.length();
+        if (index2 < 0 || index2 >= str.length())
+            return false;
         return !refc.equals(str.charAt(index2));
     }
 
