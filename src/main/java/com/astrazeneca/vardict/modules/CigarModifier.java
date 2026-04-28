@@ -619,7 +619,22 @@ public class CigarModifier {
                     newCigarStr += tslen + "I" + rm + "M";
                 }
             } else {
-                newCigarStr += dlen + "D" + rm + "M";
+                if (rm < 0) {
+                    // rn ate into the trailing M after consuming all interior bases;
+                    // absorb the negative rm into RDOFF. RDOFF stays > 0 for any input
+                    // with a leading M >= 1 (algebra: RDOFF + rm = g2 + rn + (g_lastM + tslen)
+                    // where rn >= mid + |rm-floor|, so RDOFF + rm >= g2 + g_lastM > 0). Guard
+                    // against pathological inputs where this invariant is violated.
+                    if (RDOFF + rm <= 0) {
+                        throw new IllegalStateException(
+                                "CigarModifier merge would yield non-positive RDOFF (="
+                                + (RDOFF + rm) + ") for cigar '" + originalCigar + "'");
+                    }
+                    RDOFF = RDOFF + rm;
+                    newCigarStr = RDOFF + "M" + dlen + "D";
+                } else {
+                    newCigarStr += dlen + "D" + rm + "M";
+                }
             }
         } else {
             if (dlen == 0) {
@@ -684,11 +699,42 @@ public class CigarModifier {
         RDOFF += rn;
         dlen -= rn;
         tslen -= rn;
+        // Edge cases mirror threeIndels(): when rn outruns the interior matched bases
+        // (e.g. inside a homopolymer that extends past the indel cluster), tslen and/or rm
+        // become negative. Without the rm < 0 branch in the dlen > 0 case below, the merge
+        // would emit a malformed CIGAR like "...15D12I-1M9D27M". See regression test
+        // modifyCigarOnHomopolymerThreeDeletionsDoesNotProduceMalformedCigar.
         String newCigarStr = RDOFF + "M";
         if (tslen <= 0) {
             dlen -= tslen;
             rm += tslen;
-            newCigarStr += dlen + "D" + rm + "M";
+            if (dlen == 0) {
+                RDOFF = RDOFF + rm;
+                newCigarStr = RDOFF + "M";
+            } else if (dlen < 0) {
+                int tslen2 = -dlen;
+                rm += dlen;
+                if (rm < 0) {
+                    RDOFF = RDOFF + rm;
+                    newCigarStr = RDOFF + "M" + tslen2 + "I";
+                } else {
+                    newCigarStr += tslen2 + "I" + rm + "M";
+                }
+            } else {
+                if (rm < 0) {
+                    // rn consumed more than the interior 'mid'; the extra bases come
+                    // from the trailing M, so absorb the negative rm into RDOFF.
+                    if (RDOFF + rm <= 0) {
+                        throw new IllegalStateException(
+                                "CigarModifier merge would yield non-positive RDOFF (="
+                                + (RDOFF + rm) + ") for cigar '" + originalCigar + "'");
+                    }
+                    RDOFF = RDOFF + rm;
+                    newCigarStr = RDOFF + "M" + dlen + "D";
+                } else {
+                    newCigarStr += dlen + "D" + rm + "M";
+                }
+            }
         } else {
             newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
         }
@@ -745,11 +791,37 @@ public class CigarModifier {
         dlen -= rn;
         tslen -= rn;
 
+        // Edge cases mirror threeIndels()/threeDeletions(); see the matching comment in
+        // threeDeletions() for the rationale behind the dlen/rm < 0 branches.
         String newCigarStr = RDOFF + "M";
         if (tslen <= 0) {
             dlen -= tslen;
             rm += tslen;
-            newCigarStr += dlen + "D" + rm + "M";
+            if (dlen == 0) {
+                RDOFF = RDOFF + rm;
+                newCigarStr = RDOFF + "M";
+            } else if (dlen < 0) {
+                int tslen2 = -dlen;
+                rm += dlen;
+                if (rm < 0) {
+                    RDOFF = RDOFF + rm;
+                    newCigarStr = RDOFF + "M" + tslen2 + "I";
+                } else {
+                    newCigarStr += tslen2 + "I" + rm + "M";
+                }
+            } else {
+                if (rm < 0) {
+                    if (RDOFF + rm <= 0) {
+                        throw new IllegalStateException(
+                                "CigarModifier merge would yield non-positive RDOFF (="
+                                + (RDOFF + rm) + ") for cigar '" + originalCigar + "'");
+                    }
+                    RDOFF = RDOFF + rm;
+                    newCigarStr = RDOFF + "M" + dlen + "D";
+                } else {
+                    newCigarStr += dlen + "D" + rm + "M";
+                }
+            }
         } else {
             newCigarStr += dlen + "D" + tslen + "I" + rm + "M";
         }
